@@ -161,11 +161,26 @@ lade "andere_datei.deu"
 `wahrheitswert`, `bereich`, `sortiere`, `anhaengen`/`anhängen`, `entferne`, `umkehren`, `verbinde`,
 `max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`
 
-**Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`
+**Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`,
+`boden`, `decke`
+
+**Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
+eingeschlossen), `mische(liste)` (mischt in-place)
+
+**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`
 
 **Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`
 
+**JSON:** `json_lesen`, `json_schreiben` (Mengen werden beim Schreiben automatisch zu sortierten
+Listen konvertiert)
+
+**Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
+(erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax
+
 **Mengen:** `menge` (Umwandlung/leere Menge)
+
+**System:** `kommandozeilen_argumente()` — Argumente hinter dem Skriptnamen
+(`deutsch skript.deu a b` → `["a", "b"]`)
 
 Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
 `dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)

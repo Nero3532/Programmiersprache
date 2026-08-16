@@ -100,7 +100,7 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
         return None, _fehler_anzeigen(e, quelltext, dateiname, getattr(interpreter, '_letzter_aufruf_stack', None))
 
 
-def datei_starten(pfad: str):
+def datei_starten(pfad: str, argumente: list = None):
     if not os.path.exists(pfad):
         print(f'Fehler: Datei nicht gefunden: {pfad!r}', file=sys.stderr)
         sys.exit(1)
@@ -109,7 +109,7 @@ def datei_starten(pfad: str):
         quelltext = f.read()
 
     ladepfad = os.path.dirname(os.path.abspath(pfad))
-    interpreter = Interpreter(ladepfad=ladepfad)
+    interpreter = Interpreter(ladepfad=ladepfad, argumente=argumente or [])
 
     _, fehler = _ausfuehren(quelltext, interpreter, dateiname=pfad)
     if fehler:
@@ -162,7 +162,7 @@ def repl():
 
 def main():
     if len(sys.argv) > 1:
-        datei_starten(sys.argv[1])
+        datei_starten(sys.argv[1], sys.argv[2:])
     else:
         repl()
 

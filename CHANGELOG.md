@@ -4,11 +4,18 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.3.0]
+
 ### Hinzugefügt
 - Automatisierte CI (GitHub Actions) führt die Testsuite bei jedem Push/PR gegen Python 3.10–3.13 aus.
 - `pyproject.toml` für `pip install -e .` und ein `deutsch`-Kommandozeilenbefehl.
 - Diagnostik: `NameError` bei unbekannten Variablen/Funktionen schlägt bei Tippfehlern ähnliche
   bekannte Namen vor ("meintest du '...'?"), via `difflib.get_close_matches`.
+- Stdlib: `boden`, `decke` (Mathe); `zufall`, `zufallszahl`, `mische` (Zufall); `summe`, `alle`,
+  `einige`, `aufzaehlen`, `zippe` (funktional); `json_lesen`, `json_schreiben`; `passt_zu`,
+  `regex_ersetze`, `regex_finde`, `regex_finde_alle` (Regex, Pythons `re`-Syntax);
+  `kommandozeilen_argumente()` (Argumente hinter dem Skriptnamen, `deutsch skript.deu a b`).
+- 20 neue Regressionstests (74 gesamt).
 
 ### Geändert
 - Performance: Visitor-Dispatch (`Interpreter._besuche`) nutzt ein einmalig aufgebautes Dict statt
