@@ -160,8 +160,12 @@ def repl():
             print(interpreter._zu_text(ergebnis))
 
 
-if __name__ == '__main__':
+def main():
     if len(sys.argv) > 1:
         datei_starten(sys.argv[1])
     else:
         repl()
+
+
+if __name__ == '__main__':
+    main()
