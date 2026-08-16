@@ -13,6 +13,30 @@ _VERBUND_OPS = {
 }
 
 
+def _format_spec_trennen(code: str):
+    """Trennt 'ausdruck:formatspec' am ersten Top-Level-':'.
+
+    Ignoriert ':' innerhalb von (), [], {} (Slices, Dict-/Mengen-Literale)
+    und innerhalb von Anführungszeichen. Gibt (ausdruck_text, spec|None) zurück.
+    """
+    tiefe = 0
+    anfuehrung = None
+    for i, c in enumerate(code):
+        if anfuehrung:
+            if c == anfuehrung and (i == 0 or code[i - 1] != '\\'):
+                anfuehrung = None
+            continue
+        if c in ('"', "'"):
+            anfuehrung = c
+        elif c in '([{':
+            tiefe += 1
+        elif c in ')]}':
+            tiefe -= 1
+        elif c == ':' and tiefe == 0:
+            return code[:i].strip(), code[i + 1:].strip()
+    return code.strip(), None
+
+
 class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
@@ -103,6 +127,9 @@ class Parser:
 
     def _variable_deklaration(self):
         self._verbrauche(TokenTyp.SEI)
+        # Destrukturierung: sei [a, b, c] = ausdruck
+        if self._aktuell().typ == TokenTyp.LECKIG:
+            return self._destrukturierende_deklaration()
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
         # Optionaler Typ-Hinweis: sei x: Ganzzahl = ...
         typhinweis = None
@@ -112,6 +139,17 @@ class Parser:
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
         return ast.VariableDeklaration(name, wert, typhinweis)
+
+    def _destrukturierende_deklaration(self):
+        self._verbrauche(TokenTyp.LECKIG)
+        namen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+        while self._aktuell().typ == TokenTyp.KOMMA:
+            self.pos += 1
+            namen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+        self._verbrauche(TokenTyp.RECKIG)
+        self._verbrauche(TokenTyp.GLEICH)
+        wert = self._ausdruck()
+        return ast.DestrukturierendeDeklaration(namen, wert)
 
     def _parameter_lesen(self):
         """Gibt [(name, default_expr|None, is_variadic, typhinweis|None)] zurück."""
@@ -336,7 +374,15 @@ class Parser:
     # ---------------------------------------------------------------- Ausdr.
 
     def _ausdruck(self):
-        return self._oder()
+        ausdruck = self._oder()
+        # Ternär: dann_wert wenn bedingung sonst sonst_wert
+        if self._aktuell().typ == TokenTyp.WENN:
+            self.pos += 1
+            bedingung = self._oder()
+            self._verbrauche(TokenTyp.SONST)
+            sonst_wert = self._ausdruck()  # rechtsassoziativ, erlaubt Verkettung
+            return ast.TernaerAusdruck(ausdruck, bedingung, sonst_wert)
+        return ausdruck
 
     def _oder(self):
         links = self._und()
@@ -355,7 +401,8 @@ class Parser:
         return links
 
     def _vergleich(self):
-        links = self._addition()
+        operanden = [self._addition()]
+        operatoren = []
         ops = {
             TokenTyp.DOPPELGLEICH:   '==',
             TokenTyp.UNGLEICH:       '!=',
@@ -369,17 +416,21 @@ class Parser:
             # 'x nicht in y' – infix, unterscheidet sich vom Präfix 'nicht (x in y)'
             if self._aktuell().typ == TokenTyp.NICHT and self._vorschau().typ == TokenTyp.IN:
                 self.pos += 2
-                rechts = self._addition()
-                links = ast.BinaereOperation(links, 'nicht in', rechts)
+                operatoren.append('nicht in')
+                operanden.append(self._addition())
                 continue
             if self._aktuell().typ in ops:
-                op = ops[self._aktuell().typ]
+                operatoren.append(ops[self._aktuell().typ])
                 self.pos += 1
-                rechts = self._addition()
-                links = ast.BinaereOperation(links, op, rechts)
+                operanden.append(self._addition())
                 continue
             break
-        return links
+        if not operatoren:
+            return operanden[0]
+        if len(operatoren) == 1:
+            return ast.BinaereOperation(operanden[0], operatoren[0], operanden[1])
+        # Verkettung: a < b < c  ==  (a<b) und (b<c), jeder Operand nur einmal ausgewertet
+        return ast.VergleichsKette(operanden, operatoren)
 
     def _addition(self):
         links = self._multiplikation()
@@ -505,9 +556,12 @@ class Parser:
                 if inhalt:
                     teile.append(ast.Zeichenkette(inhalt))
             else:
-                sub_tokens = Lexer(inhalt).tokenisieren()
+                ausdruck_text, format_spec = _format_spec_trennen(inhalt)
+                sub_tokens = Lexer(ausdruck_text).tokenisieren()
                 sub_parser = Parser(sub_tokens)
                 ausdruck = sub_parser._ausdruck()
+                if format_spec is not None:
+                    ausdruck = ast.FormatierterAusdruck(ausdruck, format_spec)
                 teile.append(ausdruck)
         if not teile:
             return ast.Zeichenkette('')
@@ -530,7 +584,9 @@ class Parser:
             self.pos += 1
             variable = self._verbrauche(TokenTyp.BEZEICHNER).wert
             self._verbrauche(TokenTyp.IN)
-            iterable = self._ausdruck()
+            # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
+            # 'wenn'-Filter der Comprehension als Ternär-Beginn gelesen wird
+            iterable = self._oder()
             bedingung = None
             if self._aktuell().typ == TokenTyp.WENN:
                 self.pos += 1
@@ -554,12 +610,17 @@ class Parser:
     def _woerterbuch_literal(self):
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
         self._ueberspringen_leerzeilen()
-        paare = []
-        if self._aktuell().typ != TokenTyp.RGESCHWEIFTE:
-            k = self._ausdruck()
-            self._verbrauche(TokenTyp.DOPPELPUNKT)
+        if self._aktuell().typ == TokenTyp.RGESCHWEIFTE:
+            self.pos += 1
+            return ast.Woerterbuch([])  # {} ist ein leeres Wörterbuch (wie in Python)
+
+        erster = self._ausdruck()
+
+        if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
+            # Wörterbuch: {schlüssel: wert, ...}
+            self.pos += 1
             v = self._ausdruck()
-            paare.append((k, v))
+            paare = [(erster, v)]
             while self._aktuell().typ == TokenTyp.KOMMA:
                 self.pos += 1
                 self._ueberspringen_leerzeilen()
@@ -569,9 +630,21 @@ class Parser:
                 self._verbrauche(TokenTyp.DOPPELPUNKT)
                 v = self._ausdruck()
                 paare.append((k, v))
+            self._ueberspringen_leerzeilen()
+            self._verbrauche(TokenTyp.RGESCHWEIFTE)
+            return ast.Woerterbuch(paare)
+
+        # Menge: {elem, elem, ...}
+        elemente = [erster]
+        while self._aktuell().typ == TokenTyp.KOMMA:
+            self.pos += 1
+            self._ueberspringen_leerzeilen()
+            if self._aktuell().typ == TokenTyp.RGESCHWEIFTE:
+                break
+            elemente.append(self._ausdruck())
         self._ueberspringen_leerzeilen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
-        return ast.Woerterbuch(paare)
+        return ast.MengenLiteral(elemente)
 
     def _neu_instanz(self):
         self._verbrauche(TokenTyp.NEU)
