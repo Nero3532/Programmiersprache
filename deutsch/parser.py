@@ -113,6 +113,7 @@ class Parser:
         elif typ == TokenTyp.LADE:      anw = self._lade_anweisung()
         elif typ == TokenTyp.PASSE:     anw = self._passe_anweisung()
         elif typ == TokenTyp.WERFE:     anw = self._werfe_anweisung()
+        elif typ == TokenTyp.PRUEFE:    anw = self._pruefe_anweisung()
         elif typ == TokenTyp.ABBRECHEN:
             self.pos += 1; anw = ast.AbbrechenAnweisung()
         elif typ == TokenTyp.WEITER:
@@ -269,9 +270,21 @@ class Parser:
         koerper = self._block()
         return ast.SolangeAnweisung(bedingung, koerper)
 
+    def _schleifenvariable_lesen(self):
+        """Liest 'name' oder '[name, name, ...]' (Destrukturierung) als Schleifenvariable."""
+        if self._aktuell().typ == TokenTyp.LECKIG:
+            self.pos += 1
+            namen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+            while self._aktuell().typ == TokenTyp.KOMMA:
+                self.pos += 1
+                namen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            self._verbrauche(TokenTyp.RECKIG)
+            return namen
+        return self._verbrauche(TokenTyp.BEZEICHNER).wert
+
     def _fuer_anweisung(self):
         self._verbrauche(TokenTyp.FUER)
-        variable = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        variable = self._schleifenvariable_lesen()
         self._verbrauche(TokenTyp.IN)
         iterable = self._ausdruck()
         koerper = self._block()
@@ -289,6 +302,15 @@ class Parser:
     def _werfe_anweisung(self):
         self._verbrauche(TokenTyp.WERFE)
         return ast.WerfeAnweisung(self._ausdruck())
+
+    def _pruefe_anweisung(self):
+        self._verbrauche(TokenTyp.PRUEFE)
+        bedingung = self._ausdruck()
+        meldung = None
+        if self._aktuell().typ == TokenTyp.KOMMA:
+            self.pos += 1
+            meldung = self._ausdruck()
+        return ast.PruefeAnweisung(bedingung, meldung)
 
     def _versuche_anweisung(self):
         self._verbrauche(TokenTyp.VERSUCHE)
@@ -468,19 +490,37 @@ class Parser:
             return ast.BinaereOperation(links, '**', rechts)
         return links
 
+    def _argumente_lesen(self):
+        """Liest Aufruf-Argumente. Gibt (positionale_args, [(name, wert), ...]) zurück.
+        Positionale Argumente müssen vor Keyword-Argumenten stehen (wie in Python)."""
+        args = []
+        kwargs = []
+        if self._aktuell().typ == TokenTyp.RPAREN:
+            return args, kwargs
+        while True:
+            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
+                name = self._aktuell().wert
+                if any(n == name for n, _ in kwargs):
+                    self._fehler(f"Keyword-Argument '{name}' mehrfach angegeben")
+                self.pos += 2
+                kwargs.append((name, self._ausdruck()))
+            else:
+                if kwargs:
+                    self._fehler('Positionale Argumente müssen vor Keyword-Argumenten stehen')
+                args.append(self._ausdruck())
+            if self._aktuell().typ != TokenTyp.KOMMA:
+                break
+            self.pos += 1
+        return args, kwargs
+
     def _aufruf(self):
         knoten = self._primaer()
         while True:
             if self._aktuell().typ == TokenTyp.LPAREN:
                 self.pos += 1
-                args = []
-                if self._aktuell().typ != TokenTyp.RPAREN:
-                    args.append(self._ausdruck())
-                    while self._aktuell().typ == TokenTyp.KOMMA:
-                        self.pos += 1
-                        args.append(self._ausdruck())
+                args, kwargs = self._argumente_lesen()
                 self._verbrauche(TokenTyp.RPAREN)
-                knoten = ast.FunktionAufruf(knoten, args)
+                knoten = ast.FunktionAufruf(knoten, args, kwargs)
             elif self._aktuell().typ == TokenTyp.PUNKT:
                 self.pos += 1
                 attr = self._verbrauche(TokenTyp.BEZEICHNER).wert
@@ -582,7 +622,7 @@ class Parser:
         # List comprehension: [ausdruck für var in iterable wenn bed]
         if self._aktuell().typ == TokenTyp.FUER:
             self.pos += 1
-            variable = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            variable = self._schleifenvariable_lesen()
             self._verbrauche(TokenTyp.IN)
             # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
             # 'wenn'-Filter der Comprehension als Ternär-Beginn gelesen wird
@@ -650,11 +690,6 @@ class Parser:
         self._verbrauche(TokenTyp.NEU)
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
         self._verbrauche(TokenTyp.LPAREN)
-        args = []
-        if self._aktuell().typ != TokenTyp.RPAREN:
-            args.append(self._ausdruck())
-            while self._aktuell().typ == TokenTyp.KOMMA:
-                self.pos += 1
-                args.append(self._ausdruck())
+        args, kwargs = self._argumente_lesen()
         self._verbrauche(TokenTyp.RPAREN)
-        return ast.NeuInstanz(name, args)
+        return ast.NeuInstanz(name, args, kwargs)
