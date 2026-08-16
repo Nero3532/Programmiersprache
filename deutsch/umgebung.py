@@ -7,10 +7,15 @@ class Umgebung:
 
     def __init__(self, eltern=None):
         self.variablen: dict = {}
+        self.konstanten: set = set()
         self.eltern: 'Umgebung | None' = eltern
 
     def setze(self, name: str, wert):
         self.variablen[name] = wert
+
+    def setze_konstante(self, name: str, wert):
+        self.variablen[name] = wert
+        self.konstanten.add(name)
 
     def _aehnlichster_name(self, name: str):
         alle_namen = set()
@@ -38,6 +43,8 @@ class Umgebung:
         u = self
         while u is not None:
             if name in u.variablen:
+                if name in u.konstanten:
+                    raise TypeError(f"'{name}' ist eine Konstante und kann nicht neu zugewiesen werden")
                 u.variablen[name] = wert
                 return
             u = u.eltern

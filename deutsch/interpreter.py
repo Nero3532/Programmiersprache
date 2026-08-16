@@ -83,11 +83,27 @@ class GebundeneMethode:
         return f'<Methode {self.funktion.definition.name}>'
 
 
+class DeutschNamensraum:
+    """Ergebnis von 'lade "datei.deu" als name' – kapselt die Top-Level-Bindungen der Datei."""
+    def __init__(self, name: str, bindungen: dict):
+        self.name = name
+        self.bindungen = bindungen
+
+    def __repr__(self):
+        return f'<Namensraum {self.name}>'
+
+
+_NICHT_GEFUNDEN = object()
+
+
 class DeutschKlasse:
-    def __init__(self, name: str, eltern: list, methoden: dict):
+    def __init__(self, name: str, eltern: list, methoden: dict, statische_methoden: dict = None):
         self.name = name
         self.eltern: list['DeutschKlasse'] = eltern
         self.methoden = methoden  # {name: DeutschFunktion}
+        self.statische_methoden = statische_methoden or {}  # {name: DeutschFunktion}, kein 'dies'
+        self.klassenattribute: dict = {}      # gesetzt nach __init__ in _besuche_KlassenDefinition
+        self.konstante_attribute: set = set()  # Teilmenge von klassenattribute-Schlüsseln
 
     def suche_methode(self, name: str):
         if name in self.methoden:
@@ -97,6 +113,24 @@ class DeutschKlasse:
             if m is not None:
                 return m
         return None
+
+    def suche_statische_methode(self, name: str):
+        if name in self.statische_methoden:
+            return self.statische_methoden[name]
+        for e in self.eltern:
+            m = e.suche_statische_methode(name)
+            if m is not None:
+                return m
+        return None
+
+    def suche_klassenattribut(self, name: str):
+        if name in self.klassenattribute:
+            return self.klassenattribute[name]
+        for e in self.eltern:
+            wert = e.suche_klassenattribut(name)
+            if wert is not _NICHT_GEFUNDEN:
+                return wert
+        return _NICHT_GEFUNDEN
 
     def __repr__(self):
         return f'<Klasse {self.name}>'
@@ -113,6 +147,12 @@ class DeutschInstanz:
         methode = self.klasse.suche_methode(name)
         if methode is not None:
             return GebundeneMethode(self, methode)
+        statische_methode = self.klasse.suche_statische_methode(name)
+        if statische_methode is not None:
+            return statische_methode  # unbound – kein 'dies' wird injiziert
+        wert = self.klasse.suche_klassenattribut(name)
+        if wert is not _NICHT_GEFUNDEN:
+            return wert
         raise AttributeError(f"'{self.klasse.name}' hat kein Attribut '{name}'")
 
     def setze_attribut(self, name: str, wert):
@@ -874,6 +914,7 @@ class Interpreter:
         if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
+        if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
         if callable(wert):            return 'Funktion'
         return type(wert).__name__
@@ -1056,7 +1097,12 @@ class Interpreter:
     def _besuche_VariableDeklaration(self, k, u):
         wert = self._besuche(k.wert, u)
         self._pruefe_typ(wert, k.typhinweis, f"Variable '{k.name}'", u)
-        u.setze(k.name, wert)
+        if k.name in u.konstanten:
+            raise TypeError(f"'{k.name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
+        if k.ist_konstante:
+            u.setze_konstante(k.name, wert)
+        else:
+            u.setze(k.name, wert)
         return wert
 
     def _besuche_DestrukturierendeDeklaration(self, k, u):
@@ -1093,6 +1139,13 @@ class Interpreter:
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
                 obj.setze_attribut(ziel.attribut, wert)
+            elif isinstance(obj, DeutschKlasse):
+                if ziel.attribut in obj.konstante_attribute:
+                    raise TypeError(
+                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{obj.name}' "
+                        f"und kann nicht neu zugewiesen werden"
+                    )
+                obj.klassenattribute[ziel.attribut] = wert
             else:
                 raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
         elif isinstance(ziel, ast.IndexZugriff):
@@ -1229,16 +1282,27 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise  # Kontrollfluss-Signale niemals abfangen
         except Exception as e:
-            if k.fange_koerper is not None:
+            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen):
                 fange_u = Umgebung(u)
                 if k.fange_name:
                     wert = e.wert if isinstance(e, AusnahmeFehler) else str(e)
                     fange_u.setze(k.fange_name, wert)
                 self._besuche(k.fange_koerper, fange_u)
+            else:
+                raise
         finally:
             if k.endlich_koerper is not None:
                 self._besuche(k.endlich_koerper, u)
         return None
+
+    @staticmethod
+    def _fehlertyp_passt(e, fange_typen):
+        """Prüft ob fange_typen (str-Namen, z.B. 'TypeError') den Fehler oder eine seiner
+        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten)."""
+        if fange_typen is None:
+            return True
+        namen = {klasse.__name__ for klasse in type(e).__mro__}
+        return not namen.isdisjoint(fange_typen)
 
     def _pfad_aufloesen(self, pfad: str) -> str:
         if not os.path.isabs(pfad):
@@ -1267,7 +1331,14 @@ class Interpreter:
                 quelltext = f.read()
             tokens = Lexer(quelltext).tokenisieren()
             baum = Parser(tokens).parse()
-            # Im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
+            if k.als_name is not None:
+                # Isolierter Scope: Top-Level-Bindungen landen im Namensraum, nicht im globalen Scope
+                namensraum_u = Umgebung(self.global_umgebung)
+                self.ausfuehren(baum, namensraum_u)
+                namensraum = DeutschNamensraum(k.als_name, dict(namensraum_u.variablen))
+                u.setze(k.als_name, namensraum)
+                return namensraum
+            # Ohne 'als': im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
             return self.ausfuehren(baum, self.global_umgebung)
         finally:
             self._lade_stack.pop()
@@ -1366,8 +1437,16 @@ class Interpreter:
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
         methoden = {m.name: DeutschFunktion(m, u) for m in k.methoden}
-        klasse = DeutschKlasse(k.name, eltern, methoden)
+        statische_methoden = {m.name: DeutschFunktion(m, u) for m in k.statische_methoden}
+        klasse = DeutschKlasse(k.name, eltern, methoden, statische_methoden)
         u.setze(k.name, klasse)
+        # Klassenattribute (sei/konstante im Klassenkörper) in einem eigenen Scope auswerten,
+        # damit sei/konstante-Semantik (inkl. Typ-Hinweise, Destrukturierung) automatisch gilt
+        klassen_u = Umgebung(u)
+        for deklaration in k.klassenattribute:
+            self._besuche(deklaration, klassen_u)
+        klasse.klassenattribute = dict(klassen_u.variablen)
+        klasse.konstante_attribute = set(klassen_u.konstanten)
         return klasse
 
     def _besuche_NeuInstanz(self, k, u):
@@ -1389,10 +1468,20 @@ class Interpreter:
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(k.attribut)
 
+        if isinstance(obj, DeutschNamensraum):
+            if k.attribut in obj.bindungen:
+                return obj.bindungen[k.attribut]
+            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{k.attribut}'")
+
         if isinstance(obj, DeutschKlasse):
             m = obj.suche_methode(k.attribut)
             if m: return m
-            raise AttributeError(f"Klasse '{obj.name}' hat keine Methode '{k.attribut}'")
+            sm = obj.suche_statische_methode(k.attribut)
+            if sm: return sm
+            wert = obj.suche_klassenattribut(k.attribut)
+            if wert is not _NICHT_GEFUNDEN:
+                return wert
+            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{k.attribut}'")
 
         # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
         # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.
