@@ -151,7 +151,7 @@ class Interpreter:
             'kopiere':   lambda obj: list(obj),
             'flach':     lambda obj: [e for sub in obj for e in (sub if isinstance(sub, list) else [sub])],
             'index_von': lambda obj, x: self._index_von(obj, x, 'Liste'),
-            'zaehle':    lambda obj, x: obj.count(x),
+            'zaehle':    lambda obj, x: self._zaehle(obj, x, 'Liste'),
         }
 
     def _string_methoden_aufbauen(self):
@@ -175,7 +175,7 @@ class Interpreter:
             'wiederhole':    lambda obj, n: obj * int(n),
             'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
             'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
-            'zaehle':        lambda obj, x: obj.count(x),
+            'zaehle':        lambda obj, x: self._zaehle(obj, x, 'Zeichenkette'),
         }
 
     def _woerterbuch_methoden_aufbauen(self):
@@ -344,12 +344,19 @@ class Interpreter:
             return None
         return ergebnis
 
-    @staticmethod
-    def _index_von(obj, x, typname):
+    def _index_von(self, obj, x, typname):
         try:
             return obj.index(x)
         except ValueError:
             raise ValueError(f"'{x}' nicht gefunden in {typname}")
+        except TypeError:
+            raise TypeError(f"'index_von' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
+
+    def _zaehle(self, obj, x, typname):
+        try:
+            return obj.count(x)
+        except TypeError:
+            raise TypeError(f"'zaehle' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
 
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
@@ -712,10 +719,18 @@ class Interpreter:
             raise FileNotFoundError(f"Ordner nicht gefunden: '{pfad}'")
         except NotADirectoryError:
             raise NotADirectoryError(f"'{pfad}' ist kein Ordner")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
 
     def _eb_ordner_erstellen(self, *args):
         self._pruefe_args('ordner_erstellen', args, 1)
-        os.makedirs(self._pfad_aufloesen(self._zu_text(args[0])), exist_ok=True)
+        pfad = self._zu_text(args[0])
+        try:
+            os.makedirs(self._pfad_aufloesen(pfad), exist_ok=True)
+        except FileExistsError:
+            raise FileExistsError(f"'{pfad}' existiert bereits als Datei, kann nicht als Ordner erstellt werden")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Erstellen von '{pfad}'")
         return None
 
     def _eb_hash_sha256(self, *args):

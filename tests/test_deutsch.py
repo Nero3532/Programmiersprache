@@ -528,6 +528,16 @@ class TestIndexUndZaehlen(unittest.TestCase):
         with self.assertRaises(ValueError):
             lauf('"abc".index_von("xyz")')
 
+    def test_string_index_von_falscher_typ_wirft_deutschen_fehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('"abc".index_von(5)')
+        self.assertNotIn('must be str', str(ctx.exception))
+
+    def test_string_zaehle_falscher_typ_wirft_deutschen_fehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('"abc".zaehle(5)')
+        self.assertNotIn('must be str', str(ctx.exception))
+
 
 class TestStatistik(unittest.TestCase):
     def test_mittelwert_median(self):
@@ -594,6 +604,14 @@ class TestDateisystemHelfer(unittest.TestCase):
             interpreter = Interpreter(ladepfad=tmp)
             with self.assertRaises(FileNotFoundError):
                 lauf('dateien_auflisten("nicht_da_xyz")', interpreter)
+
+    def test_ordner_erstellen_auf_existierender_datei_wirft_deutschen_fehler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('datei_schreiben("x.txt", "a")', interpreter)
+            with self.assertRaises(FileExistsError) as ctx:
+                lauf('ordner_erstellen("x.txt")', interpreter)
+            self.assertIn('existiert bereits als Datei', str(ctx.exception))
 
 
 class TestHashingKodierung(unittest.TestCase):
