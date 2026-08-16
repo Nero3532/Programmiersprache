@@ -25,6 +25,13 @@ class InterpolierteZeichenkette(Knoten):
     __slots__ = ('teile',)
     def __init__(self, teile): self.teile = teile  # [Knoten, ...]
 
+class FormatierterAusdruck(Knoten):
+    """Interpolations-Teil mit Format-Spezifizierer: "{wert:.2f}" """
+    __slots__ = ('ausdruck', 'format_spec')
+    def __init__(self, ausdruck, format_spec):
+        self.ausdruck = ausdruck
+        self.format_spec = format_spec  # str, z.B. '.2f'
+
 class Wahrheitswert(Knoten):
     __slots__ = ('wert',)
     def __init__(self, wert): self.wert = wert
@@ -67,6 +74,25 @@ class UnaereOperation(Knoten):
     def __init__(self, operator, operand):
         self.operator = operator
         self.operand = operand
+
+class VergleichsKette(Knoten):
+    """a < b < c  ->  (a<b) und (b<c), jeder Operand wird nur einmal ausgewertet."""
+    __slots__ = ('operanden', 'operatoren')
+    def __init__(self, operanden, operatoren):
+        self.operanden = operanden      # [Knoten, ...], Länge n+1
+        self.operatoren = operatoren    # [str, ...], Länge n
+
+class TernaerAusdruck(Knoten):
+    """dann_wert wenn bedingung sonst sonst_wert"""
+    __slots__ = ('dann_wert', 'bedingung', 'sonst_wert')
+    def __init__(self, dann_wert, bedingung, sonst_wert):
+        self.dann_wert = dann_wert
+        self.bedingung = bedingung
+        self.sonst_wert = sonst_wert
+
+class MengenLiteral(Knoten):
+    __slots__ = ('elemente',)
+    def __init__(self, elemente): self.elemente = elemente
 
 class FunktionAufruf(Knoten):
     __slots__ = ('funktion', 'argumente')
@@ -115,6 +141,13 @@ class VariableDeklaration(Knoten):
     def __init__(self, name, wert, typhinweis=None):
         self.name = name
         self.typhinweis = typhinweis  # str | None – nur zur Info
+        self.wert = wert
+
+class DestrukturierendeDeklaration(Knoten):
+    """sei [a, b, c] = ausdruck"""
+    __slots__ = ('namen', 'wert')
+    def __init__(self, namen, wert):
+        self.namen = namen  # [str, ...]
         self.wert = wert
 
 class Zuweisung(Knoten):

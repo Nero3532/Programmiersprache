@@ -10,4 +10,4 @@ from .lexer import Lexer
 from .parser import Parser
 from .interpreter import Interpreter
 
-__version__ = '2.1.0'
+__version__ = '2.2.0'

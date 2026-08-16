@@ -38,18 +38,21 @@ sei liste = [1, 2, 3]
 sei dict = {"a": 1, "b": 2}
 
 sei alter: Ganzzahl = 25      # optionaler, zur Laufzeit geprüfter Typ-Hinweis
+
+sei [a, b, c] = [1, 2, 3]     # Destrukturierung
 ```
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
-`Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Nichts`, `Funktion`, oder ein
+`Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
 selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
 
 ### Operatoren
 
 Arithmetisch: `+ - * / % ** //` (Potenz, Ganzzahldivision), Verbund-Zuweisung: `+= -= *= /= %= **= //=`
-Vergleich: `== != < > <= >=`
+Vergleich: `== != < > <= >=` — auch verkettet: `1 < x < 10` (jeder Operand nur einmal ausgewertet)
 Logisch: `und oder nicht`
 Mitgliedschaft: `in`, `nicht in`
+Ternär: `dann_wert wenn bedingung sonst sonst_wert`
 
 ### Kontrollfluss
 
@@ -116,6 +119,28 @@ l[::2]      # jedes zweite Element
 ```
 Slice-*Zuweisung* (`l[1:3] = [...]`) wird nicht unterstützt.
 
+### Mengen
+
+```
+sei m1 = {1, 2, 3}
+sei m2 = {2, 3, 4}
+m1.vereinigung(m2)     # {1, 2, 3, 4}
+m1.schnittmenge(m2)    # {2, 3}
+m1.differenz(m2)       # {1}
+menge([1, 1, 2, 2])    # {1, 2} – Umwandlung/Deduplizierung, menge() ohne Argument = leere Menge
+```
+`{}` bleibt (wie in Python) ein leeres *Wörterbuch*, nicht eine leere Menge.
+
+### String-Interpolation mit Format-Spezifizierer
+
+```
+drucke("Pi = {pi:.2f}")        # Pi = 3.14
+drucke("Zahl = {42:5d}")       # Zahl =    42
+```
+Nutzt Pythons `format()`-Minisprache. Ein `:` innerhalb von Klammern (Slices, Funktionsaufrufe,
+Dict-/Mengen-Literale) wird korrekt nicht als Format-Trenner missverstanden:
+`"{liste[1:3]}"` bleibt ein Slice-Ausdruck.
+
 ### Module
 
 ```
@@ -132,9 +157,11 @@ lade "andere_datei.deu"
 
 **Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`
 
-Listen, Zeichenketten und Wörterbücher haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
-`dict.schluessel()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu) für eine
-vollständige Demonstration.
+**Mengen:** `menge` (Umwandlung/leere Menge)
+
+Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
+`dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)
+für eine vollständige Demonstration.
 
 ## Bekannte Einschränkungen
 

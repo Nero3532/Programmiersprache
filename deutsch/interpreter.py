@@ -132,6 +132,7 @@ class Interpreter:
         g.setze('liste',        self._eb_liste)
         g.setze('woerterbuch',  self._eb_woerterbuch)
         g.setze('wörterbuch',   self._eb_woerterbuch)
+        g.setze('menge',        self._eb_menge)
         g.setze('wahr',         True)
         g.setze('falsch',       False)
         g.setze('nichts',       None)
@@ -158,7 +159,7 @@ class Interpreter:
     def _eb_laenge(self, *args):
         self._pruefe_args('länge', args, 1)
         obj = args[0]
-        if isinstance(obj, (list, dict, str)):
+        if isinstance(obj, (list, dict, str, set)):
             return len(obj)
         raise TypeError(f"'länge' nicht unterstützt für {self._typname(obj)}")
 
@@ -196,9 +197,9 @@ class Interpreter:
 
     def _eb_sortiere(self, *args):
         self._pruefe_args('sortiere', args, 1)
-        if not isinstance(args[0], list):
-            raise TypeError("'sortiere' erwartet eine Liste")
-        return self._sortiert(args[0])
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'sortiere' erwartet eine Liste oder Menge")
+        return self._sortiert(list(args[0]))
 
     @staticmethod
     def _sortiert(liste, in_place=False):
@@ -368,6 +369,36 @@ class Interpreter:
             return {self._zu_text(p[0]): p[1] for p in obj if isinstance(p, list) and len(p) == 2}
         raise TypeError(f"'wörterbuch' erwartet eine Liste von [schlüssel, wert] Paaren")
 
+    def _eb_menge(self, *args):
+        if len(args) == 0:
+            return set()
+        self._pruefe_args('menge', args, 1)
+        try:
+            return set(args[0])
+        except TypeError:
+            raise TypeError(f"'{self._typname(args[0])}' kann nicht in Menge umgewandelt werden")
+
+    @staticmethod
+    def _menge_hinzufuegen(obj, x):
+        try:
+            obj.add(x)
+        except TypeError:
+            raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
+        return None
+
+    @staticmethod
+    def _menge_entfernen(obj, x):
+        try:
+            obj.remove(x)
+        except KeyError:
+            raise SchluesselFehler(f"'{x}' ist nicht in der Menge enthalten")
+        return None
+
+    def _menge_op(self, a, b, name, fn):
+        if not isinstance(b, set):
+            raise TypeError(f"'{name}' erwartet eine Menge, bekam {self._typname(b)}")
+        return fn(a, b)
+
     # ------------------------------------------------------------ Hilfsmeth.
 
     @staticmethod
@@ -383,6 +414,7 @@ class Interpreter:
         if isinstance(wert, str):     return 'Zeichenkette'
         if isinstance(wert, list):    return 'Liste'
         if isinstance(wert, dict):    return 'Woerterbuch'
+        if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
@@ -402,6 +434,10 @@ class Interpreter:
         if isinstance(wert, dict):
             teile = ', '.join(f'{self._zu_text(k)}: {self._zu_text(v)}' for k, v in wert.items())
             return '{' + teile + '}'
+        if isinstance(wert, set):
+            if not wert:
+                return 'menge()'
+            return '{' + ', '.join(self._zu_text(e) for e in self._sortiert(list(wert))) + '}'
         if isinstance(wert, DeutschInstanz):
             m = wert.klasse.suche_methode('__text__')
             if m:
@@ -412,7 +448,7 @@ class Interpreter:
     def _ist_wahr(self, wert) -> bool:
         if wert is None or wert is False: return False
         if isinstance(wert, (int, float)): return wert != 0
-        if isinstance(wert, (str, list, dict)): return len(wert) > 0
+        if isinstance(wert, (str, list, dict, set)): return len(wert) > 0
         return True
 
     # ------------------------------------------------------------ Ausführen
@@ -475,7 +511,19 @@ class Interpreter:
     def _besuche_Nichts(self,       k, u): return None
 
     def _besuche_InterpolierteZeichenkette(self, k, u):
-        return ''.join(self._zu_text(self._besuche(teil, u)) for teil in k.teile)
+        teile = []
+        for teil in k.teile:
+            if isinstance(teil, ast.FormatierterAusdruck):
+                wert = self._besuche(teil.ausdruck, u)
+                try:
+                    teile.append(format(wert, teil.format_spec))
+                except (ValueError, TypeError):
+                    raise ValueError(
+                        f"Ungültiges Format '{teil.format_spec}' für {self._typname(wert)}"
+                    )
+            else:
+                teile.append(self._zu_text(self._besuche(teil, u)))
+        return ''.join(teile)
 
     def _besuche_Bezeichner(self, k, u):
         return u.hole(k.name)
@@ -485,6 +533,13 @@ class Interpreter:
 
     def _besuche_Woerterbuch(self, k, u):
         return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+
+    def _besuche_MengenLiteral(self, k, u):
+        elemente = [self._besuche(e, u) for e in k.elemente]
+        try:
+            return set(elemente)
+        except TypeError:
+            raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
     def _besuche_ListenAusdruck(self, k, u):
         iterable = self._besuche(k.iterable, u)
@@ -508,6 +563,7 @@ class Interpreter:
             'Liste':         lambda w: isinstance(w, list),
             'Woerterbuch':   lambda w: isinstance(w, dict),
             'Wörterbuch':    lambda w: isinstance(w, dict),
+            'Menge':         lambda w: isinstance(w, set),
             'Nichts':        lambda w: w is None,
             'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
         }
@@ -531,6 +587,18 @@ class Interpreter:
         wert = self._besuche(k.wert, u)
         self._pruefe_typ(wert, k.typhinweis, f"Variable '{k.name}'", u)
         u.setze(k.name, wert)
+        return wert
+
+    def _besuche_DestrukturierendeDeklaration(self, k, u):
+        wert = self._besuche(k.wert, u)
+        if not isinstance(wert, (list, tuple)):
+            raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
+        if len(wert) != len(k.namen):
+            raise TypeError(
+                f"Destrukturierung erwartet {len(k.namen)} Werte, bekam {len(wert)}"
+            )
+        for name, einzelwert in zip(k.namen, wert):
+            u.setze(name, einzelwert)
         return wert
 
     def _besuche_Zuweisung(self, k, u):
@@ -618,6 +686,20 @@ class Interpreter:
         if k.operator == '-':    return -val
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
+
+    def _besuche_VergleichsKette(self, k, u):
+        links_wert = self._besuche(k.operanden[0], u)
+        for i, op in enumerate(k.operatoren):
+            rechts_wert = self._besuche(k.operanden[i + 1], u)
+            if not self._ist_wahr(self._binaerer_operator(op, links_wert, rechts_wert)):
+                return False
+            links_wert = rechts_wert
+        return True
+
+    def _besuche_TernaerAusdruck(self, k, u):
+        if self._ist_wahr(self._besuche(k.bedingung, u)):
+            return self._besuche(k.dann_wert, u)
+        return self._besuche(k.sonst_wert, u)
 
     # Kontrollfluss
     def _besuche_WennAnweisung(self, k, u):
@@ -866,6 +948,24 @@ class Interpreter:
             if k.attribut in methoden:
                 return methoden[k.attribut]
             raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
+
+        # Eingebaute Methoden für Mengen
+        if isinstance(obj, set):
+            methoden = {
+                'laenge':       lambda: len(obj),
+                'länge':        lambda: len(obj),
+                'enthält':      lambda x: x in obj,
+                'hinzufuegen':  lambda x: self._menge_hinzufuegen(obj, x),
+                'hinzufügen':   lambda x: self._menge_hinzufuegen(obj, x),
+                'entferne':     lambda x: self._menge_entfernen(obj, x),
+                'vereinigung':  lambda andere: self._menge_op(obj, andere, 'vereinigung', lambda a, b: a | b),
+                'schnittmenge': lambda andere: self._menge_op(obj, andere, 'schnittmenge', lambda a, b: a & b),
+                'differenz':    lambda andere: self._menge_op(obj, andere, 'differenz', lambda a, b: a - b),
+                'kopiere':      lambda: set(obj),
+            }
+            if k.attribut in methoden:
+                return methoden[k.attribut]
+            raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
 
         raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
 

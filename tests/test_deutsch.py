@@ -272,5 +272,104 @@ class TestStacktrace(unittest.TestCase):
         self.assertEqual(interpreter._letzter_aufruf_stack, [])
 
 
+class TestVergleichsKette(unittest.TestCase):
+    def test_verkettung_ausserhalb_des_bereichs(self):
+        ergebnis, _ = lauf('sei x = 50\n1 < x < 10')
+        self.assertFalse(ergebnis)
+
+    def test_verkettung_innerhalb_des_bereichs(self):
+        ergebnis, _ = lauf('1 < 5 < 10 < 20')
+        self.assertTrue(ergebnis)
+
+    def test_kurzschluss(self):
+        ergebnis, _ = lauf('10 < 5 < 20')
+        self.assertFalse(ergebnis)
+
+
+class TestTernaerAusdruck(unittest.TestCase):
+    def test_einfacher_ternaer(self):
+        self.assertEqual(
+            ausgabe_erfassen('drucke("erwachsen" wenn 20 >= 18 sonst "kind")'),
+            'erwachsen\n'
+        )
+
+    def test_verkettung_rechtsassoziativ(self):
+        ergebnis, _ = lauf('5 wenn falsch sonst 10 wenn wahr sonst 15')
+        self.assertEqual(ergebnis, 10)
+
+    def test_koexistenz_mit_listen_comprehension_filter(self):
+        # Regression: das 'wenn'-Filter einer Comprehension darf nicht vom
+        # Ternär-Lookahead in _ausdruck() verschluckt werden.
+        ergebnis, _ = lauf('[x*x für x in [1,2,3,4] wenn x % 2 == 0]')
+        self.assertEqual(ergebnis, [4, 16])
+
+    def test_ternaer_als_comprehension_wert(self):
+        ergebnis, _ = lauf('[x wenn x > 2 sonst -x für x in [1,2,3,4]]')
+        self.assertEqual(ergebnis, [-1, -2, 3, 4])
+
+
+class TestDestrukturierung(unittest.TestCase):
+    def test_einfache_destrukturierung(self):
+        _, interpreter = lauf('sei [a, b, c] = [1, 2, 3]')
+        self.assertEqual(interpreter.global_umgebung.hole('a'), 1)
+        self.assertEqual(interpreter.global_umgebung.hole('b'), 2)
+        self.assertEqual(interpreter.global_umgebung.hole('c'), 3)
+
+    def test_falsche_anzahl_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('sei [p, q] = [1, 2, 3]')
+
+
+class TestFormatSpec(unittest.TestCase):
+    def test_nachkommastellen(self):
+        self.assertEqual(
+            ausgabe_erfassen('drucke("Pi = {3.14159265:.2f}")'),
+            'Pi = 3.14\n'
+        )
+
+    def test_slice_in_interpolation_kollidiert_nicht_mit_format_spec(self):
+        # Regression: der ':' in einem Slice-Ausdruck darf nicht als
+        # Format-Spec-Trenner missverstanden werden.
+        self.assertEqual(
+            ausgabe_erfassen('drucke("{[1,2,3,4,5][1:3]}")'),
+            '[2, 3]\n'
+        )
+
+    def test_ungueltiges_format_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('sei text = "abc"\n"{text:d}"')
+
+
+class TestMengen(unittest.TestCase):
+    def test_mengen_literal_und_operationen(self):
+        ergebnis, _ = lauf('{1,2,3}.vereinigung({2,3,4})')
+        self.assertEqual(ergebnis, {1, 2, 3, 4})
+        ergebnis, _ = lauf('{1,2,3}.schnittmenge({2,3,4})')
+        self.assertEqual(ergebnis, {2, 3})
+        ergebnis, _ = lauf('{1,2,3}.differenz({2,3,4})')
+        self.assertEqual(ergebnis, {1})
+
+    def test_leere_geschweifte_klammern_sind_woerterbuch(self):
+        ergebnis, _ = lauf('{}')
+        self.assertEqual(ergebnis, {})
+        self.assertIsInstance(ergebnis, dict)
+
+    def test_menge_builtin_dedupliziert(self):
+        ergebnis, _ = lauf('menge([1,1,2,2,3])')
+        self.assertEqual(ergebnis, {1, 2, 3})
+
+    def test_unhashbares_element_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('{[1,2], 3}')
+
+    def test_vereinigung_mit_nicht_menge_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('{1,2}.vereinigung([1,2])')
+
+    def test_typ_hinweis_menge(self):
+        with self.assertRaises(TypeError):
+            lauf('funktion f(s: Menge) { zurück s }\nf([1,2])')
+
+
 if __name__ == '__main__':
     unittest.main()
