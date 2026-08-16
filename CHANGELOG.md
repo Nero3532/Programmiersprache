@@ -4,6 +4,36 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.6.0]
+
+### Hinzugefügt
+- `pruefe bedingung[, meldung]` — Assertion-Anweisung, wirft `AssertionError` bei Fehlschlag.
+- Mengen: `teilmenge_von`, `obermenge_von`, `symmetrische_differenz`.
+- Liste: `einfuegen(index, wert)`, `erweitere(andere_liste)`.
+- Mathe: `ggt`, `kgv`, `vorzeichen`.
+- Zeichenkette: `ist_ziffer`, `ist_buchstabe`, `ist_leerraum`.
+- 11 neue Regressionstests (130 gesamt).
+
+## [2.5.0]
+
+### Hinzugefügt
+- Destrukturierung in `für`-Schleifen und List-Comprehensions: `für [i, wert] in aufzaehlen(liste) { ... }`,
+  `[x*y für [x, y] in zippe(a, b)]`.
+- Keyword-Argumente bei Funktionsaufrufen und `neu Klasse(...)`: `f(b=2, a=1)`, gemischt mit
+  positionalen Argumenten (die vor Keyword-Argumenten stehen müssen).
+- Zyklische `lade`-Importe werden erkannt und werfen einen klaren `ImportError` statt einer
+  Endlosschleife/Rekursionsfehler; mehrfaches nicht-zyklisches Laden bleibt erlaubt.
+- Operator-Überladung für Klassen: `__addiere__`, `__subtrahiere__`, `__multipliziere__`,
+  `__dividiere__`, `__ganzdividiere__`, `__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`,
+  `__kleiner__`, `__groesser__`, `__kleinergleich__`, `__groessergleich__` — nur linker Operand,
+  jeder Operator einzeln definierbar.
+- 18 neue Regressionstests (114 gesamt).
+
+### Behoben
+- Doppelte Keyword-Argumente (`f(a=1, a=2)`) wurden stillschweigend akzeptiert (letzter Wert
+  gewinnt) statt wie in Python als Fehler abgelehnt zu werden.
+- 5 weitere Regressionstests (119 gesamt).
+
 ## [2.4.0]
 
 ### Hinzugefügt

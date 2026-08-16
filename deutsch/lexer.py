@@ -30,6 +30,7 @@ SCHLUESSELWOERTER = {
     'passe':     TokenTyp.PASSE,
     'fall':      TokenTyp.FALL,
     'werfe':     TokenTyp.WERFE,
+    'pruefe':    TokenTyp.PRUEFE,
 }
 
 _ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\',

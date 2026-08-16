@@ -68,6 +68,7 @@ Ternär: `dann_wert wenn bedingung sonst sonst_wert`
 wenn bedingung { ... } sonst wenn andere { ... } sonst { ... }
 solange bedingung { ... }
 für x in liste { ... }
+für [i, wert] in aufzaehlen(liste) { ... }    # Destrukturierung, auch in Comprehensions
 passe wert {
     fall 1, 2: { ... }
     fall 3: { ... }
@@ -90,6 +91,9 @@ funktion summe(*zahlen) {                     # variadische Parameter
     für z in zahlen { s += z }
     zurück s
 }
+
+addiere(b=5, a=3)          # Keyword-Argumente, beliebige Reihenfolge
+addiere(3, b=5)             # gemischt — positional muss vor Keyword stehen
 ```
 
 ### Klassen
@@ -103,7 +107,14 @@ klasse Hund(Tier) {
     funktion sprich(dies) { zurück dies.name + ": Wau!" }
 }
 klasse Zwitter(Hund, EineAndereKlasse) { }   # Mehrfachvererbung (links-nach-rechts DFS)
+neu Hund(name="Rex")                          # Keyword-Argumente auch bei neu
 ```
+
+**Operator-Überladung:** Klassen können `+ - * / // % **` und `== != < > <= >=` selbst definieren
+über `__addiere__`, `__subtrahiere__`, `__multipliziere__`, `__dividiere__`, `__ganzdividiere__`,
+`__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`, `__kleiner__`, `__groesser__`,
+`__kleinergleich__`, `__groessergleich__` (jeweils `(dies, andere)`). Nur der linke Operand wird
+geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
 
 ### Fehlerbehandlung
 
@@ -115,6 +126,9 @@ versuche {
 } endlich {
     drucke("Immer ausgeführt")
 }
+
+pruefe 1 + 1 == 2                       # AssertionError bei Fehlschlag
+pruefe x > 0, "x muss positiv sein"     # optionale eigene Meldung
 ```
 
 ### Listen/Strings: Indexing & Slicing
@@ -154,6 +168,9 @@ Dict-/Mengen-Literale) wird korrekt nicht als Format-Trenner missverstanden:
 ```
 lade "andere_datei.deu"
 ```
+Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportError`
+statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
+erlaubt und führt sie erneut aus.
 
 ## Eingebaute Funktionen
 
@@ -162,7 +179,7 @@ lade "andere_datei.deu"
 `max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`
 
 **Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`,
-`boden`, `decke`
+`boden`, `decke`, `ggt`, `kgv`, `vorzeichen`
 
 **Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
 eingeschlossen), `mische(liste)` (mischt in-place)
@@ -177,7 +194,8 @@ Listen konvertiert)
 **Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
 (erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax
 
-**Mengen:** `menge` (Umwandlung/leere Menge)
+**Mengen:** `menge` (Umwandlung/leere Menge); Instanzmethoden zusätzlich `teilmenge_von`,
+`obermenge_von`, `symmetrische_differenz`
 
 **Statistik:** `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung, nicht
 Stichprobe — definiert auch für einelementige Listen)

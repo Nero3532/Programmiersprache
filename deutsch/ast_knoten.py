@@ -95,10 +95,11 @@ class MengenLiteral(Knoten):
     def __init__(self, elemente): self.elemente = elemente
 
 class FunktionAufruf(Knoten):
-    __slots__ = ('funktion', 'argumente')
-    def __init__(self, funktion, argumente):
+    __slots__ = ('funktion', 'argumente', 'keyword_argumente')
+    def __init__(self, funktion, argumente, keyword_argumente=None):
         self.funktion = funktion
-        self.argumente = argumente
+        self.argumente = argumente                        # [Knoten, ...] positional
+        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
 
 class AttributZugriff(Knoten):
     __slots__ = ('objekt', 'attribut')
@@ -121,10 +122,11 @@ class SliceAusdruck(Knoten):
         self.step = step
 
 class NeuInstanz(Knoten):
-    __slots__ = ('name', 'argumente')
-    def __init__(self, name, argumente):
+    __slots__ = ('name', 'argumente', 'keyword_argumente')
+    def __init__(self, name, argumente, keyword_argumente=None):
         self.name = name
         self.argumente = argumente
+        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
 
 # -------------------------------------------------------------- Anweisungen
 
@@ -229,6 +231,13 @@ class LadeAnweisung(Knoten):
 class WerfeAnweisung(Knoten):
     __slots__ = ('wert',)
     def __init__(self, wert): self.wert = wert
+
+class PruefeAnweisung(Knoten):
+    """pruefe bedingung[, meldung]"""
+    __slots__ = ('bedingung', 'meldung')
+    def __init__(self, bedingung, meldung):
+        self.bedingung = bedingung
+        self.meldung = meldung  # Knoten | None
 
 class PasseAnweisung(Knoten):
     __slots__ = ('ausdruck', 'faelle', 'sonst')
