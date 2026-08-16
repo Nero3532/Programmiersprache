@@ -629,5 +629,358 @@ class TestHashingKodierung(unittest.TestCase):
             lauf('base64_dekodieren("!!!nicht_gueltig!!!")')
 
 
+class TestSchleifenDestrukturierung(unittest.TestCase):
+    def test_fuer_schleife(self):
+        code = '''
+        sei ausgabe = []
+        für [i, wert] in aufzaehlen(["a","b"]) {
+            ausgabe.anhaengen([i, wert])
+        }
+        ausgabe
+        '''
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, [[0, 'a'], [1, 'b']])
+
+    def test_listen_comprehension(self):
+        ergebnis, _ = lauf('[x*y für [x, y] in zippe([1,2,3], [10,20,30])]')
+        self.assertEqual(ergebnis, [10, 40, 90])
+
+    def test_normale_fuer_schleife_weiterhin_ok(self):
+        ergebnis, _ = lauf('sei s = 0\nfür x in [1,2,3] { s += x }\ns')
+        self.assertEqual(ergebnis, 6)
+
+    def test_falsche_anzahl_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('für [a, b] in [[1,2,3]] { a }')
+
+    def test_woerterbuch_paare_destrukturierung(self):
+        code = '''
+        sei d = {"a": 1, "b": 2}
+        sei ausgabe = []
+        für [schluessel, wert] in d.paare() {
+            ausgabe.anhaengen(schluessel)
+        }
+        sortiere(ausgabe)
+        '''
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, ['a', 'b'])
+
+    def test_woerterbuch_direkt_destrukturieren_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('sei d = {"a": 1}\nfür [k, v] in d { k }')
+
+
+class TestKeywordArgumente(unittest.TestCase):
+    def test_reine_keyword_argumente(self):
+        code = 'funktion f(a, b) { zurück a + b }\nf(a=1, b=2)'
+        self.assertEqual(lauf(code)[0], 3)
+
+    def test_gemischt_positional_und_keyword(self):
+        code = 'funktion f(a, b, c=10) { zurück a + b + c }\nf(1, c=100, b=2)'
+        self.assertEqual(lauf(code)[0], 103)
+
+    def test_neu_instanz_mit_keyword_argumenten(self):
+        code = '''
+        klasse Punkt {
+            funktion __init__(dies, x, y=0) { dies.x = x; dies.y = y }
+        }
+        neu Punkt(x=5, y=9).y
+        '''
+        self.assertEqual(lauf(code)[0], 9)
+
+    def test_unbekanntes_keyword_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('funktion f(a) { zurück a }\nf(b=1)')
+
+    def test_doppelter_wert_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('funktion f(a) { zurück a }\nf(1, a=2)')
+
+    def test_fehlendes_pflichtargument_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('funktion f(a, b) { zurück a }\nf(a=1)')
+
+    def test_keyword_auf_variadic_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('funktion f(*a) { zurück a }\nf(a=[1,2])')
+
+    def test_positional_nach_keyword_ist_syntaxfehler(self):
+        with self.assertRaises(SyntaxError):
+            lauf('funktion f(a, b) { zurück a }\nf(a=1, 2)')
+
+    def test_doppeltes_keyword_ist_syntaxfehler(self):
+        with self.assertRaises(SyntaxError):
+            lauf('funktion f(a) { zurück a }\nf(a=1, a=2)')
+
+
+class TestZyklischesLaden(unittest.TestCase):
+    def test_zyklus_wird_erkannt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'a.deu'), 'w', encoding='utf-8') as f:
+                f.write('lade "b.deu"\n')
+            with open(os.path.join(tmp, 'b.deu'), 'w', encoding='utf-8') as f:
+                f.write('lade "a.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ImportError):
+                lauf('lade "a.deu"', interpreter)
+
+    def test_wiederholtes_nicht_zyklisches_laden_funktioniert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'c.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion h() { zurück 42 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "c.deu"', interpreter)
+            ergebnis, _ = lauf('lade "c.deu"\nh()', interpreter)
+            self.assertEqual(ergebnis, 42)
+
+    def test_direkte_selbstreferenz_wird_erkannt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'self.deu'), 'w', encoding='utf-8') as f:
+                f.write('lade "self.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ImportError):
+                lauf('lade "self.deu"', interpreter)
+
+
+class TestOperatorUeberladung(unittest.TestCase):
+    def test_addiere_ueberladung(self):
+        code = '''
+        klasse Vektor {
+            funktion __init__(dies, x, y) { dies.x = x; dies.y = y }
+            funktion __addiere__(dies, andere) { zurück neu Vektor(dies.x + andere.x, dies.y + andere.y) }
+        }
+        sei ergebnis = neu Vektor(1,2) + neu Vektor(3,4)
+        [ergebnis.x, ergebnis.y]
+        '''
+        self.assertEqual(lauf(code)[0], [4, 6])
+
+    def test_gleich_ueberladung(self):
+        code = '''
+        klasse Punkt {
+            funktion __init__(dies, x) { dies.x = x }
+            funktion __gleich__(dies, andere) { zurück dies.x == andere.x }
+        }
+        neu Punkt(5) == neu Punkt(5)
+        '''
+        self.assertTrue(lauf(code)[0])
+
+    def test_ohne_ueberladung_normaler_fehler(self):
+        code = '''
+        klasse A { funktion __init__(dies) { } }
+        neu A() - neu A()
+        '''
+        with self.assertRaises(TypeError):
+            lauf(code)
+
+    def test_verbund_zuweisung_nutzt_ueberladung(self):
+        code = '''
+        klasse Vektor {
+            funktion __init__(dies, x) { dies.x = x }
+            funktion __addiere__(dies, andere) { zurück neu Vektor(dies.x + andere.x) }
+        }
+        sei v = neu Vektor(5)
+        v += neu Vektor(3)
+        v.x
+        '''
+        self.assertEqual(lauf(code)[0], 8)
+
+    def test_normale_zahlen_unveraendert(self):
+        self.assertEqual(lauf('5 + 3')[0], 8)
+
+
+class TestMengenVergleiche(unittest.TestCase):
+    def test_teilmenge_und_obermenge(self):
+        self.assertTrue(lauf('{1,2}.teilmenge_von({1,2,3})')[0])
+        self.assertFalse(lauf('{1,2,3}.teilmenge_von({1,2})')[0])
+        self.assertTrue(lauf('{1,2,3}.obermenge_von({1,2})')[0])
+
+    def test_symmetrische_differenz(self):
+        ergebnis, _ = lauf('{1,2,3}.symmetrische_differenz({2,3,4})')
+        self.assertEqual(ergebnis, {1, 4})
+
+
+class TestListeErweitern(unittest.TestCase):
+    def test_einfuegen(self):
+        _, interpreter = lauf('sei l = [1,2,3]\nl.einfuegen(1, 99)')
+        self.assertEqual(interpreter.global_umgebung.hole('l'), [1, 99, 2, 3])
+
+    def test_erweitere(self):
+        _, interpreter = lauf('sei l = [1,2]\nl.erweitere([3,4])')
+        self.assertEqual(interpreter.global_umgebung.hole('l'), [1, 2, 3, 4])
+
+    def test_erweitere_falscher_typ_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('sei l = [1,2]\nl.erweitere("abc")')
+
+
+class TestMatheUtilities(unittest.TestCase):
+    def test_ggt_kgv(self):
+        self.assertEqual(lauf('ggt(12, 18)')[0], 6)
+        self.assertEqual(lauf('ggt([12, 18, 24])')[0], 6)
+        self.assertEqual(lauf('kgv(4, 6)')[0], 12)
+
+    def test_vorzeichen(self):
+        self.assertEqual(lauf('vorzeichen(-5)')[0], -1)
+        self.assertEqual(lauf('vorzeichen(0)')[0], 0)
+        self.assertEqual(lauf('vorzeichen(3.5)')[0], 1)
+
+
+class TestStringPraedikate(unittest.TestCase):
+    def test_praedikate(self):
+        self.assertTrue(lauf('"123".ist_ziffer()')[0])
+        self.assertFalse(lauf('"abc".ist_ziffer()')[0])
+        self.assertTrue(lauf('"abc".ist_buchstabe()')[0])
+        self.assertTrue(lauf('"   ".ist_leerraum()')[0])
+
+
+class TestPruefeAnweisung(unittest.TestCase):
+    def test_erfolgreiche_pruefung_gibt_keinen_fehler(self):
+        lauf('pruefe wahr')
+        lauf('pruefe 1 + 1 == 2, "sollte nicht passieren"')
+
+    def test_fehlgeschlagene_pruefung_mit_meldung(self):
+        with self.assertRaises(AssertionError) as ctx:
+            lauf('pruefe falsch, "eigene Meldung"')
+        self.assertIn('eigene Meldung', str(ctx.exception))
+
+    def test_fehlgeschlagene_pruefung_ohne_meldung(self):
+        with self.assertRaises(AssertionError) as ctx:
+            lauf('pruefe 1 == 2')
+        self.assertIn('fehlgeschlagen', str(ctx.exception))
+
+
+class TestKonstanten(unittest.TestCase):
+    def test_lesen(self):
+        self.assertEqual(lauf('konstante PI = 3.14\nPI')[0], 3.14)
+
+    def test_neuzuweisung_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nx = 2')
+
+    def test_verbund_zuweisung_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nx += 1')
+
+    def test_redeklaration_im_selben_scope_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nkonstante x = 2')
+
+    def test_verschachtelter_scope_schattet_korrekt(self):
+        code = '''
+        konstante x = 1
+        funktion f() {
+            konstante x = 2
+            zurück x
+        }
+        [f(), x]
+        '''
+        self.assertEqual(lauf(code)[0], [2, 1])
+
+    def test_sei_bleibt_unveraendert(self):
+        self.assertEqual(lauf('sei x = 1\nx = 2\nx')[0], 2)
+
+
+class TestTypisiertesFangen(unittest.TestCase):
+    def test_nicht_passender_typ_propagiert(self):
+        with self.assertRaises(ZeroDivisionError):
+            lauf('versuche { 1/0 } fange (TypeError) f { f }')
+
+    def test_passender_typ_faengt(self):
+        ergebnis, _ = lauf('versuche { 1/0 } fange (ZeroDivisionError, TypeError) f { f }\n')
+        # kein Fehler mehr -> Skript laeuft durch
+
+    def test_endlich_laeuft_auch_bei_nicht_passendem_typ(self):
+        code = '''
+        sei lief = falsch
+        versuche {
+            versuche { 1/0 } fange (TypeError) f { f } endlich { lief = wahr }
+        } fange g { g }
+        lief
+        '''
+        self.assertTrue(lauf(code)[0])
+
+    def test_basisklasse_faengt_abgeleiteten_fehler(self):
+        code = '''
+        sei d = {"a": 1}
+        versuche { d["fehlt"] } fange (KeyError) f { f }
+        '''
+        lauf(code)  # darf nicht werfen
+
+    def test_ausnahmefehler_nach_name_fangbar(self):
+        code = 'sei erfasst = nichts\nversuche { werfe 42 } fange (AusnahmeFehler) f { erfasst = f }\nerfasst'
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, 42)
+
+
+class TestLadeAls(unittest.TestCase):
+    def test_namensraum_bindungen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion addiere(a, b) { zurück a + b }\nkonstante VERSION = "1.0"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "mod.deu" als m\nm.addiere(3, 4)', interpreter)
+            self.assertEqual(ergebnis, 7)
+            ergebnis, _ = lauf('m.VERSION', interpreter)
+            self.assertEqual(ergebnis, '1.0')
+
+    def test_bindungen_landen_nicht_im_globalen_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('sei geheim = 1\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "mod.deu" als m', interpreter)
+            with self.assertRaises(NameError):
+                lauf('geheim', interpreter)
+
+    def test_ohne_als_weiterhin_global(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion h() { zurück 1 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "mod.deu"\nh()', interpreter)
+            self.assertEqual(ergebnis, 1)
+
+
+class TestStatischeKlassenmitglieder(unittest.TestCase):
+    def test_geteiltes_klassenattribut(self):
+        code = '''
+        klasse Zaehler {
+            sei anzahl = 0
+            funktion __init__(dies) { Zaehler.anzahl += 1 }
+        }
+        neu Zaehler(); neu Zaehler(); neu Zaehler()
+        Zaehler.anzahl
+        '''
+        self.assertEqual(lauf(code)[0], 3)
+
+    def test_statische_methode_ueber_klasse_und_instanz(self):
+        code = '''
+        klasse K {
+            statisch funktion hallo() { zurück "hi" }
+        }
+        [K.hallo(), neu K().hallo()]
+        '''
+        self.assertEqual(lauf(code)[0], ['hi', 'hi'])
+
+    def test_klassenkonstante_schutz(self):
+        with self.assertRaises(TypeError):
+            lauf('klasse K { konstante MAX = 5 }\nK.MAX = 1')
+
+    def test_vererbung_von_statischem_attribut_und_methode(self):
+        code = '''
+        klasse Basis {
+            sei geteilt = "x"
+            statisch funktion hallo() { zurück "hi" }
+        }
+        klasse Kind(Basis) { }
+        [Kind.geteilt, Kind.hallo()]
+        '''
+        self.assertEqual(lauf(code)[0], ['x', 'hi'])
+
+    def test_unbekanntes_klassenattribut_wirft_fehler(self):
+        with self.assertRaises(AttributeError):
+            lauf('klasse K { }\nK.unbekannt')
+
+
 if __name__ == '__main__':
     unittest.main()

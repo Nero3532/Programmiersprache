@@ -48,6 +48,8 @@ sei dict = {"a": 1, "b": 2}
 sei alter: Ganzzahl = 25      # optionaler, zur Laufzeit geprüfter Typ-Hinweis
 
 sei [a, b, c] = [1, 2, 3]     # Destrukturierung
+
+konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
 ```
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
@@ -68,6 +70,7 @@ Ternär: `dann_wert wenn bedingung sonst sonst_wert`
 wenn bedingung { ... } sonst wenn andere { ... } sonst { ... }
 solange bedingung { ... }
 für x in liste { ... }
+für [i, wert] in aufzaehlen(liste) { ... }    # Destrukturierung, auch in Comprehensions
 passe wert {
     fall 1, 2: { ... }
     fall 3: { ... }
@@ -90,6 +93,9 @@ funktion summe(*zahlen) {                     # variadische Parameter
     für z in zahlen { s += z }
     zurück s
 }
+
+addiere(b=5, a=3)          # Keyword-Argumente, beliebige Reihenfolge
+addiere(3, b=5)             # gemischt — positional muss vor Keyword stehen
 ```
 
 ### Klassen
@@ -103,7 +109,28 @@ klasse Hund(Tier) {
     funktion sprich(dies) { zurück dies.name + ": Wau!" }
 }
 klasse Zwitter(Hund, EineAndereKlasse) { }   # Mehrfachvererbung (links-nach-rechts DFS)
+neu Hund(name="Rex")                          # Keyword-Argumente auch bei neu
+
+klasse Zaehler {
+    sei anzahl = 0                            # Klassenattribut, geteilt von allen Instanzen
+    konstante MAX = 1000                      # Klassenkonstante — Neuzuweisung wirft TypeError
+    funktion __init__(dies) { Zaehler.anzahl += 1 }
+    statisch funktion aktuelle_anzahl() { zurück Zaehler.anzahl }   # kein 'dies' → statisch
+}
+neu Zaehler(); neu Zaehler()
+drucke(Zaehler.anzahl)                        # 2 — über Klasse zugreifbar
+drucke(Zaehler.aktuelle_anzahl())             # 2 — auch über Klasse aufrufbar (ohne Instanz)
 ```
+Statische Methoden sind normale `funktion`-Definitionen im Klassenkörper mit `statisch`-Präfix,
+die kein `dies` deklarieren; sie sind sowohl über die Klasse (`Klasse.methode()`) als auch über
+eine Instanz (`instanz.methode()`, ohne automatische `dies`-Bindung) aufrufbar. Klassenattribute
+werden vererbt (links-nach-rechts, wie Methoden).
+
+**Operator-Überladung:** Klassen können `+ - * / // % **` und `== != < > <= >=` selbst definieren
+über `__addiere__`, `__subtrahiere__`, `__multipliziere__`, `__dividiere__`, `__ganzdividiere__`,
+`__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`, `__kleiner__`, `__groesser__`,
+`__kleinergleich__`, `__groessergleich__` (jeweils `(dies, andere)`). Nur der linke Operand wird
+geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
 
 ### Fehlerbehandlung
 
@@ -115,7 +142,21 @@ versuche {
 } endlich {
     drucke("Immer ausgeführt")
 }
+
+pruefe 1 + 1 == 2                       # AssertionError bei Fehlschlag
+pruefe x > 0, "x muss positiv sein"     # optionale eigene Meldung
+
+versuche {
+    sei d = {}
+    d["fehlt"]
+} fange (SchluesselFehler, IndexError) f {   # nur diese Fehlerarten fangen, Rest propagiert weiter
+    drucke(f)
+}
 ```
+Typ-Namen beim typisierten `fange` sind die intern verwendeten (teils englischen) Klassennamen,
+wie sie auch in der Fehleranzeige erscheinen (`TypeError`, `ValueError`, `SchluesselFehler`,
+`AusnahmeFehler`, …). Auch Basisklassen matchen — `fange (KeyError) f` fängt auch `SchluesselFehler`.
+Ohne Typ-Liste (`fange f { ... }`) bleibt das bisherige Verhalten: alles wird gefangen.
 
 ### Listen/Strings: Indexing & Slicing
 
@@ -153,7 +194,18 @@ Dict-/Mengen-Literale) wird korrekt nicht als Format-Trenner missverstanden:
 
 ```
 lade "andere_datei.deu"
+
+lade "andere_datei.deu" als modul   # Namensraum statt globaler Vermischung
+modul.funktion()
+modul.KONSTANTE
 ```
+Ohne `als` landen alle Top-Level-Definitionen der geladenen Datei im globalen Scope (wie bisher).
+Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindungen werden stattdessen
+unter `name.attribut` erreichbar, ohne den aufrufenden Scope zu verändern.
+
+Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportError`
+statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
+erlaubt und führt sie erneut aus.
 
 ## Eingebaute Funktionen
 
@@ -162,7 +214,7 @@ lade "andere_datei.deu"
 `max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`
 
 **Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`,
-`boden`, `decke`
+`boden`, `decke`, `ggt`, `kgv`, `vorzeichen`
 
 **Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
 eingeschlossen), `mische(liste)` (mischt in-place)
@@ -177,7 +229,8 @@ Listen konvertiert)
 **Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
 (erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax
 
-**Mengen:** `menge` (Umwandlung/leere Menge)
+**Mengen:** `menge` (Umwandlung/leere Menge); Instanzmethoden zusätzlich `teilmenge_von`,
+`obermenge_von`, `symmetrische_differenz`
 
 **Statistik:** `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung, nicht
 Stichprobe — definiert auch für einelementige Listen)

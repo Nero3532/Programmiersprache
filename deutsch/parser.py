@@ -103,6 +103,7 @@ class Parser:
             return None
 
         if typ == TokenTyp.SEI:       anw = self._variable_deklaration()
+        elif typ == TokenTyp.KONSTANTE: anw = self._konstante_deklaration()
         elif typ == TokenTyp.WENN:      anw = self._wenn_anweisung()
         elif typ == TokenTyp.SOLANGE:   anw = self._solange_anweisung()
         elif typ == TokenTyp.FUER:      anw = self._fuer_anweisung()
@@ -113,6 +114,7 @@ class Parser:
         elif typ == TokenTyp.LADE:      anw = self._lade_anweisung()
         elif typ == TokenTyp.PASSE:     anw = self._passe_anweisung()
         elif typ == TokenTyp.WERFE:     anw = self._werfe_anweisung()
+        elif typ == TokenTyp.PRUEFE:    anw = self._pruefe_anweisung()
         elif typ == TokenTyp.ABBRECHEN:
             self.pos += 1; anw = ast.AbbrechenAnweisung()
         elif typ == TokenTyp.WEITER:
@@ -139,6 +141,17 @@ class Parser:
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
         return ast.VariableDeklaration(name, wert, typhinweis)
+
+    def _konstante_deklaration(self):
+        self._verbrauche(TokenTyp.KONSTANTE)
+        name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        typhinweis = None
+        if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
+            self.pos += 1
+            typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        self._verbrauche(TokenTyp.GLEICH)
+        wert = self._ausdruck()
+        return ast.VariableDeklaration(name, wert, typhinweis, ist_konstante=True)
 
     def _destrukturierende_deklaration(self):
         self._verbrauche(TokenTyp.LECKIG)
@@ -231,14 +244,23 @@ class Parser:
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
         self._ueberspringen_leerzeilen()
         methoden = []
+        statische_methoden = []
+        klassenattribute = []
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
             if self._aktuell().typ == TokenTyp.FUNKTION:
                 methoden.append(self._funktion_definition())
+            elif self._aktuell().typ == TokenTyp.STATISCH:
+                self.pos += 1
+                statische_methoden.append(self._funktion_definition())
+            elif self._aktuell().typ == TokenTyp.SEI:
+                klassenattribute.append(self._variable_deklaration())
+            elif self._aktuell().typ == TokenTyp.KONSTANTE:
+                klassenattribute.append(self._konstante_deklaration())
             else:
                 self.pos += 1
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
-        return ast.KlassenDefinition(name, eltern, methoden)
+        return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)
 
     # ------------------------------------------------------- Kontrollfluss
 
@@ -269,9 +291,21 @@ class Parser:
         koerper = self._block()
         return ast.SolangeAnweisung(bedingung, koerper)
 
+    def _schleifenvariable_lesen(self):
+        """Liest 'name' oder '[name, name, ...]' (Destrukturierung) als Schleifenvariable."""
+        if self._aktuell().typ == TokenTyp.LECKIG:
+            self.pos += 1
+            namen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+            while self._aktuell().typ == TokenTyp.KOMMA:
+                self.pos += 1
+                namen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            self._verbrauche(TokenTyp.RECKIG)
+            return namen
+        return self._verbrauche(TokenTyp.BEZEICHNER).wert
+
     def _fuer_anweisung(self):
         self._verbrauche(TokenTyp.FUER)
-        variable = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        variable = self._schleifenvariable_lesen()
         self._verbrauche(TokenTyp.IN)
         iterable = self._ausdruck()
         koerper = self._block()
@@ -290,17 +324,35 @@ class Parser:
         self._verbrauche(TokenTyp.WERFE)
         return ast.WerfeAnweisung(self._ausdruck())
 
+    def _pruefe_anweisung(self):
+        self._verbrauche(TokenTyp.PRUEFE)
+        bedingung = self._ausdruck()
+        meldung = None
+        if self._aktuell().typ == TokenTyp.KOMMA:
+            self.pos += 1
+            meldung = self._ausdruck()
+        return ast.PruefeAnweisung(bedingung, meldung)
+
     def _versuche_anweisung(self):
         self._verbrauche(TokenTyp.VERSUCHE)
         koerper = self._block()
         self._ueberspringen_leerzeilen()
 
+        fange_typen = None
         fange_name = None
         fange_koerper = None
         endlich_koerper = None
 
         if self._aktuell().typ == TokenTyp.FANGE:
             self.pos += 1
+            # optionaler Typ-Filter: fange (TypeError, ValueError) fehler { ... }
+            if self._aktuell().typ == TokenTyp.LPAREN:
+                self.pos += 1
+                fange_typen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+                while self._aktuell().typ == TokenTyp.KOMMA:
+                    self.pos += 1
+                    fange_typen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+                self._verbrauche(TokenTyp.RPAREN)
             # optionaler Variablenname: fange fehler { ... }
             if self._aktuell().typ == TokenTyp.BEZEICHNER:
                 fange_name = self._aktuell().wert
@@ -315,12 +367,16 @@ class Parser:
         if fange_koerper is None and endlich_koerper is None:
             self._fehler("'versuche' braucht mindestens 'fange' oder 'endlich'")
 
-        return ast.VersucheAnweisung(koerper, fange_name, fange_koerper, endlich_koerper)
+        return ast.VersucheAnweisung(koerper, fange_typen, fange_name, fange_koerper, endlich_koerper)
 
     def _lade_anweisung(self):
         self._verbrauche(TokenTyp.LADE)
         pfad = self._ausdruck()
-        return ast.LadeAnweisung(pfad)
+        als_name = None
+        if self._aktuell().typ == TokenTyp.ALS:
+            self.pos += 1
+            als_name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        return ast.LadeAnweisung(pfad, als_name)
 
     def _passe_anweisung(self):
         self._verbrauche(TokenTyp.PASSE)
@@ -468,19 +524,37 @@ class Parser:
             return ast.BinaereOperation(links, '**', rechts)
         return links
 
+    def _argumente_lesen(self):
+        """Liest Aufruf-Argumente. Gibt (positionale_args, [(name, wert), ...]) zurück.
+        Positionale Argumente müssen vor Keyword-Argumenten stehen (wie in Python)."""
+        args = []
+        kwargs = []
+        if self._aktuell().typ == TokenTyp.RPAREN:
+            return args, kwargs
+        while True:
+            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
+                name = self._aktuell().wert
+                if any(n == name for n, _ in kwargs):
+                    self._fehler(f"Keyword-Argument '{name}' mehrfach angegeben")
+                self.pos += 2
+                kwargs.append((name, self._ausdruck()))
+            else:
+                if kwargs:
+                    self._fehler('Positionale Argumente müssen vor Keyword-Argumenten stehen')
+                args.append(self._ausdruck())
+            if self._aktuell().typ != TokenTyp.KOMMA:
+                break
+            self.pos += 1
+        return args, kwargs
+
     def _aufruf(self):
         knoten = self._primaer()
         while True:
             if self._aktuell().typ == TokenTyp.LPAREN:
                 self.pos += 1
-                args = []
-                if self._aktuell().typ != TokenTyp.RPAREN:
-                    args.append(self._ausdruck())
-                    while self._aktuell().typ == TokenTyp.KOMMA:
-                        self.pos += 1
-                        args.append(self._ausdruck())
+                args, kwargs = self._argumente_lesen()
                 self._verbrauche(TokenTyp.RPAREN)
-                knoten = ast.FunktionAufruf(knoten, args)
+                knoten = ast.FunktionAufruf(knoten, args, kwargs)
             elif self._aktuell().typ == TokenTyp.PUNKT:
                 self.pos += 1
                 attr = self._verbrauche(TokenTyp.BEZEICHNER).wert
@@ -582,7 +656,7 @@ class Parser:
         # List comprehension: [ausdruck für var in iterable wenn bed]
         if self._aktuell().typ == TokenTyp.FUER:
             self.pos += 1
-            variable = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            variable = self._schleifenvariable_lesen()
             self._verbrauche(TokenTyp.IN)
             # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
             # 'wenn'-Filter der Comprehension als Ternär-Beginn gelesen wird
@@ -650,11 +724,6 @@ class Parser:
         self._verbrauche(TokenTyp.NEU)
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
         self._verbrauche(TokenTyp.LPAREN)
-        args = []
-        if self._aktuell().typ != TokenTyp.RPAREN:
-            args.append(self._ausdruck())
-            while self._aktuell().typ == TokenTyp.KOMMA:
-                self.pos += 1
-                args.append(self._ausdruck())
+        args, kwargs = self._argumente_lesen()
         self._verbrauche(TokenTyp.RPAREN)
-        return ast.NeuInstanz(name, args)
+        return ast.NeuInstanz(name, args, kwargs)
