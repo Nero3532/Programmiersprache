@@ -1,5 +1,15 @@
-# Fibonacci – rekursiv und iterativ
+# ================================================================
+# Fibonacci – mehrere Berechnungsstrategien, ein paar Eigenschaften
+# der Folge, und ein Laufzeitvergleich zwischen ihnen.
+# ================================================================
 
+
+# ----------------------------------------------------------------
+# 1. GRUNDLAGEN: rekursiv (naiv) vs. iterativ
+# ----------------------------------------------------------------
+
+# naiv-rekursiv: einfach, aber exponentielle Laufzeit (jeder Aufruf verzweigt
+# sich zweifach ohne sich Zwischenergebnisse zu merken)
 funktion fibonacci_rekursiv(n) {
     wenn n <= 1 {
         zurück n
@@ -7,6 +17,7 @@ funktion fibonacci_rekursiv(n) {
     zurück fibonacci_rekursiv(n - 1) + fibonacci_rekursiv(n - 2)
 }
 
+# iterativ: lineare Laufzeit, konstanter Speicher
 funktion fibonacci_iterativ(n) {
     wenn n <= 1 {
         zurück n
@@ -23,6 +34,35 @@ funktion fibonacci_iterativ(n) {
     zurück b
 }
 
+
+# ----------------------------------------------------------------
+# 2. MEMOISIERUNG: rekursiv, aber mit Zwischenspeicher
+# ----------------------------------------------------------------
+
+# gleiche Rekursionsstruktur wie fibonacci_rekursiv, aber ein Cache (Closure
+# über 'cache') verhindert doppelte Berechnung derselben Teilprobleme ->
+# lineare statt exponentielle Laufzeit
+funktion fibonacci_memoisiert(n) {
+    sei cache = {}
+    funktion rechne(k) {
+        wenn k <= 1 {
+            zurück k
+        }
+        wenn k in cache {
+            zurück cache[k]
+        }
+        sei ergebnis = rechne(k - 1) + rechne(k - 2)
+        cache[k] = ergebnis
+        zurück ergebnis
+    }
+    zurück rechne(n)
+}
+
+
+# ----------------------------------------------------------------
+# 3. LISTEN: feste Länge vs. bis zu einer Obergrenze
+# ----------------------------------------------------------------
+
 funktion fibonacci_liste(n) {
     sei ergebnis = [0, 1]
     sei i = 2
@@ -33,6 +73,50 @@ funktion fibonacci_liste(n) {
     }
     zurück ergebnis
 }
+
+# liefert alle Fibonacci-Zahlen <= grenze, statt einer festen Anzahl
+funktion fibonacci_bis(grenze) {
+    sei ergebnis = []
+    sei a = 0
+    sei b = 1
+    solange a <= grenze {
+        anhängen(ergebnis, a)
+        sei temp = a + b
+        a = b
+        b = temp
+    }
+    zurück ergebnis
+}
+
+
+# ----------------------------------------------------------------
+# 4. EIGENSCHAFTEN DER FOLGE
+# ----------------------------------------------------------------
+
+funktion ist_perfektes_quadrat(x) {
+    wenn x < 0 { zurück falsch }
+    sei w = runde(wurzel(x))
+    zurück w * w == x
+}
+
+# zahlentheoretischer Test: n ist genau dann eine Fibonacci-Zahl, wenn
+# (5*n*n + 4) oder (5*n*n - 4) eine Quadratzahl ist - ohne die Folge
+# selbst durchlaufen zu müssen
+funktion ist_fibonacci(zahl) {
+    wenn zahl < 0 { zurück falsch }
+    zurück ist_perfektes_quadrat(5 * zahl * zahl + 4) oder ist_perfektes_quadrat(5 * zahl * zahl - 4)
+}
+
+# Verhältnis aufeinanderfolgender Fibonacci-Zahlen konvergiert gegen den
+# Goldenen Schnitt φ ≈ 1.618...
+funktion goldener_schnitt_naeherung(n) {
+    zurück fibonacci_iterativ(n + 1) / fibonacci_iterativ(n)
+}
+
+
+# ----------------------------------------------------------------
+# 5. DEMO
+# ----------------------------------------------------------------
 
 drucke("=== Fibonacci (rekursiv, erste 10) ===")
 für i in bereich(10) {
@@ -46,3 +130,55 @@ drucke(fibonacci_iterativ(30))
 drucke("")
 drucke("=== Fibonacci-Folge als Liste (erste 15) ===")
 drucke(fibonacci_liste(15))
+
+drucke("")
+drucke("=== Fibonacci-Zahlen bis 100 (fibonacci_bis) ===")
+drucke(fibonacci_bis(100))
+
+drucke("")
+drucke("=== Ist das eine Fibonacci-Zahl? (ist_fibonacci) ===")
+für kandidat in [0, 1, 4, 13, 50, 55, 144, 200] {
+    drucke(zeichenkette(kandidat) + " -> " + zeichenkette(ist_fibonacci(kandidat)))
+}
+
+drucke("")
+drucke("=== Näherung an den Goldenen Schnitt (F(n+1)/F(n)) ===")
+für n in [5, 10, 15, 20, 25] {
+    drucke("n=" + zeichenkette(n) + ": " + zeichenkette(runde(goldener_schnitt_naeherung(n), 6)))
+}
+
+drucke("")
+drucke("=== Übereinstimmung: rekursiv, memoisiert und iterativ liefern dasselbe ===")
+für i in bereich(15) {
+    sei r = fibonacci_rekursiv(i)
+    sei m = fibonacci_memoisiert(i)
+    sei it = fibonacci_iterativ(i)
+    wenn nicht (r == m und m == it) {
+        drucke("ABWEICHUNG bei F(" + zeichenkette(i) + "): " + zeichenkette(r) + " / " + zeichenkette(m) + " / " + zeichenkette(it))
+    }
+}
+drucke("Alle drei Strategien stimmen für F(0)..F(14) überein.")
+
+drucke("")
+drucke("=== Laufzeitvergleich: naiv-rekursiv vs. memoisiert vs. iterativ ===")
+sei n_test = 22
+
+sei start1 = jetzt()
+sei ergebnis1 = fibonacci_rekursiv(n_test)
+sei dauer1 = jetzt() - start1
+
+sei start2 = jetzt()
+sei ergebnis2 = fibonacci_memoisiert(n_test)
+sei dauer2 = jetzt() - start2
+
+sei start3 = jetzt()
+sei ergebnis3 = fibonacci_iterativ(n_test)
+sei dauer3 = jetzt() - start3
+
+drucke("F(" + zeichenkette(n_test) + ") = " + zeichenkette(ergebnis1) + " (alle drei stimmen überein: " + zeichenkette(ergebnis1 == ergebnis2 und ergebnis2 == ergebnis3) + ")")
+drucke("  rekursiv (naiv):  " + zeichenkette(runde(dauer1 * 1000, 2)) + " ms")
+drucke("  memoisiert:       " + zeichenkette(runde(dauer2 * 1000, 2)) + " ms")
+drucke("  iterativ:         " + zeichenkette(runde(dauer3 * 1000, 2)) + " ms")
+
+drucke("")
+drucke("Fertig!")

@@ -1,0 +1,1229 @@
+# ================================================================
+# Mini-SQL Engine – eine kleine, SQL-ähnliche In-Memory-Datenbank
+# geschrieben in "Deutsch".
+#
+# Das hier ist eine reine BIBLIOTHEK: `lade "mini_sql_engine.deu"` definiert
+# nur Funktionen/Klassen und hat KEINE Seiteneffekte (kein drucke(), keine
+# Demo-Datenbank). So kann sie problemlos in ein eigenes Programm eingebunden
+# werden. Die vollständige Vorführung aller Features steht separat in
+# beispiele/mini_sql_demo.deu (`lade "mini_sql_engine.deu"` + Beispielabfragen).
+#
+# Minimalbeispiel für die Einbindung in ein eigenes Programm:
+#   lade "mini_sql_engine.deu"
+#   sei db = neu Datenbank("meine_app")
+#   sql(db, "CREATE TABLE nutzer (id, name)")
+#   sql(db, "INSERT INTO nutzer VALUES (1, 'Ada')")
+#   sql(db, "SELECT * FROM nutzer")
+#
+# Unterstützt (Groß-/Kleinschreibung der SQL-Schlüsselwörter egal):
+#   CREATE TABLE name (spalte1, spalte2, ...)
+#   INSERT INTO name VALUES (wert1, wert2, ...) [, (wert1, wert2, ...)]*   (mehrzeilig,
+#     NICHT atomar/transaktional: schlägt eine spätere Zeile fehl, bleiben frühere
+#     bereits eingefügte Zeilen der selben Anweisung in der Tabelle)
+#   INSERT INTO name (spalteA, spalteB) VALUES (wertA, wertB)
+#   SELECT [DISTINCT] * FROM name [WHERE bed ((AND|OR) bed)*] [ORDER BY s [DESC|ASC] (, s [DESC|ASC])*] [LIMIT n]
+#   SELECT [DISTINCT] spalte1, spalte2 FROM name ...
+#   SELECT a FROM t1 JOIN t2 ON t1.spalte = t2.spalte [WHERE ...] [ORDER BY ...] [LIMIT n]
+#   SELECT COUNT(*)|COUNT(s)|SUM(s)|AVG(s)|MIN(s)|MAX(s)|MEDIAN(s)|STDDEV(s) FROM name [WHERE ...]
+#   SELECT spalte, COUNT(*)|... FROM name [WHERE ...] GROUP BY spalte [HAVING agg_ausdruck OP wert]
+#   UPDATE name SET spalte = wert (, spalte = wert)* [WHERE ...]
+#   DELETE FROM name [WHERE ...]
+#   DROP TABLE name
+#   BEGIN | COMMIT | ROLLBACK   (Transaktionen über die ganze Datenbank, siehe unten)
+#
+# Bedingungen: spalte OP wert   mit OP aus  =  !=  <  >  <=  >=
+#              spalte LIKE 'muster'       ('%' = beliebig viele Zeichen, '_' = genau eins)
+#              spalte IN (wert1, wert2, ...)
+#              spalte IS NULL | IS NOT NULL
+# Werte: Zahlen, NULL, oder 'Text'/"Text" in Anführungszeichen
+#
+# DISTINCT: nur für einfache Projektionen (keine Kombination mit Aggregat-
+# funktionen/GROUP BY - wird dort stillschweigend ignoriert).
+#
+# Persistenz (kein SQL-Text, direkte Deutsch-Funktionen):
+#   db_speichern(db, pfad)                    - schreibt alle Tabellen als JSON
+#   db_laden(pfad)                             - liest eine mit db_speichern geschriebene JSON-Datei
+#   tabelle_csv_exportieren(tab, pfad)          - eine einzelne Tabelle als CSV
+#   tabelle_csv_importieren(db, name, pfad)    - CSV einlesen (legt Tabelle bei Bedarf an);
+#     einfaches Format ohne Anführungszeichen-Escaping, Komma trennt Felder strikt
+#
+# Transaktionen (BEGIN/COMMIT/ROLLBACK): wirken auf die GESAMTE Datenbank (alle
+# Tabellen inkl. CREATE/DROP TABLE seit BEGIN), nicht nur auf einzelne Anweisungen.
+# BEGIN legt einen vollständigen Snapshot auf einen Stapel, ROLLBACK stellt ihn
+# wieder her, COMMIT verwirft ihn nur. Verschachtelte BEGIN sind als Stapel von
+# Savepoints erlaubt. Kein automatisches Transaktions-Wrapping einzelner Anweisungen.
+#
+# WHERE-Verknüpfung (AND/OR): Es gibt KEINE Klammerung. Bedingungen werden
+# strikt von links nach rechts ausgewertet ("Fold-Left"), NICHT nach üblicher
+# SQL-Präzedenz (dort bindet AND stärker als OR). D.h.:
+#   a = 1 OR b = 2 AND c = 3
+# wird hier gelesen als  (a = 1 OR b = 2) AND c = 3
+# und NICHT als a = 1 OR (b = 2 AND c = 3) wie in echtem SQL.
+#
+# JOIN: genau ein JOIN pro Query, immer INNER JOIN, ON akzeptiert genau eine
+# Gleichheitsbedingung mit qualifizierten Spalten ("tabelle.spalte"). Sobald
+# ein JOIN aktiv ist, müssen ALLE Spaltennamen (Projektion, WHERE, ORDER BY)
+# qualifiziert angegeben werden. Kein LEFT/RIGHT/OUTER JOIN, kein Mehrfach-JOIN.
+#
+# Aggregatfunktionen/GROUP BY: nur eine Gruppierungsspalte, keine verschachtelten
+# Ausdrücke in Aggregaten, und ORDER BY/LIMIT werden auf Aggregat-/GROUP-BY-
+# Ergebnissen NICHT unterstützt (HAVING dagegen schon, siehe oben).
+#
+# Spaltenprüfung: Spaltennamen in SELECT-Projektion, WHERE, ORDER BY, UPDATE
+# SET und der expliziten INSERT-Spaltenliste werden gegen die Tabellendefinition
+# geprüft. Unbekannte Spalten lösen sofort einen Fehler aus.
+#
+# PERFORMANCE (was "echte Programme" tatsächlich erwarten können):
+#   - Gleichheits-WHERE (genau EINE "spalte = wert"-Bedingung) nutzt einen lazy
+#     gebauten Hash-Index pro Tabelle+Spalte -> O(1) statt vollem Tabellen-Scan.
+#     Jede Schreiboperation (INSERT/UPDATE/DELETE) verwirft alle Indizes der
+#     betroffenen Tabelle, damit sie nie veraltete Daten liefern können; der
+#     nächste Lesezugriff baut sie bei Bedarf neu auf.
+#   - JOIN ist ein Hash-Join (Index auf die rechte Tabelle, ein Durchlauf über
+#     die linke) statt einer verschachtelten Schleife: O(n+m) statt O(n*m).
+#   - ORDER BY ist ein stabiler Merge-Sort: O(n log n) statt O(n²).
+#   - Alle anderen Bedingungen (mehrere WHERE-Klauseln, LIKE/IN/IS NULL, <, >, ...)
+#     bleiben ein voller Tabellen-Scan - dafür gibt es hier keinen Index.
+#   - Der Tree-Walking-Interpreter selbst bleibt der Flaschenhals: für sehr
+#     große Datenmengen (>> 10.000 Zeilen) oder Hochlast ist das trotzdem eine
+#     Lern-/Kleinprojekt-Engine, keine Produktionsdatenbank.
+# ================================================================
+
+
+# ----------------------------------------------------------------
+# 1. TOKENIZER
+# ----------------------------------------------------------------
+# Zerlegt einen SQL-Text in eine Liste von Tokens. Jedes Token ist
+# ein Wörterbuch {"wert": ..., "text": wahr/falsch}. "text" ist wahr,
+# wenn das Token in Anführungszeichen stand (= String-Literal),
+# sonst ist es ein Schlüsselwort/Bezeichner/Zahl/Satzzeichen.
+
+funktion tokenisiere(quelle) {
+    sei tokens = []
+    sei aktuell = ""
+    sei in_anfuehrung = falsch
+    sei anfuehrungszeichen = ""
+
+    funktion abschliessen() {
+        wenn länge(aktuell) > 0 {
+            anhängen(tokens, {"wert": aktuell, "text": falsch})
+            aktuell = ""
+        }
+    }
+
+    für c in quelle.zeichen() {
+        wenn in_anfuehrung {
+            wenn c == anfuehrungszeichen {
+                anhängen(tokens, {"wert": aktuell, "text": wahr})
+                aktuell = ""
+                in_anfuehrung = falsch
+            } sonst {
+                aktuell += c
+            }
+        } sonst wenn c == "'" oder c == '"' {
+            abschliessen()
+            in_anfuehrung = wahr
+            anfuehrungszeichen = c
+        } sonst wenn c == " " oder c == "\t" {
+            abschliessen()
+        } sonst wenn c == "(" oder c == ")" oder c == "," {
+            abschliessen()
+            anhängen(tokens, {"wert": c, "text": falsch})
+        } sonst wenn c == "!" oder c == "<" oder c == ">" oder c == "=" {
+            # zusammenhängende Vergleichsoperatoren (!=, <=, >=) als ein Token sammeln
+            wenn länge(aktuell) > 0 und nicht (aktuell in ["!", "<", ">", "="]) {
+                abschliessen()
+            }
+            aktuell += c
+        } sonst {
+            wenn länge(aktuell) > 0 und aktuell[länge(aktuell) - 1] in ["!", "<", ">", "="] {
+                abschliessen()
+            }
+            aktuell += c
+        }
+    }
+    abschliessen()
+    zurück tokens
+}
+
+
+# ----------------------------------------------------------------
+# 2. TOKEN-STROM
+# ----------------------------------------------------------------
+# Kleiner Helfer, der sich die Position im Token-Array merkt.
+
+klasse TokenStrom {
+    funktion __init__(selbst, tokens) {
+        selbst.tokens = tokens
+        selbst.pos = 0
+    }
+
+    funktion ende(selbst) {
+        zurück selbst.pos >= länge(selbst.tokens)
+    }
+
+    funktion aktuelles(selbst) {
+        wenn selbst.ende() { zurück nichts }
+        zurück selbst.tokens[selbst.pos]
+    }
+
+    funktion aktueller_text(selbst) {
+        sei t = selbst.aktuelles()
+        wenn t == nichts { zurück "" }
+        zurück t["wert"]
+    }
+
+    funktion aktueller_text_gross(selbst) {
+        sei t = selbst.aktuelles()
+        wenn t == nichts oder t["text"] { zurück "" }
+        zurück t["wert"].groß()
+    }
+
+    funktion vor(selbst) {
+        sei t = selbst.aktuelles()
+        selbst.pos += 1
+        zurück t
+    }
+
+    # prüft (ohne zu konsumieren), ob das aktuelle Token einem der
+    # übergebenen Schlüsselwörter entspricht (Groß-/Kleinschreibung egal)
+    funktion ist(selbst, *woerter) {
+        zurück selbst.aktueller_text_gross() in woerter
+    }
+
+    # konsumiert das aktuelle Token, wenn es passt; sonst Fehler
+    funktion erwarte(selbst, wort) {
+        wenn nicht selbst.ist(wort) {
+            werfe "SQL-Fehler: '" + wort + "' erwartet, aber '" + selbst.aktueller_text() + "' gefunden"
+        }
+        zurück selbst.vor()
+    }
+}
+
+
+# ----------------------------------------------------------------
+# 3. WERT-INTERPRETATION
+# ----------------------------------------------------------------
+# Wandelt ein Token in einen Deutsch-Wert um: Zahl, Text oder Bezeichner (Text).
+
+funktion wert_von_token(t) {
+    wenn t["text"] {
+        zurück t["wert"]
+    }
+    sei w = t["wert"]
+    wenn w.groß() == "NULL" {
+        zurück nichts
+    }
+    versuche {
+        wenn "." in w {
+            zurück kommazahl(w)
+        }
+        zurück ganzzahl(w)
+    } fange fehler {
+        zurück w
+    }
+}
+
+
+# ----------------------------------------------------------------
+# 4. TABELLE & DATENBANK
+# ----------------------------------------------------------------
+
+klasse Tabelle {
+    funktion __init__(selbst, name, spalten) {
+        selbst.name = name
+        selbst.spalten = spalten
+        selbst.zeilen = []
+        selbst.indizes = {}
+    }
+
+    funktion einfuegen(selbst, werte) {
+        wenn länge(werte) != länge(selbst.spalten) {
+            werfe "Spaltenzahl passt nicht: erwartet " + zeichenkette(länge(selbst.spalten)) + ", bekommen " + zeichenkette(länge(werte))
+        }
+        sei zeile = {}
+        sei i = 0
+        solange i < länge(selbst.spalten) {
+            zeile[selbst.spalten[i]] = werte[i]
+            i += 1
+        }
+        anhängen(selbst.zeilen, zeile)
+        selbst.indizes = {}
+    }
+
+    # baut (bzw. erneuert) einen Gleichheits-Index für 'spalte': Wert -> Liste
+    # passender Zeilen (dieselben Objekte wie in selbst.zeilen, keine Kopien).
+    # Wird von hole_gefilterte_zeilen/fuehre_join_aus lazy bei Bedarf aufgerufen
+    # und bleibt anschließend gecacht, bis die nächste Schreiboperation ihn
+    # über 'einfuegen'/invalidiere_indizes wieder verwirft.
+    funktion baue_index(selbst, spalte) {
+        sei index = {}
+        für z in selbst.zeilen {
+            sei k = z[spalte]
+            wenn nicht (k in index) {
+                index[k] = []
+            }
+            anhängen(index[k], z)
+        }
+        selbst.indizes[spalte] = index
+        zurück index
+    }
+
+    funktion invalidiere_indizes(selbst) {
+        selbst.indizes = {}
+    }
+}
+
+klasse Datenbank {
+    funktion __init__(selbst, name) {
+        selbst.name = name
+        selbst.tabellen = {}
+        selbst.transaktions_stapel = []
+    }
+
+    funktion erstelle_tabelle(selbst, name, spalten) {
+        wenn name in selbst.tabellen {
+            werfe "Tabelle '" + name + "' existiert bereits"
+        }
+        selbst.tabellen[name] = neu Tabelle(name, spalten)
+    }
+
+    funktion tabelle(selbst, name) {
+        wenn nicht (name in selbst.tabellen) {
+            werfe "Unbekannte Tabelle: '" + name + "'"
+        }
+        zurück selbst.tabellen[name]
+    }
+
+    # legt einen vollständigen, unabhängigen Schnappschuss aller Tabellen
+    # (samt Zeileninhalt) auf den Transaktions-Stapel - nutzt 'tiefe_kopie',
+    # damit spätere Mutationen der lebenden Tabellen den Schnappschuss nicht antasten
+    funktion beginne_transaktion(selbst) {
+        anhängen(selbst.transaktions_stapel, tiefe_kopie(selbst.tabellen))
+    }
+
+    funktion committe(selbst) {
+        wenn länge(selbst.transaktions_stapel) == 0 {
+            werfe "COMMIT ohne aktive Transaktion (kein vorheriges BEGIN)"
+        }
+        entferne(selbst.transaktions_stapel)
+    }
+
+    funktion rolle_zurueck(selbst) {
+        wenn länge(selbst.transaktions_stapel) == 0 {
+            werfe "ROLLBACK ohne aktive Transaktion (kein vorheriges BEGIN)"
+        }
+        selbst.tabellen = entferne(selbst.transaktions_stapel)
+    }
+}
+
+
+# ----------------------------------------------------------------
+# 4b. PERSISTENZ (Speichern/Laden als JSON) - keine SQL-Befehle,
+# normale Deutsch-Funktionen auf der Datenbank-Klasse
+# ----------------------------------------------------------------
+
+funktion db_speichern(db, pfad) {
+    sei namen = db.tabellen.schluessel()
+    sei daten = {}
+    für name in namen {
+        sei tab = db.tabellen[name]
+        daten[name] = {"spalten": tab.spalten, "zeilen": tab.zeilen}
+    }
+    json_schreiben(pfad, daten)
+    zurück "Datenbank '" + db.name + "' gespeichert nach '" + pfad + "' (" + zeichenkette(länge(namen)) + " Tabelle(n))"
+}
+
+funktion db_laden(pfad) {
+    sei daten = json_lesen(pfad)
+    sei db = neu Datenbank(pfad)
+    für name in daten.schluessel() {
+        sei eintrag = daten[name]
+        db.erstelle_tabelle(name, eintrag["spalten"])
+        db.tabelle(name).zeilen = eintrag["zeilen"]
+    }
+    zurück db
+}
+
+
+# ----------------------------------------------------------------
+# 4c. CSV IMPORT/EXPORT - einfaches Format, KEIN Anführungszeichen-
+# Escaping (Komma innerhalb eines Feldes würde das Feld sprengen)
+# ----------------------------------------------------------------
+
+# 'NULL' spiegelt genau, was zu_text() (Sektion 8) für einen Nichts-Wert
+# schreibt, damit ein Export/Import-Rundtrip NULL-Werte erhält
+funktion csv_wert_parsen(text) {
+    wenn text == "" oder text == "NULL" {
+        zurück nichts
+    }
+    versuche {
+        wenn "." in text {
+            zurück kommazahl(text)
+        }
+        zurück ganzzahl(text)
+    } fange fehler {
+        zurück text
+    }
+}
+
+funktion tabelle_csv_exportieren(tab, pfad) {
+    sei zeilen_text = [verbinde(tab.spalten, ",")]
+    für z in tab.zeilen {
+        sei zellen = [zu_text(z[s]) für s in tab.spalten]
+        anhängen(zeilen_text, verbinde(zellen, ","))
+    }
+    datei_schreiben(pfad, verbinde(zeilen_text, "\n"))
+    zurück "Tabelle '" + tab.name + "' exportiert nach '" + pfad + "' (" + zeichenkette(länge(tab.zeilen)) + " Zeile(n))"
+}
+
+funktion tabelle_csv_importieren(db, name, pfad) {
+    sei inhalt = datei_lesen(pfad)
+    sei rohzeilen = inhalt.teile("\n")
+    sei zeilen_text = [z für z in rohzeilen wenn länge(z.trimmen()) > 0]
+    wenn länge(zeilen_text) == 0 {
+        werfe "CSV-Datei '" + pfad + "' ist leer"
+    }
+    sei spalten = zeilen_text[0].teile(",")
+    wenn nicht (name in db.tabellen) {
+        db.erstelle_tabelle(name, spalten)
+    }
+    sei tab = db.tabelle(name)
+    sei anzahl = 0
+    sei i = 1
+    solange i < länge(zeilen_text) {
+        sei rohtext = zeilen_text[i].teile(",")
+        sei werte = [csv_wert_parsen(w.trimmen()) für w in rohtext]
+        tab.einfuegen(werte)
+        anzahl += 1
+        i += 1
+    }
+    zurück zeichenkette(anzahl) + " Zeile(n) aus '" + pfad + "' in '" + name + "' importiert"
+}
+
+
+# ----------------------------------------------------------------
+# 5. BEDINGUNGEN (WHERE ... AND/OR ..., LIKE, IN, IS [NOT] NULL)
+# ----------------------------------------------------------------
+
+funktion vergleiche(a, op, b) {
+    wenn op == "=" { zurück a == b }
+    wenn op == "!=" { zurück a != b }
+    wenn op == "<" { zurück a < b }
+    wenn op == ">" { zurück a > b }
+    wenn op == "<=" { zurück a <= b }
+    wenn op == ">=" { zurück a >= b }
+    werfe "Unbekannter Operator: " + op
+}
+
+funktion pruefe_spalte(tab, spalte) {
+    wenn nicht (spalte in tab.spalten) {
+        werfe "Unbekannte Spalte '" + spalte + "' in Tabelle '" + tab.name + "' (gültige Spalten: " + verbinde(tab.spalten, ", ") + ")"
+    }
+}
+
+# wandelt ein SQL-LIKE-Muster ('%' = beliebig viele Zeichen, '_' = genau ein
+# Zeichen) in ein verankertes Regex-Muster um; nutzt den 'passt_zu'-Stdlib-Baustein
+funktion like_zu_regex(muster) {
+    sei spezial = [".", "^", "$", "*", "+", "?", "(", ")", "[", "]", "{", "}", "|", "\\"]
+    sei ergebnis = ""
+    für c in muster.zeichen() {
+        wenn c == "%" {
+            ergebnis += ".*"
+        } sonst wenn c == "_" {
+            ergebnis += "."
+        } sonst wenn c in spezial {
+            ergebnis += "\\" + c
+        } sonst {
+            ergebnis += c
+        }
+    }
+    zurück "^" + ergebnis + "$"
+}
+
+funktion like_treffer(wert, muster) {
+    wenn wert == nichts { zurück falsch }
+    zurück passt_zu(like_zu_regex(muster), zeichenkette(wert))
+}
+
+# eine einzelne Bedingung auswerten - dispatcht nach "art" (siehe parse_eine_bedingung)
+funktion bedingung_erfuellt(zeile, b) {
+    sei wert_in_zeile = zeile[b["spalte"]]
+    wenn b["art"] == "istnull" { zurück wert_in_zeile == nichts }
+    wenn b["art"] == "istnichtnull" { zurück wert_in_zeile != nichts }
+    wenn b["art"] == "like" { zurück like_treffer(wert_in_zeile, b["muster"]) }
+    wenn b["art"] == "in" { zurück wert_in_zeile in b["werte"] }
+    zurück vergleiche(wert_in_zeile, b["op"], b["wert"])
+}
+
+# Wertet die Bedingungsliste strikt von links nach rechts aus (Fold-Left,
+# keine Klammerung/Präzedenz) - siehe Hinweis im Datei-Header.
+funktion zeile_passt(zeile, bedingungen) {
+    wenn länge(bedingungen) == 0 { zurück wahr }
+    sei ergebnis = bedingung_erfuellt(zeile, bedingungen[0])
+    sei i = 1
+    solange i < länge(bedingungen) {
+        sei b = bedingungen[i]
+        sei treffer = bedingung_erfuellt(zeile, b)
+        wenn b["verknuepfung"] == "AND" {
+            ergebnis = ergebnis und treffer
+        } sonst {
+            ergebnis = ergebnis oder treffer
+        }
+        i += 1
+    }
+    zurück ergebnis
+}
+
+# eine einzelne Bedingung lesen: normaler Vergleich, LIKE, IN (...), IS [NOT] NULL
+funktion parse_eine_bedingung(ts, tab) {
+    sei spalte = ts.vor()["wert"]
+    pruefe_spalte(tab, spalte)
+
+    wenn ts.ist("IS") {
+        ts.vor()
+        wenn ts.ist("NOT") {
+            ts.vor()
+            ts.erwarte("NULL")
+            zurück {"spalte": spalte, "art": "istnichtnull"}
+        }
+        ts.erwarte("NULL")
+        zurück {"spalte": spalte, "art": "istnull"}
+    }
+
+    wenn ts.ist("LIKE") {
+        ts.vor()
+        sei muster = wert_von_token(ts.vor())
+        zurück {"spalte": spalte, "art": "like", "muster": muster}
+    }
+
+    wenn ts.ist("IN") {
+        ts.vor()
+        ts.erwarte("(")
+        sei werte = []
+        sei laeuft = wahr
+        solange laeuft {
+            anhängen(werte, wert_von_token(ts.vor()))
+            wenn ts.ist(",") { ts.vor() } sonst { laeuft = falsch }
+        }
+        ts.erwarte(")")
+        zurück {"spalte": spalte, "art": "in", "werte": werte}
+    }
+
+    sei op = ts.vor()["wert"]
+    sei wert = wert_von_token(ts.vor())
+    zurück {"spalte": spalte, "art": "vergleich", "op": op, "wert": wert}
+}
+
+# nutzt einen (bei Bedarf gebauten) Gleichheits-Index, wenn genau EINE
+# Bedingung vorliegt und es sich um einen einfachen '='-Vergleich handelt -
+# das deckt den häufigsten Fall ab (Suche nach ID/Schlüssel) und macht ihn
+# O(1) statt eines vollständigen Tabellen-Scans. Alle anderen Fälle (mehrere
+# Bedingungen, andere Operatoren, LIKE/IN/IS NULL) fallen auf den
+# vollständigen Scan über zeile_passt zurück.
+funktion hole_gefilterte_zeilen(tab, bedingungen) {
+    wenn länge(bedingungen) == 1 und bedingungen[0]["art"] == "vergleich" und bedingungen[0]["op"] == "=" {
+        sei spalte = bedingungen[0]["spalte"]
+        wenn nicht (spalte in tab.indizes) {
+            tab.baue_index(spalte)
+        }
+        sei index = tab.indizes[spalte]
+        sei wert = bedingungen[0]["wert"]
+        wenn wert in index {
+            zurück index[wert]
+        }
+        zurück []
+    }
+    zurück [z für z in tab.zeilen wenn zeile_passt(z, bedingungen)]
+}
+
+funktion parse_bedingungen(ts, tab) {
+    sei bedingungen = []
+    wenn ts.ist("WHERE") {
+        ts.vor()
+        sei verknuepfung = nichts
+        sei laeuft = wahr
+        solange laeuft {
+            sei b = parse_eine_bedingung(ts, tab)
+            b["verknuepfung"] = verknuepfung
+            anhängen(bedingungen, b)
+            wenn ts.ist("AND") {
+                verknuepfung = "AND"
+                ts.vor()
+            } sonst wenn ts.ist("OR") {
+                verknuepfung = "OR"
+                ts.vor()
+            } sonst {
+                laeuft = falsch
+            }
+        }
+    }
+    zurück bedingungen
+}
+
+
+# ----------------------------------------------------------------
+# 5b. JOIN (genau ein INNER JOIN, qualifizierte Spalten "tabelle.spalte")
+# ----------------------------------------------------------------
+
+# validiert Tabellen-Qualifikation + Spaltenname EINMAL im Voraus, statt erst
+# beim ersten tatsächlichen Zeilenpaar - sonst würde ein Tippfehler in der
+# ON-Bedingung bei einer leeren Tabelle unbemerkt bleiben (leeres Ergebnis
+# statt Fehler)
+funktion pruefe_join_spalte(tab1, name1, tab2, name2, teile) {
+    sei tabellenname = teile[0]
+    sei spaltenname = teile[1]
+    wenn tabellenname == name1 {
+        pruefe_spalte(tab1, spaltenname)
+    } sonst wenn tabellenname == name2 {
+        pruefe_spalte(tab2, spaltenname)
+    } sonst {
+        werfe "Unbekannte Tabelle '" + tabellenname + "' in JOIN ON-Bedingung (erwartet '" + name1 + "' oder '" + name2 + "')"
+    }
+}
+
+funktion join_zeile_verschmelzen(z1, name1, z2, name2) {
+    sei neue = {}
+    für s in z1.schluessel() {
+        neue[name1 + "." + s] = z1[s]
+    }
+    für s in z2.schluessel() {
+        neue[name2 + "." + s] = z2[s]
+    }
+    zurück neue
+}
+
+# baut eine virtuelle Tabelle mit qualifizierten Spaltennamen ("tabelle.spalte"),
+# damit pruefe_spalte/parse_bedingungen/sortiere_nach_kriterien unverändert
+# weiterverwendet werden können, als wäre es eine ganz normale Tabelle
+#
+# Hash-Join statt verschachtelter Schleife: Index auf tab2 bauen (O(m)), dann
+# tab1 einmal durchlaufen (O(n)) statt tab1 x tab2 (O(n*m)) zu prüfen. Der
+# Index bleibt auf tab2 gecacht (siehe Tabelle.baue_index) und beschleunigt
+# dadurch auch spätere Abfragen auf derselben Spalte.
+funktion fuehre_join_aus(db, ts, tab1, name1) {
+    ts.erwarte("JOIN")
+    sei name2 = ts.vor()["wert"]
+    sei tab2 = db.tabelle(name2)
+    ts.erwarte("ON")
+    sei links = ts.vor()["wert"]
+    ts.erwarte("=")
+    sei rechts = ts.vor()["wert"]
+
+    sei links_teile = links.teile(".")
+    sei rechts_teile = rechts.teile(".")
+    wenn länge(links_teile) != 2 oder länge(rechts_teile) != 2 {
+        werfe "JOIN ON erwartet qualifizierte Spalten der Form 'tabelle.spalte' (bekommen: '" + links + "' = '" + rechts + "')"
+    }
+    pruefe_join_spalte(tab1, name1, tab2, name2, links_teile)
+    pruefe_join_spalte(tab1, name1, tab2, name2, rechts_teile)
+
+    # herausfinden, welche Seite der ON-Bedingung zu tab1 bzw. tab2 gehört -
+    # die Bedingung kann in beiden Reihenfolgen geschrieben sein
+    sei tab1_spalte = links_teile[1]
+    sei tab2_spalte = rechts_teile[1]
+    wenn links_teile[0] != name1 {
+        tab1_spalte = rechts_teile[1]
+        tab2_spalte = links_teile[1]
+    }
+
+    wenn nicht (tab2_spalte in tab2.indizes) {
+        tab2.baue_index(tab2_spalte)
+    }
+    sei index = tab2.indizes[tab2_spalte]
+
+    sei virt_spalten = [name1 + "." + s für s in tab1.spalten] + [name2 + "." + s für s in tab2.spalten]
+    sei virt = neu Tabelle(name1 + " JOIN " + name2, virt_spalten)
+    sei verbunden_zeilen = []
+    für z1 in tab1.zeilen {
+        sei schluessel = z1[tab1_spalte]
+        wenn schluessel in index {
+            für z2 in index[schluessel] {
+                anhängen(verbunden_zeilen, join_zeile_verschmelzen(z1, name1, z2, name2))
+            }
+        }
+    }
+    virt.zeilen = verbunden_zeilen
+    zurück virt
+}
+
+
+# ----------------------------------------------------------------
+# 5c. AGGREGATFUNKTIONEN & GROUP BY
+# ----------------------------------------------------------------
+
+funktion berechne_aggregat(funktion_name, spalte, zeilen) {
+    wenn funktion_name == "COUNT" {
+        wenn spalte == "*" { zurück länge(zeilen) }
+        sei anzahl = 0
+        für z in zeilen {
+            wenn z[spalte] != nichts { anzahl += 1 }
+        }
+        zurück anzahl
+    }
+    sei werte = [z[spalte] für z in zeilen]
+    wenn funktion_name == "SUM" {
+        zurück summe(werte)
+    }
+    wenn funktion_name == "AVG" {
+        wenn länge(werte) == 0 { zurück 0 }
+        zurück runde(summe(werte) / länge(werte))
+    }
+    wenn funktion_name == "MIN" {
+        wenn länge(werte) == 0 { zurück nichts }
+        zurück min(werte)
+    }
+    wenn funktion_name == "MAX" {
+        wenn länge(werte) == 0 { zurück nichts }
+        zurück max(werte)
+    }
+    wenn funktion_name == "MEDIAN" {
+        wenn länge(werte) == 0 { zurück nichts }
+        zurück median(werte)
+    }
+    wenn funktion_name == "STDDEV" {
+        wenn länge(werte) == 0 { zurück nichts }
+        zurück runde(stdabweichung(werte), 2)
+    }
+    werfe "Unbekannte Aggregatfunktion: " + funktion_name
+}
+
+# eine einzelne Ergebniszeile über die komplette (gefilterte) Zeilenmenge
+funktion aggregiertes_ergebnis(projektion, zeilen) {
+    sei spalten = []
+    sei zeile = {}
+    für item in projektion {
+        wenn item["art"] != "aggregat" {
+            werfe "Spalte '" + item["name"] + "' erfordert GROUP BY, wenn Aggregatfunktionen verwendet werden"
+        }
+        anhängen(spalten, item["bezeichnung"])
+        zeile[item["bezeichnung"]] = berechne_aggregat(item["funktion"], item["spalte"], zeilen)
+    }
+    zurück {"spalten": spalten, "zeilen": [zeile]}
+}
+
+funktion gruppiere(zeilen, spalte) {
+    sei gruppen = {}
+    für z in zeilen {
+        sei k = z[spalte]
+        wenn nicht (k in gruppen) {
+            gruppen[k] = []
+        }
+        anhängen(gruppen[k], z)
+    }
+    zurück gruppen
+}
+
+# liest das linke Vergleichsziel einer HAVING-Bedingung: entweder ein
+# Aggregatausdruck wie COUNT(*) (ergibt die gleiche "bezeichnung" wie in der
+# Projektion) oder ein einfacher Spaltenname (i.d.R. die GROUP-BY-Spalte)
+funktion parse_having_ziel(ts) {
+    sei kopf = ts.vor()
+    sei name = kopf["wert"]
+    sei gross = name.groß()
+    wenn ts.ist("(") und gross in ["COUNT", "SUM", "AVG", "MIN", "MAX", "MEDIAN", "STDDEV"] {
+        ts.vor()
+        sei ziel = ts.vor()["wert"]
+        ts.erwarte(")")
+        zurück gross + "(" + ziel + ")"
+    }
+    zurück name
+}
+
+funktion parse_having(ts) {
+    wenn nicht ts.ist("HAVING") { zurück nichts }
+    ts.vor()
+    sei feld = parse_having_ziel(ts)
+    sei op = ts.vor()["wert"]
+    sei wert = wert_von_token(ts.vor())
+    zurück {"feld": feld, "op": op, "wert": wert}
+}
+
+funktion having_passt(zeile, having) {
+    wenn having == nichts { zurück wahr }
+    wenn nicht (having["feld"] in zeile) {
+        werfe "HAVING bezieht sich auf '" + having["feld"] + "', das nicht in der Projektion enthalten ist"
+    }
+    zurück vergleiche(zeile[having["feld"]], having["op"], having["wert"])
+}
+
+# eine Ergebniszeile pro Gruppe (Wert der GROUP-BY-Spalte + Aggregate je Gruppe),
+# optional durch HAVING gefiltert
+funktion gruppiertes_ergebnis(projektion, zeilen, gruppierungs_spalte, having) {
+    wenn länge(projektion) == 0 {
+        werfe "SELECT * wird zusammen mit GROUP BY nicht unterstützt - bitte Spalten/Aggregatfunktionen angeben"
+    }
+    sei gruppen = gruppiere(zeilen, gruppierungs_spalte)
+    sei spalten = []
+    für item in projektion {
+        wenn item["art"] == "aggregat" {
+            anhängen(spalten, item["bezeichnung"])
+        } sonst {
+            wenn item["name"] != gruppierungs_spalte {
+                werfe "Spalte '" + item["name"] + "' muss die GROUP-BY-Spalte sein oder eine Aggregatfunktion"
+            }
+            anhängen(spalten, item["name"])
+        }
+    }
+    sei ausgabe = []
+    für k in gruppen.schluessel() {
+        sei teilmenge = gruppen[k]
+        sei zeile = {}
+        für item in projektion {
+            wenn item["art"] == "aggregat" {
+                zeile[item["bezeichnung"]] = berechne_aggregat(item["funktion"], item["spalte"], teilmenge)
+            } sonst {
+                zeile[item["name"]] = k
+            }
+        }
+        wenn having_passt(zeile, having) {
+            anhängen(ausgabe, zeile)
+        }
+    }
+    zurück {"spalten": spalten, "zeilen": ausgabe}
+}
+
+
+# ----------------------------------------------------------------
+# 6. PARSER + AUSFÜHRUNG DER EINZELNEN SQL-BEFEHLE
+# ----------------------------------------------------------------
+
+funktion sql_create(db, ts) {
+    ts.erwarte("CREATE")
+    ts.erwarte("TABLE")
+    sei name = ts.vor()["wert"]
+    ts.erwarte("(")
+    sei spalten = []
+    sei laeuft = wahr
+    solange laeuft {
+        anhängen(spalten, ts.vor()["wert"])
+        wenn ts.ist(",") {
+            ts.vor()
+        } sonst {
+            laeuft = falsch
+        }
+    }
+    ts.erwarte(")")
+    db.erstelle_tabelle(name, spalten)
+    zurück "Tabelle '" + name + "' erstellt (" + verbinde(spalten, ", ") + ")"
+}
+
+# fügt eine einzelne rohe Werteliste (in der Reihenfolge von 'spalten') in die
+# Tabelle ein - unabhängig davon, ob 'spalten' der vollen Tabellendefinition
+# entspricht oder eine explizite Teil-/Umsortierungsliste ist
+funktion fuege_zeile_ein(tab, spalten, hat_spaltenliste, rohwerte) {
+    wenn länge(rohwerte) != länge(spalten) {
+        werfe "Spaltenzahl passt nicht: erwartet " + zeichenkette(länge(spalten)) + " Wert(e) für (" + verbinde(spalten, ", ") + "), bekommen " + zeichenkette(länge(rohwerte))
+    }
+    wenn nicht hat_spaltenliste {
+        tab.einfuegen(rohwerte)
+    } sonst {
+        # Explizite Spaltenliste angegeben -> Werte unabhängig von der
+        # angegebenen Reihenfolge korrekt der Tabellenspalte zuordnen;
+        # fehlende Spalten werden auf 'nichts' gesetzt
+        sei zeile_werte = []
+        für s in tab.spalten {
+            wenn s in spalten {
+                anhängen(zeile_werte, rohwerte[spalten.index_von(s)])
+            } sonst {
+                anhängen(zeile_werte, nichts)
+            }
+        }
+        tab.einfuegen(zeile_werte)
+    }
+}
+
+funktion sql_insert(db, ts) {
+    ts.erwarte("INSERT")
+    ts.erwarte("INTO")
+    sei name = ts.vor()["wert"]
+    sei tab = db.tabelle(name)
+
+    sei spalten = tab.spalten
+    sei hat_spaltenliste = falsch
+    wenn ts.ist("(") {
+        ts.vor()
+        spalten = []
+        hat_spaltenliste = wahr
+        sei laeuft = wahr
+        solange laeuft {
+            anhängen(spalten, ts.vor()["wert"])
+            wenn ts.ist(",") { ts.vor() } sonst { laeuft = falsch }
+        }
+        ts.erwarte(")")
+        für s in spalten { pruefe_spalte(tab, s) }
+    }
+
+    ts.erwarte("VALUES")
+    sei anzahl = 0
+    sei mehr_zeilen = wahr
+    solange mehr_zeilen {
+        ts.erwarte("(")
+        sei rohwerte = []
+        sei laeuft2 = wahr
+        solange laeuft2 {
+            anhängen(rohwerte, wert_von_token(ts.vor()))
+            wenn ts.ist(",") { ts.vor() } sonst { laeuft2 = falsch }
+        }
+        ts.erwarte(")")
+        fuege_zeile_ein(tab, spalten, hat_spaltenliste, rohwerte)
+        anzahl += 1
+        wenn ts.ist(",") { ts.vor() } sonst { mehr_zeilen = falsch }
+    }
+    zurück zeichenkette(anzahl) + " Zeile(n) in '" + name + "' eingefügt"
+}
+
+# Projektionsliste parsen: entweder "*" (leere Liste), reine Spaltennamen, oder
+# Aggregatfunktionsaufrufe COUNT/SUM/AVG/MIN/MAX(spalte|*), auch gemischt.
+funktion parse_projektion(ts) {
+    sei projektion = []
+    wenn ts.ist("*") {
+        ts.vor()
+        zurück projektion
+    }
+    sei laeuft = wahr
+    solange laeuft {
+        sei kopf = ts.vor()
+        sei name = kopf["wert"]
+        sei gross = name.groß()
+        wenn ts.ist("(") und gross in ["COUNT", "SUM", "AVG", "MIN", "MAX", "MEDIAN", "STDDEV"] {
+            ts.vor()
+            sei ziel = ts.vor()["wert"]
+            ts.erwarte(")")
+            sei bezeichnung = gross + "(" + ziel + ")"
+            anhängen(projektion, {"art": "aggregat", "funktion": gross, "spalte": ziel, "bezeichnung": bezeichnung})
+        } sonst {
+            anhängen(projektion, {"art": "spalte", "name": name})
+        }
+        wenn ts.ist(",") { ts.vor() } sonst { laeuft = falsch }
+    }
+    zurück projektion
+}
+
+funktion sql_select(db, ts) {
+    ts.erwarte("SELECT")
+    sei hat_distinct = falsch
+    wenn ts.ist("DISTINCT") {
+        ts.vor()
+        hat_distinct = wahr
+    }
+    sei projektion = parse_projektion(ts)
+    ts.erwarte("FROM")
+    sei name = ts.vor()["wert"]
+    sei tab = db.tabelle(name)
+
+    wenn ts.ist("JOIN") {
+        tab = fuehre_join_aus(db, ts, tab, name)
+    }
+
+    für item in projektion {
+        wenn item["art"] == "spalte" {
+            pruefe_spalte(tab, item["name"])
+        } sonst wenn item["spalte"] != "*" {
+            pruefe_spalte(tab, item["spalte"])
+        } sonst wenn item["funktion"] != "COUNT" {
+            werfe "'*' ist nur mit COUNT erlaubt, nicht mit " + item["funktion"]
+        }
+    }
+
+    sei bedingungen = parse_bedingungen(ts, tab)
+    sei ergebnis = hole_gefilterte_zeilen(tab, bedingungen)
+
+    sei hat_aggregat = falsch
+    für item in projektion {
+        wenn item["art"] == "aggregat" { hat_aggregat = wahr }
+    }
+
+    wenn ts.ist("GROUP") {
+        ts.vor()
+        ts.erwarte("BY")
+        sei gruppierungs_spalte = ts.vor()["wert"]
+        pruefe_spalte(tab, gruppierungs_spalte)
+        sei having = parse_having(ts)
+        zurück gruppiertes_ergebnis(projektion, ergebnis, gruppierungs_spalte, having)
+    }
+
+    wenn hat_aggregat {
+        zurück aggregiertes_ergebnis(projektion, ergebnis)
+    }
+
+    sei projektions_namen = tab.spalten
+    wenn länge(projektion) > 0 {
+        projektions_namen = [item["name"] für item in projektion]
+    }
+
+    wenn hat_distinct {
+        ergebnis = eindeutig_machen(ergebnis, projektions_namen)
+    }
+
+    wenn ts.ist("ORDER") {
+        ts.vor()
+        ts.erwarte("BY")
+        sei sortier_kriterien = []
+        sei sortier_laeuft = wahr
+        solange sortier_laeuft {
+            sei sortier_spalte = ts.vor()["wert"]
+            pruefe_spalte(tab, sortier_spalte)
+            sei absteigend = falsch
+            wenn ts.ist("DESC") {
+                ts.vor()
+                absteigend = wahr
+            } sonst wenn ts.ist("ASC") {
+                ts.vor()
+            }
+            anhängen(sortier_kriterien, {"spalte": sortier_spalte, "absteigend": absteigend})
+            wenn ts.ist(",") { ts.vor() } sonst { sortier_laeuft = falsch }
+        }
+        ergebnis = sortiere_nach_kriterien(ergebnis, sortier_kriterien)
+    }
+
+    wenn ts.ist("LIMIT") {
+        ts.vor()
+        sei n = ganzzahl(ts.vor()["wert"])
+        ergebnis = ergebnis[0:n]
+    }
+
+    wenn länge(projektion) > 0 {
+        ergebnis = [projiziere(z, projektions_namen) für z in ergebnis]
+    }
+    zurück {"spalten": projektions_namen, "zeilen": ergebnis}
+}
+
+# entfernt Duplikate (nach den Werten der Ausgabespalten); erste Vorkommen
+# gewinnt, Reihenfolge bleibt sonst erhalten
+funktion eindeutig_machen(zeilen, spalten) {
+    sei gesehen = {}
+    sei ergebnis = []
+    für z in zeilen {
+        sei teile = [zeichenkette(z[s]) für s in spalten]
+        sei schluessel = verbinde(teile, "§§")
+        wenn nicht (schluessel in gesehen) {
+            gesehen[schluessel] = wahr
+            anhängen(ergebnis, z)
+        }
+    }
+    zurück ergebnis
+}
+
+funktion projiziere(zeile, spalten) {
+    sei neue = {}
+    für s in spalten {
+        neue[s] = zeile[s]
+    }
+    zurück neue
+}
+
+# prüft Sortierkriterien der Reihe nach; erst beim ersten NICHT-Gleichstand
+# entscheidet ein Kriterium (klassischer "compound sort key"). NULL sortiert
+# immer ans Ende, unabhängig von ASC/DESC - sonst würde 'nichts < "Text"'
+# einen Python-TypeError werfen (NULL und Text/Zahl sind nicht vergleichbar)
+funktion zeile_kleiner(a, b, kriterien) {
+    für k in kriterien {
+        sei av = a[k["spalte"]]
+        sei bv = b[k["spalte"]]
+        wenn av == bv {
+            weiter
+        }
+        wenn av == nichts { zurück falsch }
+        wenn bv == nichts { zurück wahr }
+        wenn k["absteigend"] {
+            zurück av > bv
+        }
+        zurück av < bv
+    }
+    zurück falsch
+}
+
+# mischt zwei bereits sortierte Listen zu einer sortierten Liste zusammen
+# (stabil: bei Gleichstand gewinnt IMMER die linke Liste zuerst)
+funktion mische_sortiert(a, b, kriterien) {
+    sei ergebnis = []
+    sei i = 0
+    sei j = 0
+    solange i < länge(a) und j < länge(b) {
+        wenn zeile_kleiner(b[j], a[i], kriterien) {
+            anhängen(ergebnis, b[j])
+            j += 1
+        } sonst {
+            anhängen(ergebnis, a[i])
+            i += 1
+        }
+    }
+    solange i < länge(a) {
+        anhängen(ergebnis, a[i])
+        i += 1
+    }
+    solange j < länge(b) {
+        anhängen(ergebnis, b[j])
+        j += 1
+    }
+    zurück ergebnis
+}
+
+# stabiler Merge-Sort, O(n log n) statt O(n²) - wichtig für größere Tabellen,
+# da die eingebaute 'sortiere' keinen Schlüssel/Komparator nimmt und wir daher
+# selbst sortieren müssen; unterstützt mehrere ORDER-BY-Kriterien (zeile_kleiner)
+funktion sortiere_nach_kriterien(zeilen, kriterien) {
+    wenn länge(zeilen) <= 1 {
+        zurück zeilen.kopiere()
+    }
+    sei mitte = länge(zeilen) // 2
+    sei links = sortiere_nach_kriterien(zeilen[0:mitte], kriterien)
+    sei rechts = sortiere_nach_kriterien(zeilen[mitte:länge(zeilen)], kriterien)
+    zurück mische_sortiert(links, rechts, kriterien)
+}
+
+funktion sql_update(db, ts) {
+    ts.erwarte("UPDATE")
+    sei name = ts.vor()["wert"]
+    sei tab = db.tabelle(name)
+    ts.erwarte("SET")
+
+    sei zuweisungen = []
+    sei laeuft = wahr
+    solange laeuft {
+        sei spalte = ts.vor()["wert"]
+        pruefe_spalte(tab, spalte)
+        ts.erwarte("=")
+        sei wert = wert_von_token(ts.vor())
+        anhängen(zuweisungen, {"spalte": spalte, "wert": wert})
+        wenn ts.ist(",") { ts.vor() } sonst { laeuft = falsch }
+    }
+
+    sei bedingungen = parse_bedingungen(ts, tab)
+    sei treffer = hole_gefilterte_zeilen(tab, bedingungen)
+    für z in treffer {
+        für zu in zuweisungen {
+            z[zu["spalte"]] = zu["wert"]
+        }
+    }
+    tab.invalidiere_indizes()
+    zurück zeichenkette(länge(treffer)) + " Zeile(n) in '" + name + "' aktualisiert"
+}
+
+funktion sql_delete(db, ts) {
+    ts.erwarte("DELETE")
+    ts.erwarte("FROM")
+    sei name = ts.vor()["wert"]
+    sei tab = db.tabelle(name)
+    sei bedingungen = parse_bedingungen(ts, tab)
+
+    sei behalten = [z für z in tab.zeilen wenn nicht zeile_passt(z, bedingungen)]
+    sei anzahl = länge(tab.zeilen) - länge(behalten)
+    tab.zeilen = behalten
+    tab.invalidiere_indizes()
+    zurück zeichenkette(anzahl) + " Zeile(n) aus '" + name + "' gelöscht"
+}
+
+funktion sql_drop(db, ts) {
+    ts.erwarte("DROP")
+    ts.erwarte("TABLE")
+    sei name = ts.vor()["wert"]
+    db.tabelle(name)
+    db.tabellen.entferne(name)
+    zurück "Tabelle '" + name + "' gelöscht"
+}
+
+funktion sql_begin(db, ts) {
+    ts.erwarte("BEGIN")
+    db.beginne_transaktion()
+    zurück "Transaktion gestartet (Stapeltiefe: " + zeichenkette(länge(db.transaktions_stapel)) + ")"
+}
+
+funktion sql_commit(db, ts) {
+    ts.erwarte("COMMIT")
+    db.committe()
+    zurück "Transaktion committet"
+}
+
+funktion sql_rollback(db, ts) {
+    ts.erwarte("ROLLBACK")
+    db.rolle_zurueck()
+    zurück "Transaktion zurückgerollt"
+}
+
+
+# ----------------------------------------------------------------
+# 7. EINSTIEGSPUNKT: fuehre_aus(db, sql_text)
+# ----------------------------------------------------------------
+
+funktion fuehre_aus(db, text) {
+    sei ts = neu TokenStrom(tokenisiere(text))
+    wenn ts.ist("CREATE") { zurück sql_create(db, ts) }
+    wenn ts.ist("INSERT") { zurück sql_insert(db, ts) }
+    wenn ts.ist("SELECT") { zurück sql_select(db, ts) }
+    wenn ts.ist("UPDATE") { zurück sql_update(db, ts) }
+    wenn ts.ist("DELETE") { zurück sql_delete(db, ts) }
+    wenn ts.ist("DROP")   { zurück sql_drop(db, ts) }
+    wenn ts.ist("BEGIN")    { zurück sql_begin(db, ts) }
+    wenn ts.ist("COMMIT")   { zurück sql_commit(db, ts) }
+    wenn ts.ist("ROLLBACK") { zurück sql_rollback(db, ts) }
+    werfe "Unbekannter SQL-Befehl: " + text
+}
+
+
+# ----------------------------------------------------------------
+# 8. HÜBSCHE AUSGABE VON SELECT-ERGEBNISSEN
+# ----------------------------------------------------------------
+
+funktion zu_text(wert) {
+    wenn wert == nichts { zurück "NULL" }
+    zurück zeichenkette(wert)
+}
+
+funktion spalten_breiten(spalten, zeilen) {
+    sei breiten = [länge(s) für s in spalten]
+    für z in zeilen {
+        sei i = 0
+        solange i < länge(spalten) {
+            sei w = länge(zu_text(z[spalten[i]]))
+            wenn w > breiten[i] { breiten[i] = w }
+            i += 1
+        }
+    }
+    zurück breiten
+}
+
+funktion auffuellen(text, breite) {
+    sei fehlt = breite - länge(text)
+    wenn fehlt <= 0 { zurück text }
+    zurück text + " ".wiederhole(fehlt)
+}
+
+funktion drucke_tabelle(ergebnis) {
+    sei spalten = ergebnis["spalten"]
+    sei zeilen = ergebnis["zeilen"]
+    sei breiten = spalten_breiten(spalten, zeilen)
+
+    sei kopf = []
+    sei linie = []
+    sei i = 0
+    solange i < länge(spalten) {
+        anhängen(kopf, auffuellen(spalten[i], breiten[i]))
+        anhängen(linie, "-".wiederhole(breiten[i]))
+        i += 1
+    }
+    drucke(verbinde(kopf, " | "))
+    drucke(verbinde(linie, "-+-"))
+
+    für z in zeilen {
+        sei zelle = []
+        sei j = 0
+        solange j < länge(spalten) {
+            anhängen(zelle, auffuellen(zu_text(z[spalten[j]]), breiten[j]))
+            j += 1
+        }
+        drucke(verbinde(zelle, " | "))
+    }
+    drucke("(" + zeichenkette(länge(zeilen)) + " Zeile(n))")
+}
+
+# führt SQL-Text aus; druckt bei SELECT eine Tabelle, sonst die Statusmeldung
+funktion sql(db, text) {
+    sei ergebnis = fuehre_aus(db, text)
+    wenn typ(ergebnis) == "Woerterbuch" {
+        drucke_tabelle(ergebnis)
+    } sonst {
+        drucke(ergebnis)
+    }
+}

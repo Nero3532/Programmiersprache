@@ -1,0 +1,146 @@
+# Vorführung aller Features der Mini-SQL-Engine (beispiele/mini_sql_engine.deu).
+# Für die Einbindung in ein eigenes Programm NICHT diese Datei laden, sondern
+# nur "mini_sql_engine.deu" - die hier erzeugt bewusst viel Beispiel-Output.
+
+lade "mini_sql_engine.deu"
+
+drucke("=== Mini-SQL Demo ===")
+drucke("")
+
+sei firma = neu Datenbank("firma")
+
+sql(firma, "CREATE TABLE mitarbeiter (id, name, abteilung, gehalt)")
+sql(firma, "CREATE TABLE abteilungen (id, bezeichnung)")
+drucke("")
+
+sql(firma, "INSERT INTO abteilungen VALUES (1, 'Entwicklung')")
+sql(firma, "INSERT INTO abteilungen VALUES (2, 'Vertrieb')")
+sql(firma, "INSERT INTO abteilungen VALUES (3, 'Personal')")
+drucke("")
+
+sql(firma, "INSERT INTO mitarbeiter VALUES (1, 'Anna Schmidt', 'Entwicklung', 65000)")
+sql(firma, "INSERT INTO mitarbeiter VALUES (2, 'Bernd Müller', 'Vertrieb', 52000)")
+sql(firma, "INSERT INTO mitarbeiter VALUES (3, 'Clara Weber', 'Entwicklung', 71000)")
+sql(firma, "INSERT INTO mitarbeiter VALUES (4, 'David Fischer', 'Personal', 48000)")
+sql(firma, "INSERT INTO mitarbeiter VALUES (5, 'Elke Hoffmann', 'Entwicklung', 58000)")
+drucke("")
+
+drucke("--- Alle Mitarbeiter ---")
+sql(firma, "SELECT * FROM mitarbeiter")
+drucke("")
+
+drucke("--- Nur Name und Gehalt, sortiert nach Gehalt absteigend ---")
+sql(firma, "SELECT name, gehalt FROM mitarbeiter ORDER BY gehalt DESC")
+drucke("")
+
+drucke("--- Entwickler mit Gehalt über 60000 ---")
+sql(firma, "SELECT name, gehalt FROM mitarbeiter WHERE abteilung = 'Entwicklung' AND gehalt > 60000")
+drucke("")
+
+drucke("--- Top 2 Gehälter ---")
+sql(firma, "SELECT name, gehalt FROM mitarbeiter ORDER BY gehalt DESC LIMIT 2")
+drucke("")
+
+drucke("--- Gehaltserhöhung für die Entwicklung ---")
+sql(firma, "UPDATE mitarbeiter SET gehalt = 75000 WHERE name = 'Anna Schmidt'")
+sql(firma, "SELECT name, gehalt FROM mitarbeiter WHERE name = 'Anna Schmidt'")
+drucke("")
+
+drucke("--- David verlässt die Firma ---")
+sql(firma, "DELETE FROM mitarbeiter WHERE name = 'David Fischer'")
+sql(firma, "SELECT * FROM mitarbeiter")
+drucke("")
+
+drucke("--- Neue Mitarbeiter in einem mehrzeiligen INSERT (mit NULL-Wert) ---")
+sql(firma, "INSERT INTO mitarbeiter (id, name, abteilung, gehalt) VALUES (6, 'Frank Neu', NULL, 45000), (7, 'Grace Klein', 'Vertrieb', 51000)")
+sql(firma, "SELECT * FROM mitarbeiter")
+drucke("")
+
+drucke("--- Namen, die mit 'C' beginnen (LIKE) ---")
+sql(firma, "SELECT name FROM mitarbeiter WHERE name LIKE 'C%'")
+drucke("")
+
+drucke("--- Mitarbeiter mit bestimmten IDs (IN) ---")
+sql(firma, "SELECT id, name FROM mitarbeiter WHERE id IN (1, 3, 7)")
+drucke("")
+
+drucke("--- Mitarbeiter ohne Abteilung (IS NULL) ---")
+sql(firma, "SELECT name FROM mitarbeiter WHERE abteilung IS NULL")
+drucke("")
+
+drucke("--- Anzahl Mitarbeiter MIT Abteilung (IS NOT NULL) ---")
+sql(firma, "SELECT COUNT(*) FROM mitarbeiter WHERE abteilung IS NOT NULL")
+drucke("")
+
+drucke("--- Eindeutige Abteilungen (DISTINCT) ---")
+sql(firma, "SELECT DISTINCT abteilung FROM mitarbeiter")
+drucke("")
+
+drucke("--- Aggregatfunktionen: Anzahl, Summe, Median, Streuung ---")
+sql(firma, "SELECT COUNT(*), SUM(gehalt), AVG(gehalt), MIN(gehalt), MAX(gehalt), MEDIAN(gehalt), STDDEV(gehalt) FROM mitarbeiter")
+drucke("")
+
+drucke("--- GROUP BY: Mitarbeiterzahl & Ø-Gehalt pro Abteilung (echtes SQL) ---")
+sql(firma, "SELECT abteilung, COUNT(*), AVG(gehalt) FROM mitarbeiter GROUP BY abteilung")
+drucke("")
+
+drucke("--- GROUP BY ... HAVING: nur Abteilungen mit mehr als 1 Mitarbeiter ---")
+sql(firma, "SELECT abteilung, COUNT(*), AVG(gehalt) FROM mitarbeiter GROUP BY abteilung HAVING COUNT(*) > 1")
+drucke("")
+
+drucke("--- Mehrspaltiges ORDER BY: erst Abteilung, dann Gehalt absteigend ---")
+sql(firma, "SELECT name, abteilung, gehalt FROM mitarbeiter ORDER BY abteilung, gehalt DESC")
+drucke("")
+
+drucke("--- JOIN: Mitarbeiter verknüpft mit Abteilungs-ID über die abteilungen-Tabelle ---")
+sql(firma, "SELECT mitarbeiter.name, abteilungen.bezeichnung, abteilungen.id FROM mitarbeiter JOIN abteilungen ON mitarbeiter.abteilung = abteilungen.bezeichnung")
+drucke("")
+
+drucke("--- Mitarbeiter aus Vertrieb ODER Personal (OR-Verknüpfung) ---")
+sql(firma, "SELECT name, abteilung, gehalt FROM mitarbeiter WHERE abteilung = 'Vertrieb' OR abteilung = 'Personal'")
+drucke("")
+
+drucke("--- Persistenz: Datenbank als JSON sichern & wieder laden ---")
+sei temp_ordner = umgebungsvariable("TEMP", ".")
+sei sicherungspfad = temp_ordner + "/mini_sql_firma.json"
+drucke(db_speichern(firma, sicherungspfad))
+sei wiederhergestellt = db_laden(sicherungspfad)
+sql(wiederhergestellt, "SELECT * FROM mitarbeiter")
+drucke("")
+
+drucke("--- CSV: Mitarbeiter exportieren & in neue Tabelle re-importieren ---")
+sei csv_pfad = temp_ordner + "/mini_sql_mitarbeiter.csv"
+drucke(tabelle_csv_exportieren(firma.tabelle("mitarbeiter"), csv_pfad))
+drucke(tabelle_csv_importieren(firma, "mitarbeiter_import", csv_pfad))
+sql(firma, "SELECT * FROM mitarbeiter_import WHERE abteilung IS NULL")
+drucke("")
+
+drucke("--- Transaktionen: BEGIN, Änderungen, ROLLBACK macht sie rückgängig ---")
+sql(firma, "SELECT COUNT(*) FROM mitarbeiter")
+sql(firma, "BEGIN")
+sql(firma, "DELETE FROM mitarbeiter")
+sql(firma, "INSERT INTO mitarbeiter VALUES (99, 'Geist', 'Nirgendwo', 0)")
+drucke("Innerhalb der Transaktion:")
+sql(firma, "SELECT COUNT(*) FROM mitarbeiter")
+sql(firma, "ROLLBACK")
+drucke("Nach ROLLBACK (Originalzustand wiederhergestellt):")
+sql(firma, "SELECT COUNT(*) FROM mitarbeiter")
+drucke("")
+
+drucke("--- Transaktionen: BEGIN, Änderungen, COMMIT behält sie ---")
+sql(firma, "BEGIN")
+sql(firma, "UPDATE mitarbeiter SET gehalt = 60000 WHERE name = 'Grace Klein'")
+sql(firma, "COMMIT")
+sql(firma, "SELECT name, gehalt FROM mitarbeiter WHERE name = 'Grace Klein'")
+drucke("")
+
+drucke("--- Tabelle löschen (DROP TABLE) ---")
+sql(firma, "DROP TABLE abteilungen")
+versuche {
+    sql(firma, "SELECT * FROM abteilungen")
+} fange fehler {
+    drucke("Erwarteter Fehler nach DROP TABLE: " + zeichenkette(fehler))
+}
+drucke("")
+
+drucke("Fertig!")
