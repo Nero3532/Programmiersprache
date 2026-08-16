@@ -18,6 +18,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Hashing/Kodierung: `hash_sha256`, `base64_kodieren`, `base64_dekodieren`.
 - 19 neue Regressionstests (93 gesamt).
 
+### Behoben
+- `zeichenkette.index_von()`/`.zaehle()` leckten rohe englische `TypeError`-Meldungen bei falschem
+  Argumenttyp (z. B. `"abc".index_von(5)`).
+- `ordner_erstellen()` leckte eine rohe (teils englische, teils Windows-lokalisierte) Meldung, wenn
+  der Zielpfad bereits als Datei existierte; `dateien_auflisten()` übersetzte `PermissionError` nicht.
+- 3 neue Regressionstests dafür (96 gesamt).
+
 ## [2.3.0]
 
 ### Hinzugefügt
