@@ -849,5 +849,138 @@ class TestPruefeAnweisung(unittest.TestCase):
         self.assertIn('fehlgeschlagen', str(ctx.exception))
 
 
+class TestKonstanten(unittest.TestCase):
+    def test_lesen(self):
+        self.assertEqual(lauf('konstante PI = 3.14\nPI')[0], 3.14)
+
+    def test_neuzuweisung_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nx = 2')
+
+    def test_verbund_zuweisung_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nx += 1')
+
+    def test_redeklaration_im_selben_scope_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('konstante x = 1\nkonstante x = 2')
+
+    def test_verschachtelter_scope_schattet_korrekt(self):
+        code = '''
+        konstante x = 1
+        funktion f() {
+            konstante x = 2
+            zurück x
+        }
+        [f(), x]
+        '''
+        self.assertEqual(lauf(code)[0], [2, 1])
+
+    def test_sei_bleibt_unveraendert(self):
+        self.assertEqual(lauf('sei x = 1\nx = 2\nx')[0], 2)
+
+
+class TestTypisiertesFangen(unittest.TestCase):
+    def test_nicht_passender_typ_propagiert(self):
+        with self.assertRaises(ZeroDivisionError):
+            lauf('versuche { 1/0 } fange (TypeError) f { f }')
+
+    def test_passender_typ_faengt(self):
+        ergebnis, _ = lauf('versuche { 1/0 } fange (ZeroDivisionError, TypeError) f { f }\n')
+        # kein Fehler mehr -> Skript laeuft durch
+
+    def test_endlich_laeuft_auch_bei_nicht_passendem_typ(self):
+        code = '''
+        sei lief = falsch
+        versuche {
+            versuche { 1/0 } fange (TypeError) f { f } endlich { lief = wahr }
+        } fange g { g }
+        lief
+        '''
+        self.assertTrue(lauf(code)[0])
+
+    def test_basisklasse_faengt_abgeleiteten_fehler(self):
+        code = '''
+        sei d = {"a": 1}
+        versuche { d["fehlt"] } fange (KeyError) f { f }
+        '''
+        lauf(code)  # darf nicht werfen
+
+    def test_ausnahmefehler_nach_name_fangbar(self):
+        code = 'sei erfasst = nichts\nversuche { werfe 42 } fange (AusnahmeFehler) f { erfasst = f }\nerfasst'
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, 42)
+
+
+class TestLadeAls(unittest.TestCase):
+    def test_namensraum_bindungen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion addiere(a, b) { zurück a + b }\nkonstante VERSION = "1.0"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "mod.deu" als m\nm.addiere(3, 4)', interpreter)
+            self.assertEqual(ergebnis, 7)
+            ergebnis, _ = lauf('m.VERSION', interpreter)
+            self.assertEqual(ergebnis, '1.0')
+
+    def test_bindungen_landen_nicht_im_globalen_scope(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('sei geheim = 1\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "mod.deu" als m', interpreter)
+            with self.assertRaises(NameError):
+                lauf('geheim', interpreter)
+
+    def test_ohne_als_weiterhin_global(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion h() { zurück 1 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "mod.deu"\nh()', interpreter)
+            self.assertEqual(ergebnis, 1)
+
+
+class TestStatischeKlassenmitglieder(unittest.TestCase):
+    def test_geteiltes_klassenattribut(self):
+        code = '''
+        klasse Zaehler {
+            sei anzahl = 0
+            funktion __init__(dies) { Zaehler.anzahl += 1 }
+        }
+        neu Zaehler(); neu Zaehler(); neu Zaehler()
+        Zaehler.anzahl
+        '''
+        self.assertEqual(lauf(code)[0], 3)
+
+    def test_statische_methode_ueber_klasse_und_instanz(self):
+        code = '''
+        klasse K {
+            statisch funktion hallo() { zurück "hi" }
+        }
+        [K.hallo(), neu K().hallo()]
+        '''
+        self.assertEqual(lauf(code)[0], ['hi', 'hi'])
+
+    def test_klassenkonstante_schutz(self):
+        with self.assertRaises(TypeError):
+            lauf('klasse K { konstante MAX = 5 }\nK.MAX = 1')
+
+    def test_vererbung_von_statischem_attribut_und_methode(self):
+        code = '''
+        klasse Basis {
+            sei geteilt = "x"
+            statisch funktion hallo() { zurück "hi" }
+        }
+        klasse Kind(Basis) { }
+        [Kind.geteilt, Kind.hallo()]
+        '''
+        self.assertEqual(lauf(code)[0], ['x', 'hi'])
+
+    def test_unbekanntes_klassenattribut_wirft_fehler(self):
+        with self.assertRaises(AttributeError):
+            lauf('klasse K { }\nK.unbekannt')
+
+
 if __name__ == '__main__':
     unittest.main()

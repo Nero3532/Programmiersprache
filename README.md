@@ -48,6 +48,8 @@ sei dict = {"a": 1, "b": 2}
 sei alter: Ganzzahl = 25      # optionaler, zur Laufzeit geprüfter Typ-Hinweis
 
 sei [a, b, c] = [1, 2, 3]     # Destrukturierung
+
+konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
 ```
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
@@ -108,7 +110,21 @@ klasse Hund(Tier) {
 }
 klasse Zwitter(Hund, EineAndereKlasse) { }   # Mehrfachvererbung (links-nach-rechts DFS)
 neu Hund(name="Rex")                          # Keyword-Argumente auch bei neu
+
+klasse Zaehler {
+    sei anzahl = 0                            # Klassenattribut, geteilt von allen Instanzen
+    konstante MAX = 1000                      # Klassenkonstante — Neuzuweisung wirft TypeError
+    funktion __init__(dies) { Zaehler.anzahl += 1 }
+    statisch funktion aktuelle_anzahl() { zurück Zaehler.anzahl }   # kein 'dies' → statisch
+}
+neu Zaehler(); neu Zaehler()
+drucke(Zaehler.anzahl)                        # 2 — über Klasse zugreifbar
+drucke(Zaehler.aktuelle_anzahl())             # 2 — auch über Klasse aufrufbar (ohne Instanz)
 ```
+Statische Methoden sind normale `funktion`-Definitionen im Klassenkörper mit `statisch`-Präfix,
+die kein `dies` deklarieren; sie sind sowohl über die Klasse (`Klasse.methode()`) als auch über
+eine Instanz (`instanz.methode()`, ohne automatische `dies`-Bindung) aufrufbar. Klassenattribute
+werden vererbt (links-nach-rechts, wie Methoden).
 
 **Operator-Überladung:** Klassen können `+ - * / // % **` und `== != < > <= >=` selbst definieren
 über `__addiere__`, `__subtrahiere__`, `__multipliziere__`, `__dividiere__`, `__ganzdividiere__`,
@@ -129,7 +145,18 @@ versuche {
 
 pruefe 1 + 1 == 2                       # AssertionError bei Fehlschlag
 pruefe x > 0, "x muss positiv sein"     # optionale eigene Meldung
+
+versuche {
+    sei d = {}
+    d["fehlt"]
+} fange (SchluesselFehler, IndexError) f {   # nur diese Fehlerarten fangen, Rest propagiert weiter
+    drucke(f)
+}
 ```
+Typ-Namen beim typisierten `fange` sind die intern verwendeten (teils englischen) Klassennamen,
+wie sie auch in der Fehleranzeige erscheinen (`TypeError`, `ValueError`, `SchluesselFehler`,
+`AusnahmeFehler`, …). Auch Basisklassen matchen — `fange (KeyError) f` fängt auch `SchluesselFehler`.
+Ohne Typ-Liste (`fange f { ... }`) bleibt das bisherige Verhalten: alles wird gefangen.
 
 ### Listen/Strings: Indexing & Slicing
 
@@ -167,7 +194,15 @@ Dict-/Mengen-Literale) wird korrekt nicht als Format-Trenner missverstanden:
 
 ```
 lade "andere_datei.deu"
+
+lade "andere_datei.deu" als modul   # Namensraum statt globaler Vermischung
+modul.funktion()
+modul.KONSTANTE
 ```
+Ohne `als` landen alle Top-Level-Definitionen der geladenen Datei im globalen Scope (wie bisher).
+Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindungen werden stattdessen
+unter `name.attribut` erreichbar, ohne den aufrufenden Scope zu verändern.
+
 Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportError`
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
 erlaubt und führt sie erneut aus.

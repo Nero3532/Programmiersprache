@@ -4,6 +4,22 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.7.0]
+
+### Hinzugefügt
+- `konstante X = wert` — unveränderliche Bindungen; Neuzuweisung (auch per Verbund-Zuweisung) und
+  Redeklaration im selben Geltungsbereich werfen `TypeError`. Verschachtelte Scopes können weiterhin
+  schatten (eigene lokale Konstante mit gleichem Namen).
+- Typisiertes `fange (Typ1, Typ2) name { ... }` — fängt nur passende Fehlerarten (inkl. Basisklassen,
+  z. B. fängt `KeyError` auch `SchluesselFehler`); nicht passende Fehler propagieren weiter,
+  `endlich` läuft trotzdem. Ohne Typ-Liste unverändertes Verhalten (alles fangen).
+- `lade "datei.deu" als name` — lädt in einen isolierten Scope statt in den globalen; Bindungen über
+  `name.attribut` erreichbar statt den aufrufenden Scope zu verändern.
+- Statische Klassenattribute (`sei`/`konstante` direkt im Klassenkörper, geteilt über alle Instanzen
+  und per `Klasse.attribut` lesbar/schreibbar) und statische Methoden (`statisch funktion ...`, kein
+  `dies`, aufrufbar über Klasse oder Instanz ohne automatische Bindung). Werden vererbt.
+- 19 neue Regressionstests (149 gesamt).
+
 ## [2.6.0]
 
 ### Hinzugefügt

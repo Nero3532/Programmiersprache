@@ -139,11 +139,12 @@ class Block(Knoten):
     def __init__(self, anweisungen): self.anweisungen = anweisungen
 
 class VariableDeklaration(Knoten):
-    __slots__ = ('name', 'typhinweis', 'wert')
-    def __init__(self, name, wert, typhinweis=None):
+    __slots__ = ('name', 'typhinweis', 'wert', 'ist_konstante')
+    def __init__(self, name, wert, typhinweis=None, ist_konstante=False):
         self.name = name
         self.typhinweis = typhinweis  # str | None – nur zur Info
         self.wert = wert
+        self.ist_konstante = ist_konstante
 
 class DestrukturierendeDeklaration(Knoten):
     """sei [a, b, c] = ausdruck"""
@@ -210,23 +211,28 @@ class WeiterAnweisung(Knoten):
     __slots__ = ()
 
 class KlassenDefinition(Knoten):
-    __slots__ = ('name', 'eltern', 'methoden')
-    def __init__(self, name, eltern, methoden):
+    __slots__ = ('name', 'eltern', 'methoden', 'statische_methoden', 'klassenattribute')
+    def __init__(self, name, eltern, methoden, statische_methoden=None, klassenattribute=None):
         self.name = name
-        self.eltern = eltern      # Elternklassen-Namen (list[str])
-        self.methoden = methoden  # [FunktionDefinition, ...]
+        self.eltern = eltern                                   # Elternklassen-Namen (list[str])
+        self.methoden = methoden                                # [FunktionDefinition, ...]
+        self.statische_methoden = statische_methoden or []      # [FunktionDefinition, ...]
+        self.klassenattribute = klassenattribute or []          # [VariableDeklaration | DestrukturierendeDeklaration, ...]
 
 class VersucheAnweisung(Knoten):
-    __slots__ = ('koerper', 'fange_name', 'fange_koerper', 'endlich_koerper')
-    def __init__(self, koerper, fange_name, fange_koerper, endlich_koerper):
+    __slots__ = ('koerper', 'fange_typen', 'fange_name', 'fange_koerper', 'endlich_koerper')
+    def __init__(self, koerper, fange_typen, fange_name, fange_koerper, endlich_koerper):
         self.koerper = koerper
+        self.fange_typen = fange_typen         # list[str] | None – None = alles fangen
         self.fange_name = fange_name           # str | None
         self.fange_koerper = fange_koerper     # Block | None
         self.endlich_koerper = endlich_koerper # Block | None
 
 class LadeAnweisung(Knoten):
-    __slots__ = ('pfad',)
-    def __init__(self, pfad): self.pfad = pfad  # Ausdruck der einen Pfad ergibt
+    __slots__ = ('pfad', 'als_name')
+    def __init__(self, pfad, als_name=None):
+        self.pfad = pfad          # Ausdruck der einen Pfad ergibt
+        self.als_name = als_name  # str | None – Namensraum-Bindung
 
 class WerfeAnweisung(Knoten):
     __slots__ = ('wert',)

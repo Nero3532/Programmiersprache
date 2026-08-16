@@ -103,6 +103,7 @@ class Parser:
             return None
 
         if typ == TokenTyp.SEI:       anw = self._variable_deklaration()
+        elif typ == TokenTyp.KONSTANTE: anw = self._konstante_deklaration()
         elif typ == TokenTyp.WENN:      anw = self._wenn_anweisung()
         elif typ == TokenTyp.SOLANGE:   anw = self._solange_anweisung()
         elif typ == TokenTyp.FUER:      anw = self._fuer_anweisung()
@@ -140,6 +141,17 @@ class Parser:
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
         return ast.VariableDeklaration(name, wert, typhinweis)
+
+    def _konstante_deklaration(self):
+        self._verbrauche(TokenTyp.KONSTANTE)
+        name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        typhinweis = None
+        if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
+            self.pos += 1
+            typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        self._verbrauche(TokenTyp.GLEICH)
+        wert = self._ausdruck()
+        return ast.VariableDeklaration(name, wert, typhinweis, ist_konstante=True)
 
     def _destrukturierende_deklaration(self):
         self._verbrauche(TokenTyp.LECKIG)
@@ -232,14 +244,23 @@ class Parser:
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
         self._ueberspringen_leerzeilen()
         methoden = []
+        statische_methoden = []
+        klassenattribute = []
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
             if self._aktuell().typ == TokenTyp.FUNKTION:
                 methoden.append(self._funktion_definition())
+            elif self._aktuell().typ == TokenTyp.STATISCH:
+                self.pos += 1
+                statische_methoden.append(self._funktion_definition())
+            elif self._aktuell().typ == TokenTyp.SEI:
+                klassenattribute.append(self._variable_deklaration())
+            elif self._aktuell().typ == TokenTyp.KONSTANTE:
+                klassenattribute.append(self._konstante_deklaration())
             else:
                 self.pos += 1
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
-        return ast.KlassenDefinition(name, eltern, methoden)
+        return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)
 
     # ------------------------------------------------------- Kontrollfluss
 
@@ -317,12 +338,21 @@ class Parser:
         koerper = self._block()
         self._ueberspringen_leerzeilen()
 
+        fange_typen = None
         fange_name = None
         fange_koerper = None
         endlich_koerper = None
 
         if self._aktuell().typ == TokenTyp.FANGE:
             self.pos += 1
+            # optionaler Typ-Filter: fange (TypeError, ValueError) fehler { ... }
+            if self._aktuell().typ == TokenTyp.LPAREN:
+                self.pos += 1
+                fange_typen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+                while self._aktuell().typ == TokenTyp.KOMMA:
+                    self.pos += 1
+                    fange_typen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+                self._verbrauche(TokenTyp.RPAREN)
             # optionaler Variablenname: fange fehler { ... }
             if self._aktuell().typ == TokenTyp.BEZEICHNER:
                 fange_name = self._aktuell().wert
@@ -337,12 +367,16 @@ class Parser:
         if fange_koerper is None and endlich_koerper is None:
             self._fehler("'versuche' braucht mindestens 'fange' oder 'endlich'")
 
-        return ast.VersucheAnweisung(koerper, fange_name, fange_koerper, endlich_koerper)
+        return ast.VersucheAnweisung(koerper, fange_typen, fange_name, fange_koerper, endlich_koerper)
 
     def _lade_anweisung(self):
         self._verbrauche(TokenTyp.LADE)
         pfad = self._ausdruck()
-        return ast.LadeAnweisung(pfad)
+        als_name = None
+        if self._aktuell().typ == TokenTyp.ALS:
+            self.pos += 1
+            als_name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        return ast.LadeAnweisung(pfad, als_name)
 
     def _passe_anweisung(self):
         self._verbrauche(TokenTyp.PASSE)
