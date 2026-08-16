@@ -2,3 +2,8 @@ __pycache__/
 *.pyc
 .claude/settings.local.json
 .dist/
+*.egg-info/
+build/
+dist/
+.venv/
+venv/

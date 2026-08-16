@@ -24,6 +24,14 @@ python main.py              # interaktive REPL
 python main.py datei.deu    # Datei ausführen
 ```
 
+Alternativ installierbar:
+
+```
+pip install -e .
+deutsch                     # interaktive REPL
+deutsch datei.deu           # Datei ausführen
+```
+
 ## Sprachüberblick
 
 ### Variablen & Typen
@@ -171,6 +179,8 @@ für eine vollständige Demonstration.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
 - Rekursionslimit ist auf 10000 gesetzt (`sys.setrecursionlimit`), tief rekursive Deutsch-Programme
   können trotzdem an das Python-Stacklimit stoßen.
+- Die Version in `pyproject.toml` wird manuell parallel zu `deutsch/__init__.py`s `__version__`
+  gepflegt (kein dynamisches Versioning-Setup).
 
 ## Projektstruktur
 

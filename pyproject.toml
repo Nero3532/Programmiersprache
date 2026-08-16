@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "deutsch-lang"
+version = "2.2.0"
+description = "Eine Programmiersprache mit deutschen Schlüsselwörtern"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { file = "LICENSE" }
+
+[project.scripts]
+deutsch = "main:main"
+
+[tool.setuptools]
+py-modules = ["main"]
+packages = ["deutsch"]
