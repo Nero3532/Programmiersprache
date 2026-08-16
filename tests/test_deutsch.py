@@ -371,5 +371,17 @@ class TestMengen(unittest.TestCase):
             lauf('funktion f(s: Menge) { zurück s }\nf([1,2])')
 
 
+class TestDiagnostik(unittest.TestCase):
+    def test_tippfehler_schlaegt_aehnlichen_namen_vor(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('sei zaehler = 5\nzahler')
+        self.assertIn("meintest du 'zaehler'", str(ctx.exception))
+
+    def test_voellig_unbekannter_name_ohne_vorschlag(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('voelligUnbekannterXyzName123')
+        self.assertNotIn('meintest du', str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main()
