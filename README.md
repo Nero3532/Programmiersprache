@@ -179,8 +179,22 @@ Listen konvertiert)
 
 **Mengen:** `menge` (Umwandlung/leere Menge)
 
+**Statistik:** `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung, nicht
+Stichprobe — definiert auch für einelementige Listen)
+
+**Datum/Zeit:** `jetzt()` (Unix-Epoch-Sekunden), `datum_formatieren(zeitstempel, format)`
+(Python-`strftime`-Direktiven, z. B. `"%Y-%m-%d"`)
+
+**Kopieren:** `tiefe_kopie(wert)` — rekursive Kopie verschachtelter Listen/Wörterbücher/Mengen/
+Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen Strukturen
+(`l.anhängen(l)`) `RecursionError` statt Endlosschleife
+
+**Hashing/Kodierung:** `hash_sha256`, `base64_kodieren`, `base64_dekodieren`
+
+**Dateisystem:** `pfad_existiert`, `dateien_auflisten`, `ordner_erstellen`
+
 **System:** `kommandozeilen_argumente()` — Argumente hinter dem Skriptnamen
-(`deutsch skript.deu a b` → `["a", "b"]`)
+(`deutsch skript.deu a b` → `["a", "b"]`), `umgebungsvariable(name)`/`umgebungsvariable(name, standard)`
 
 Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
 `dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)

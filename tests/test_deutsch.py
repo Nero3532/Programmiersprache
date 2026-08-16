@@ -493,5 +493,123 @@ class TestRegex(unittest.TestCase):
             lauf('passt_zu("[", "x")')
 
 
+class TestDatumZeit(unittest.TestCase):
+    def test_jetzt_ist_positiv(self):
+        ergebnis, _ = lauf('jetzt()')
+        self.assertGreater(ergebnis, 0)
+
+    def test_datum_formatieren(self):
+        ergebnis, _ = lauf('datum_formatieren(0, "%Y")')
+        self.assertEqual(ergebnis, '1970')
+
+    def test_ungueltiger_zeitstempel_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('datum_formatieren("keine_zahl", "%Y")')
+
+
+class TestIndexUndZaehlen(unittest.TestCase):
+    def test_liste_index_von_und_zaehle(self):
+        ergebnis, _ = lauf('[1,2,3,2,1].index_von(3)')
+        self.assertEqual(ergebnis, 2)
+        ergebnis, _ = lauf('[1,2,3,2,1].zaehle(1)')
+        self.assertEqual(ergebnis, 2)
+
+    def test_liste_index_von_nicht_gefunden_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('[1,2,3].index_von(99)')
+
+    def test_string_index_von_und_zaehle(self):
+        ergebnis, _ = lauf('"hallo welt hallo".index_von("welt")')
+        self.assertEqual(ergebnis, 6)
+        ergebnis, _ = lauf('"hallo welt hallo".zaehle("hallo")')
+        self.assertEqual(ergebnis, 2)
+
+    def test_string_index_von_nicht_gefunden_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('"abc".index_von("xyz")')
+
+
+class TestStatistik(unittest.TestCase):
+    def test_mittelwert_median(self):
+        self.assertEqual(lauf('mittelwert([1,2,3,4,5])')[0], 3)
+        self.assertEqual(lauf('median([1,2,3,4,5])')[0], 3)
+
+    def test_stdabweichung(self):
+        ergebnis, _ = lauf('stdabweichung([2,4,4,4,5,5,7,9])')
+        self.assertAlmostEqual(ergebnis, 2.0)
+
+    def test_leere_liste_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('mittelwert([])')
+        with self.assertRaises(ValueError):
+            lauf('median([])')
+        with self.assertRaises(ValueError):
+            lauf('stdabweichung([])')
+
+
+class TestTiefeKopie(unittest.TestCase):
+    def test_verschachtelte_strukturen_werden_unabhaengig(self):
+        code = '''
+        sei original = {"zahlen": [1,2,3], "verschachtelt": {"a": [1,2]}}
+        sei kopie = tiefe_kopie(original)
+        kopie["zahlen"].anhaengen(99)
+        kopie["verschachtelt"]["a"].anhaengen(99)
+        '''
+        _, interpreter = lauf(code)
+        original = interpreter.global_umgebung.hole('original')
+        kopie = interpreter.global_umgebung.hole('kopie')
+        self.assertEqual(original['zahlen'], [1, 2, 3])
+        self.assertEqual(kopie['zahlen'], [1, 2, 3, 99])
+        self.assertEqual(original['verschachtelt']['a'], [1, 2])
+        self.assertEqual(kopie['verschachtelt']['a'], [1, 2, 99])
+
+
+class TestUmgebungsvariable(unittest.TestCase):
+    def test_fehlend_ohne_standard_ist_nichts(self):
+        ergebnis, _ = lauf('umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ")')
+        self.assertIsNone(ergebnis)
+
+    def test_fehlend_mit_standard(self):
+        ergebnis, _ = lauf('umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ", "standard")')
+        self.assertEqual(ergebnis, 'standard')
+
+
+class TestDateisystemHelfer(unittest.TestCase):
+    def test_pfad_existiert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            self.assertTrue(lauf('pfad_existiert(".")', interpreter)[0])
+            self.assertFalse(lauf('pfad_existiert("nicht_da_xyz")', interpreter)[0])
+
+    def test_ordner_erstellen_und_dateien_auflisten(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('ordner_erstellen("neu")', interpreter)
+            lauf('datei_schreiben("neu/a.txt", "x")', interpreter)
+            ergebnis, _ = lauf('dateien_auflisten("neu")', interpreter)
+            self.assertEqual(ergebnis, ['a.txt'])
+
+    def test_dateien_auflisten_fehlender_ordner_wirft_fehler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(FileNotFoundError):
+                lauf('dateien_auflisten("nicht_da_xyz")', interpreter)
+
+
+class TestHashingKodierung(unittest.TestCase):
+    def test_hash_sha256_laenge(self):
+        ergebnis, _ = lauf('hash_sha256("hallo")')
+        self.assertEqual(len(ergebnis), 64)
+
+    def test_base64_roundtrip_mit_umlauten(self):
+        code = 'sei k = base64_kodieren("Hallo Welt äöü")\nbase64_dekodieren(k)'
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, 'Hallo Welt äöü')
+
+    def test_ungueltiges_base64_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('base64_dekodieren("!!!nicht_gueltig!!!")')
+
+
 if __name__ == '__main__':
     unittest.main()

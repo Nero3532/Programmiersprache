@@ -4,6 +4,20 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.4.0]
+
+### Hinzugefügt
+- Datum/Zeit: `jetzt()`, `datum_formatieren(zeitstempel, format)`.
+- Statistik: `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung).
+- Liste/Zeichenkette: `index_von` (wirft bei fehlendem Treffer, anders als stilles `-1`/`find`),
+  `zaehle` (Vorkommen zählen).
+- `tiefe_kopie(wert)` — rekursive Kopie für Listen/Wörterbücher/Mengen/Instanzen (`.kopiere()`
+  bleibt flach).
+- `umgebungsvariable(name)`/`umgebungsvariable(name, standard)`.
+- Dateisystem: `pfad_existiert`, `dateien_auflisten`, `ordner_erstellen`.
+- Hashing/Kodierung: `hash_sha256`, `base64_kodieren`, `base64_dekodieren`.
+- 19 neue Regressionstests (93 gesamt).
+
 ## [2.3.0]
 
 ### Hinzugefügt
