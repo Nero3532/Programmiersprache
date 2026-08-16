@@ -1,0 +1,121 @@
+# Klassen und Vererbung in Deutsch
+
+klasse Tier {
+    funktion __init__(selbst, name, alter) {
+        selbst.name = name
+        selbst.alter = alter
+    }
+
+    funktion vorstellen(selbst) {
+        drucke("Ich bin " + selbst.name + " und bin " + zeichenkette(selbst.alter) + " Jahre alt.")
+    }
+
+    funktion sprechen(selbst) {
+        drucke(selbst.name + " macht ein Geräusch.")
+    }
+
+    funktion __text__(selbst) {
+        zurück "Tier(" + selbst.name + ")"
+    }
+}
+
+klasse Hund(Tier) {
+    funktion __init__(selbst, name, alter, rasse) {
+        selbst.name = name
+        selbst.alter = alter
+        selbst.rasse = rasse
+    }
+
+    funktion sprechen(selbst) {
+        drucke(selbst.name + " bellt: Wau Wau!")
+    }
+
+    funktion info(selbst) {
+        drucke(selbst.name + " ist ein " + selbst.rasse + ".")
+    }
+}
+
+klasse Katze(Tier) {
+    funktion sprechen(selbst) {
+        drucke(selbst.name + " miaut: Miau!")
+    }
+
+    funktion schnurren(selbst) {
+        drucke(selbst.name + " schnurrt leise...")
+    }
+}
+
+klasse Papagei(Tier) {
+    funktion __init__(selbst, name, alter, lieblingswort) {
+        selbst.name = name
+        selbst.alter = alter
+        selbst.lieblingswort = lieblingswort
+    }
+
+    funktion sprechen(selbst) {
+        drucke(selbst.name + " sagt: " + selbst.lieblingswort + "! " + selbst.lieblingswort + "!")
+    }
+}
+
+# Objekte erstellen
+sei rex    = neu Hund("Rex", 3, "Schäferhund")
+sei bello  = neu Hund("Bello", 5, "Labrador")
+sei whisky = neu Katze("Whisky", 2)
+sei polly  = neu Papagei("Polly", 7, "Hallo")
+
+drucke("=== Vorstellungsrunde ===")
+rex.vorstellen()
+bello.vorstellen()
+whisky.vorstellen()
+polly.vorstellen()
+
+drucke("")
+drucke("=== Tiergeräusche ===")
+sei tiere = [rex, bello, whisky, polly]
+für tier in tiere {
+    tier.sprechen()
+}
+
+drucke("")
+drucke("=== Besondere Fähigkeiten ===")
+rex.info()
+bello.info()
+whisky.schnurren()
+
+drucke("")
+drucke("=== Zähler-Beispiel ===")
+
+klasse Zaehler {
+    funktion __init__(selbst, start) {
+        selbst.wert = start
+        selbst.schritte = 0
+    }
+
+    funktion erhoehen(selbst) {
+        selbst.wert = selbst.wert + 1
+        selbst.schritte = selbst.schritte + 1
+    }
+
+    funktion verringern(selbst) {
+        selbst.wert = selbst.wert - 1
+        selbst.schritte = selbst.schritte + 1
+    }
+
+    funktion zuruecksetzen(selbst) {
+        selbst.wert = 0
+        selbst.schritte = 0
+    }
+
+    funktion anzeigen(selbst) {
+        drucke("Wert: " + zeichenkette(selbst.wert) + "  (Schritte: " + zeichenkette(selbst.schritte) + ")")
+    }
+}
+
+sei z = neu Zaehler(0)
+z.erhoehen()
+z.erhoehen()
+z.erhoehen()
+z.verringern()
+z.anzeigen()
+z.erhoehen()
+z.anzeigen()

@@ -1,0 +1,41 @@
+# Schleifen und Kontrollfluss in Deutsch
+
+drucke("=== Für-Schleife ===")
+sei früchte = ["Apfel", "Banane", "Kirsche", "Dattel"]
+für frucht in früchte {
+    drucke("Ich mag " + frucht)
+}
+
+drucke("")
+drucke("=== Solange-Schleife ===")
+sei zahl = 1
+solange zahl <= 5 {
+    drucke("Zahl: " + zeichenkette(zahl))
+    zahl = zahl + 1
+}
+
+drucke("")
+drucke("=== Bereich-Schleife ===")
+für i in bereich(1, 11) {
+    wenn i % 3 == 0 und i % 5 == 0 {
+        drucke("FizzBuzz")
+    } sonst wenn i % 3 == 0 {
+        drucke("Fizz")
+    } sonst wenn i % 5 == 0 {
+        drucke("Buzz")
+    } sonst {
+        drucke(zeichenkette(i))
+    }
+}
+
+drucke("")
+drucke("=== Abbrechen und Weiter ===")
+für i in bereich(1, 11) {
+    wenn i % 2 == 0 {
+        weiter
+    }
+    wenn i > 7 {
+        abbrechen
+    }
+    drucke("Ungerade: " + zeichenkette(i))
+}

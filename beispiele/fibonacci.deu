@@ -1,0 +1,48 @@
+# Fibonacci – rekursiv und iterativ
+
+funktion fibonacci_rekursiv(n) {
+    wenn n <= 1 {
+        zurück n
+    }
+    zurück fibonacci_rekursiv(n - 1) + fibonacci_rekursiv(n - 2)
+}
+
+funktion fibonacci_iterativ(n) {
+    wenn n <= 1 {
+        zurück n
+    }
+    sei a = 0
+    sei b = 1
+    sei i = 2
+    solange i <= n {
+        sei temp = a + b
+        a = b
+        b = temp
+        i = i + 1
+    }
+    zurück b
+}
+
+funktion fibonacci_liste(n) {
+    sei ergebnis = [0, 1]
+    sei i = 2
+    solange i < n {
+        sei naechste = ergebnis[i - 1] + ergebnis[i - 2]
+        anhängen(ergebnis, naechste)
+        i = i + 1
+    }
+    zurück ergebnis
+}
+
+drucke("=== Fibonacci (rekursiv, erste 10) ===")
+für i in bereich(10) {
+    drucke("F(" + zeichenkette(i) + ") = " + zeichenkette(fibonacci_rekursiv(i)))
+}
+
+drucke("")
+drucke("=== Fibonacci (iterativ, F(30)) ===")
+drucke(fibonacci_iterativ(30))
+
+drucke("")
+drucke("=== Fibonacci-Folge als Liste (erste 15) ===")
+drucke(fibonacci_liste(15))
