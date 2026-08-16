@@ -5,6 +5,11 @@ import functools
 import random
 import json
 import re
+import time
+import statistics
+import hashlib
+import base64
+from datetime import datetime
 from . import ast_knoten as ast
 from .umgebung import Umgebung
 
@@ -145,6 +150,8 @@ class Interpreter:
             'letzte':    lambda obj: obj[-1] if obj else None,
             'kopiere':   lambda obj: list(obj),
             'flach':     lambda obj: [e for sub in obj for e in (sub if isinstance(sub, list) else [sub])],
+            'index_von': lambda obj, x: self._index_von(obj, x, 'Liste'),
+            'zaehle':    lambda obj, x: obj.count(x),
         }
 
     def _string_methoden_aufbauen(self):
@@ -167,6 +174,8 @@ class Interpreter:
             'zeichen':       lambda obj: list(obj),
             'wiederhole':    lambda obj, n: obj * int(n),
             'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
+            'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
+            'zaehle':        lambda obj, x: obj.count(x),
         }
 
     def _woerterbuch_methoden_aufbauen(self):
@@ -257,6 +266,19 @@ class Interpreter:
         g.setze('regex_ersetze',    self._eb_regex_ersetze)
         g.setze('regex_finde',      self._eb_regex_finde)
         g.setze('regex_finde_alle', self._eb_regex_finde_alle)
+        g.setze('jetzt',             self._eb_jetzt)
+        g.setze('datum_formatieren', self._eb_datum_formatieren)
+        g.setze('mittelwert',        self._eb_mittelwert)
+        g.setze('median',            self._eb_median)
+        g.setze('stdabweichung',     self._eb_stdabweichung)
+        g.setze('tiefe_kopie',       self._eb_tiefe_kopie)
+        g.setze('umgebungsvariable', self._eb_umgebungsvariable)
+        g.setze('pfad_existiert',    self._eb_pfad_existiert)
+        g.setze('dateien_auflisten', self._eb_dateien_auflisten)
+        g.setze('ordner_erstellen',  self._eb_ordner_erstellen)
+        g.setze('hash_sha256',       self._eb_hash_sha256)
+        g.setze('base64_kodieren',   self._eb_base64_kodieren)
+        g.setze('base64_dekodieren', self._eb_base64_dekodieren)
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
@@ -321,6 +343,13 @@ class Interpreter:
             liste[:] = ergebnis
             return None
         return ergebnis
+
+    @staticmethod
+    def _index_von(obj, x, typname):
+        try:
+            return obj.index(x)
+        except ValueError:
+            raise ValueError(f"'{x}' nicht gefunden in {typname}")
 
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
@@ -605,6 +634,105 @@ class Interpreter:
         except re.error as e:
             raise ValueError(f"Ungültiges Muster '{muster}': {e}")
         return [list(t) if isinstance(t, tuple) else t for t in treffer]
+
+    def _eb_jetzt(self, *args):
+        self._pruefe_args('jetzt', args, 0)
+        return time.time()
+
+    def _eb_datum_formatieren(self, *args):
+        self._pruefe_args('datum_formatieren', args, 2)
+        zeitstempel, format_str = args[0], self._zu_text(args[1])
+        try:
+            return datetime.fromtimestamp(zeitstempel).strftime(format_str)
+        except (TypeError, ValueError, OSError) as e:
+            raise ValueError(f"Ungültiger Zeitstempel oder Format: {e}")
+
+    def _eb_mittelwert(self, *args):
+        self._pruefe_args('mittelwert', args, 1)
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'mittelwert' erwartet eine Liste oder Menge")
+        try:
+            return statistics.mean(args[0])
+        except statistics.StatisticsError:
+            raise ValueError("'mittelwert' erwartet eine nicht-leere Liste")
+
+    def _eb_median(self, *args):
+        self._pruefe_args('median', args, 1)
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'median' erwartet eine Liste oder Menge")
+        try:
+            return statistics.median(args[0])
+        except statistics.StatisticsError:
+            raise ValueError("'median' erwartet eine nicht-leere Liste")
+
+    def _eb_stdabweichung(self, *args):
+        self._pruefe_args('stdabweichung', args, 1)
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'stdabweichung' erwartet eine Liste oder Menge")
+        try:
+            return statistics.pstdev(args[0])
+        except statistics.StatisticsError:
+            raise ValueError("'stdabweichung' erwartet eine nicht-leere Liste")
+
+    def _eb_tiefe_kopie(self, *args):
+        self._pruefe_args('tiefe_kopie', args, 1)
+        return self._tiefe_kopie_wert(args[0])
+
+    def _tiefe_kopie_wert(self, wert):
+        if isinstance(wert, list):
+            return [self._tiefe_kopie_wert(e) for e in wert]
+        if isinstance(wert, dict):
+            return {self._tiefe_kopie_wert(k): self._tiefe_kopie_wert(v) for k, v in wert.items()}
+        if isinstance(wert, set):
+            return {self._tiefe_kopie_wert(e) for e in wert}
+        if isinstance(wert, DeutschInstanz):
+            neu = DeutschInstanz(wert.klasse)
+            neu.attribute = {k: self._tiefe_kopie_wert(v) for k, v in wert.attribute.items()}
+            return neu
+        return wert  # Zahlen, Zeichenketten, Wahrheitswerte, Nichts, Funktionen: unveränderlich/geteilt
+
+    def _eb_umgebungsvariable(self, *args):
+        if len(args) not in (1, 2):
+            raise TypeError("'umgebungsvariable' erwartet 1–2 Argumente")
+        name = self._zu_text(args[0])
+        if len(args) == 2:
+            return os.environ.get(name, args[1])
+        return os.environ.get(name)
+
+    def _eb_pfad_existiert(self, *args):
+        self._pruefe_args('pfad_existiert', args, 1)
+        return os.path.exists(self._pfad_aufloesen(self._zu_text(args[0])))
+
+    def _eb_dateien_auflisten(self, *args):
+        self._pruefe_args('dateien_auflisten', args, 1)
+        pfad = self._zu_text(args[0])
+        try:
+            return sorted(os.listdir(self._pfad_aufloesen(pfad)))
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Ordner nicht gefunden: '{pfad}'")
+        except NotADirectoryError:
+            raise NotADirectoryError(f"'{pfad}' ist kein Ordner")
+
+    def _eb_ordner_erstellen(self, *args):
+        self._pruefe_args('ordner_erstellen', args, 1)
+        os.makedirs(self._pfad_aufloesen(self._zu_text(args[0])), exist_ok=True)
+        return None
+
+    def _eb_hash_sha256(self, *args):
+        self._pruefe_args('hash_sha256', args, 1)
+        return hashlib.sha256(self._zu_text(args[0]).encode('utf-8')).hexdigest()
+
+    def _eb_base64_kodieren(self, *args):
+        self._pruefe_args('base64_kodieren', args, 1)
+        return base64.b64encode(self._zu_text(args[0]).encode('utf-8')).decode('ascii')
+
+    def _eb_base64_dekodieren(self, *args):
+        self._pruefe_args('base64_dekodieren', args, 1)
+        text = self._zu_text(args[0])
+        try:
+            return base64.b64decode(text, validate=True).decode('utf-8')
+        except Exception:
+            raise ValueError(f"'{text}' ist kein gültiger Base64-Text")
 
     def _eb_woerterbuch(self, *args):
         self._pruefe_args('wörterbuch', args, 1)
