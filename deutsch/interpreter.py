@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import math
+import functools
 from . import ast_knoten as ast
 from .umgebung import Umgebung
 
@@ -103,7 +104,94 @@ class Interpreter:
         self._aktuelle_zeile: int | None = None
         self._aufruf_stack: list[tuple[str, int]] = []
         self._letzter_aufruf_stack: list = []
+        self._dispatch = self._dispatch_aufbauen()
+        self._listen_methoden = self._listen_methoden_aufbauen()
+        self._string_methoden = self._string_methoden_aufbauen()
+        self._woerterbuch_methoden = self._woerterbuch_methoden_aufbauen()
+        self._menge_methoden = self._menge_methoden_aufbauen()
         self._eingebaute_laden()
+
+    def _dispatch_aufbauen(self) -> dict:
+        """Cacht Knotentyp -> Besuchermethode, statt bei jedem Besuch getattr(f'...') zu machen."""
+        dispatch = {}
+        for name in dir(self.__class__):
+            if not name.startswith('_besuche_'):
+                continue
+            knoten_klasse = getattr(ast, name[len('_besuche_'):], None)
+            if knoten_klasse is not None:
+                dispatch[knoten_klasse] = getattr(self, name)
+        return dispatch
+
+    # Eingebaute Instanz-Methoden für Liste/Zeichenkette/Wörterbuch/Menge werden hier
+    # EINMAL aufgebaut (statt bei jedem .attribut-Zugriff neu) – jede Funktion nimmt
+    # 'obj' als expliziten ersten Parameter statt ihn per Closure einzufangen, damit
+    # dieselbe Funktion für jede Instanz per functools.partial(fn, obj) wiederverwendet wird.
+
+    def _listen_methoden_aufbauen(self):
+        return {
+            'anhaengen': lambda obj, *a: (obj.append(a[0]), None)[1],
+            'anhängen':  lambda obj, *a: (obj.append(a[0]), None)[1],
+            'laenge':    lambda obj: len(obj),
+            'länge':     lambda obj: len(obj),
+            'entferne':  lambda obj, *a: obj.pop(int(a[0])) if a else obj.pop(),
+            'enthält':   lambda obj, x: x in obj,
+            'umkehren':  lambda obj: (obj.reverse(), None)[1],
+            'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
+            'erste':     lambda obj: obj[0] if obj else None,
+            'letzte':    lambda obj: obj[-1] if obj else None,
+            'kopiere':   lambda obj: list(obj),
+            'flach':     lambda obj: [e for sub in obj for e in (sub if isinstance(sub, list) else [sub])],
+        }
+
+    def _string_methoden_aufbauen(self):
+        return {
+            'gross':         lambda obj: obj.upper(),
+            'groß':          lambda obj: obj.upper(),
+            'klein':         lambda obj: obj.lower(),
+            'laenge':        lambda obj: len(obj),
+            'länge':         lambda obj: len(obj),
+            'teile':         lambda obj, *a: obj.split(a[0]) if a else obj.split(),
+            'enthält':       lambda obj, x: x in obj,
+            'ersetze':       lambda obj, alt, neu: obj.replace(alt, neu),
+            'trimmen':       lambda obj: obj.strip(),
+            'links_trimmen': lambda obj: obj.lstrip(),
+            'rechts_trimmen':lambda obj: obj.rstrip(),
+            'beginnt_mit':   lambda obj, x: obj.startswith(x),
+            'endet_mit':     lambda obj, x: obj.endswith(x),
+            'grossschreibe': lambda obj: obj.capitalize(),
+            'großschreibe':  lambda obj: obj.capitalize(),
+            'zeichen':       lambda obj: list(obj),
+            'wiederhole':    lambda obj, n: obj * int(n),
+            'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
+        }
+
+    def _woerterbuch_methoden_aufbauen(self):
+        return {
+            'schluessel': lambda obj: list(obj.keys()),
+            'schlüssel':  lambda obj: list(obj.keys()),
+            'werte':      lambda obj: list(obj.values()),
+            'paare':      lambda obj: [[k, v] for k, v in obj.items()],
+            'enthält':    lambda obj, x: x in obj,
+            'entferne':   lambda obj, x: self._woerterbuch_entferne(obj, x),
+            'laenge':     lambda obj: len(obj),
+            'länge':      lambda obj: len(obj),
+            'hole':       lambda obj, k, *d: obj.get(k, d[0] if d else None),
+            'kopiere':    lambda obj: dict(obj),
+        }
+
+    def _menge_methoden_aufbauen(self):
+        return {
+            'laenge':       lambda obj: len(obj),
+            'länge':        lambda obj: len(obj),
+            'enthält':      lambda obj, x: x in obj,
+            'hinzufuegen':  lambda obj, x: self._menge_hinzufuegen(obj, x),
+            'hinzufügen':   lambda obj, x: self._menge_hinzufuegen(obj, x),
+            'entferne':     lambda obj, x: self._menge_entfernen(obj, x),
+            'vereinigung':  lambda obj, andere: self._menge_op(obj, andere, 'vereinigung', lambda a, b: a | b),
+            'schnittmenge': lambda obj, andere: self._menge_op(obj, andere, 'schnittmenge', lambda a, b: a & b),
+            'differenz':    lambda obj, andere: self._menge_op(obj, andere, 'differenz', lambda a, b: a - b),
+            'kopiere':      lambda obj: set(obj),
+        }
 
     # ---------------------------------------------------------- Eingebaute
 
@@ -460,8 +548,7 @@ class Interpreter:
         return self._besuche(knoten, umgebung)
 
     def _besuche(self, knoten, umgebung):
-        name = f'_besuche_{type(knoten).__name__}'
-        methode = getattr(self, name, None)
+        methode = self._dispatch.get(type(knoten))
         if methode is None:
             raise NotImplementedError(f'Kein Besucher für {type(knoten).__name__}')
         return methode(knoten, umgebung)
@@ -885,87 +972,31 @@ class Interpreter:
             if m: return m
             raise AttributeError(f"Klasse '{obj.name}' hat keine Methode '{k.attribut}'")
 
-        # Eingebaute Methoden für Listen
+        # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
+        # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.
         if isinstance(obj, list):
-            methoden = {
-                'anhaengen': lambda *a: (obj.append(a[0]), None)[1],
-                'anhängen':  lambda *a: (obj.append(a[0]), None)[1],
-                'laenge':    lambda: len(obj),
-                'länge':     lambda: len(obj),
-                'entferne':  lambda *a: obj.pop(int(a[0])) if a else obj.pop(),
-                'enthält':   lambda x: x in obj,
-                'umkehren':  lambda: (obj.reverse(), None)[1],
-                'sortiere':  lambda: self._sortiert(obj, in_place=True),
-                'erste':     lambda: obj[0] if obj else None,
-                'letzte':    lambda: obj[-1] if obj else None,
-                'kopiere':   lambda: list(obj),
-                'flach':     lambda: [e for sub in obj for e in (sub if isinstance(sub, list) else [sub])],
-            }
-            if k.attribut in methoden:
-                return methoden[k.attribut]
-            raise AttributeError(f"Liste hat kein Attribut '{k.attribut}'")
+            fn = self._listen_methoden.get(k.attribut)
+            if fn is None:
+                raise AttributeError(f"Liste hat kein Attribut '{k.attribut}'")
+            return functools.partial(fn, obj)
 
-        # Eingebaute Methoden für Zeichenketten
         if isinstance(obj, str):
-            methoden = {
-                'gross':         lambda: obj.upper(),
-                'groß':          lambda: obj.upper(),
-                'klein':         lambda: obj.lower(),
-                'laenge':        lambda: len(obj),
-                'länge':         lambda: len(obj),
-                'teile':         lambda *a: obj.split(a[0]) if a else obj.split(),
-                'enthält':       lambda x: x in obj,
-                'ersetze':       lambda alt, neu: obj.replace(alt, neu),
-                'trimmen':       lambda: obj.strip(),
-                'links_trimmen': lambda: obj.lstrip(),
-                'rechts_trimmen':lambda: obj.rstrip(),
-                'beginnt_mit':   lambda x: obj.startswith(x),
-                'endet_mit':     lambda x: obj.endswith(x),
-                'grossschreibe': lambda: obj.capitalize(),
-                'großschreibe':  lambda: obj.capitalize(),
-                'zeichen':       lambda: list(obj),
-                'wiederhole':    lambda n: obj * int(n),
-                'zahl':          lambda: int(obj) if obj.lstrip('-').isdigit() else float(obj),
-            }
-            if k.attribut in methoden:
-                return methoden[k.attribut]
-            raise AttributeError(f"Zeichenkette hat kein Attribut '{k.attribut}'")
+            fn = self._string_methoden.get(k.attribut)
+            if fn is None:
+                raise AttributeError(f"Zeichenkette hat kein Attribut '{k.attribut}'")
+            return functools.partial(fn, obj)
 
-        # Eingebaute Methoden für Wörterbücher
         if isinstance(obj, dict):
-            methoden = {
-                'schluessel': lambda: list(obj.keys()),
-                'schlüssel':  lambda: list(obj.keys()),
-                'werte':      lambda: list(obj.values()),
-                'paare':      lambda: [[k, v] for k, v in obj.items()],
-                'enthält':    lambda x: x in obj,
-                'entferne':   lambda x: self._woerterbuch_entferne(obj, x),
-                'laenge':     lambda: len(obj),
-                'länge':      lambda: len(obj),
-                'hole':       lambda k, *d: obj.get(k, d[0] if d else None),
-                'kopiere':    lambda: dict(obj),
-            }
-            if k.attribut in methoden:
-                return methoden[k.attribut]
-            raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
+            fn = self._woerterbuch_methoden.get(k.attribut)
+            if fn is None:
+                raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
+            return functools.partial(fn, obj)
 
-        # Eingebaute Methoden für Mengen
         if isinstance(obj, set):
-            methoden = {
-                'laenge':       lambda: len(obj),
-                'länge':        lambda: len(obj),
-                'enthält':      lambda x: x in obj,
-                'hinzufuegen':  lambda x: self._menge_hinzufuegen(obj, x),
-                'hinzufügen':   lambda x: self._menge_hinzufuegen(obj, x),
-                'entferne':     lambda x: self._menge_entfernen(obj, x),
-                'vereinigung':  lambda andere: self._menge_op(obj, andere, 'vereinigung', lambda a, b: a | b),
-                'schnittmenge': lambda andere: self._menge_op(obj, andere, 'schnittmenge', lambda a, b: a & b),
-                'differenz':    lambda andere: self._menge_op(obj, andere, 'differenz', lambda a, b: a - b),
-                'kopiere':      lambda: set(obj),
-            }
-            if k.attribut in methoden:
-                return methoden[k.attribut]
-            raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
+            fn = self._menge_methoden.get(k.attribut)
+            if fn is None:
+                raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
+            return functools.partial(fn, obj)
 
         raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
 
