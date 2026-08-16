@@ -383,5 +383,115 @@ class TestDiagnostik(unittest.TestCase):
         self.assertNotIn('meintest du', str(ctx.exception))
 
 
+class TestZufall(unittest.TestCase):
+    def test_zufall_im_bereich(self):
+        ergebnis, _ = lauf('zufall()')
+        self.assertGreaterEqual(ergebnis, 0)
+        self.assertLess(ergebnis, 1)
+
+    def test_zufallszahl_einzelwert(self):
+        ergebnis, _ = lauf('zufallszahl(5, 5)')
+        self.assertEqual(ergebnis, 5)
+
+    def test_zufallszahl_lo_groesser_hi_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('zufallszahl(10, 1)')
+
+    def test_mische_behaelt_alle_elemente(self):
+        _, interpreter = lauf('sei l = [1,2,3,4,5]\nmische(l)')
+        self.assertEqual(sorted(interpreter.global_umgebung.hole('l')), [1, 2, 3, 4, 5])
+
+
+class TestFunktionaleHelfer(unittest.TestCase):
+    def test_summe(self):
+        ergebnis, _ = lauf('summe([1,2,3,4])')
+        self.assertEqual(ergebnis, 10)
+        ergebnis, _ = lauf('summe(1,2,3)')
+        self.assertEqual(ergebnis, 6)
+
+    def test_alle_und_einige(self):
+        self.assertTrue(lauf('alle([wahr, wahr])')[0])
+        self.assertFalse(lauf('alle([wahr, falsch])')[0])
+        self.assertTrue(lauf('einige([falsch, wahr])')[0])
+        self.assertFalse(lauf('einige([falsch, falsch])')[0])
+
+    def test_aufzaehlen(self):
+        ergebnis, _ = lauf('aufzaehlen(["a","b"])')
+        self.assertEqual(ergebnis, [[0, 'a'], [1, 'b']])
+
+    def test_zippe(self):
+        ergebnis, _ = lauf('zippe([1,2,3], ["a","b","c"])')
+        self.assertEqual(ergebnis, [[1, 'a'], [2, 'b'], [3, 'c']])
+
+    def test_zippe_mit_menge_wirft_fehler(self):
+        with self.assertRaises(TypeError):
+            lauf('zippe({1,2}, [3,4])')
+
+
+class TestBodenDecke(unittest.TestCase):
+    def test_boden_und_decke(self):
+        self.assertEqual(lauf('boden(3.7)')[0], 3)
+        self.assertEqual(lauf('decke(3.2)')[0], 4)
+
+
+class TestJson(unittest.TestCase):
+    def test_schreiben_und_lesen_roundtrip(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('json_schreiben("d.json", {"name": "Anna", "zahlen": [1,2,3]})', interpreter)
+            ergebnis, _ = lauf('json_lesen("d.json")', interpreter)
+            self.assertEqual(ergebnis, {'name': 'Anna', 'zahlen': [1, 2, 3]})
+
+    def test_menge_wird_zu_sortierter_liste_konvertiert(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('json_schreiben("m.json", {"werte": {3,1,2}})', interpreter)
+            ergebnis, _ = lauf('json_lesen("m.json")', interpreter)
+            self.assertEqual(ergebnis, {'werte': [1, 2, 3]})
+
+    def test_ungueltiges_json_wirft_fehler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'kaputt.json'), 'w', encoding='utf-8') as f:
+                f.write('{nicht gueltig')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ValueError):
+                lauf('json_lesen("kaputt.json")', interpreter)
+
+
+class TestKommandozeilenArgumente(unittest.TestCase):
+    def test_argumente_werden_durchgereicht(self):
+        interpreter = Interpreter(argumente=['eins', 'zwei'])
+        ergebnis, _ = lauf('kommandozeilen_argumente()', interpreter)
+        self.assertEqual(ergebnis, ['eins', 'zwei'])
+
+    def test_keine_argumente_ist_leere_liste(self):
+        ergebnis, _ = lauf('kommandozeilen_argumente()')
+        self.assertEqual(ergebnis, [])
+
+
+class TestRegex(unittest.TestCase):
+    def test_passt_zu(self):
+        self.assertTrue(lauf(r'passt_zu("^\d+$", "12345")')[0])
+        self.assertFalse(lauf(r'passt_zu("^\d+$", "abc")')[0])
+
+    def test_regex_ersetze(self):
+        ergebnis, _ = lauf(r'regex_ersetze("\s+", " ", "hallo    welt")')
+        self.assertEqual(ergebnis, 'hallo welt')
+
+    def test_regex_finde(self):
+        ergebnis, _ = lauf(r'regex_finde("\d+", "abc123def")')
+        self.assertEqual(ergebnis, '123')
+        ergebnis, _ = lauf(r'regex_finde("\d+", "keine zahlen")')
+        self.assertIsNone(ergebnis)
+
+    def test_regex_finde_alle(self):
+        ergebnis, _ = lauf(r'regex_finde_alle("\d+", "a1b22c333")')
+        self.assertEqual(ergebnis, ['1', '22', '333'])
+
+    def test_ungueltiges_muster_wirft_fehler(self):
+        with self.assertRaises(ValueError):
+            lauf('passt_zu("[", "x")')
+
+
 if __name__ == '__main__':
     unittest.main()

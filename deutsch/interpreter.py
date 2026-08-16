@@ -2,6 +2,9 @@
 import os
 import math
 import functools
+import random
+import json
+import re
 from . import ast_knoten as ast
 from .umgebung import Umgebung
 
@@ -98,9 +101,10 @@ class DeutschInstanz:
 # ------------------------------------------------------------- Interpreter
 
 class Interpreter:
-    def __init__(self, ladepfad: str | None = None):
+    def __init__(self, ladepfad: str | None = None, argumente: list | None = None):
         self.global_umgebung = Umgebung()
         self._ladepfad = ladepfad or os.getcwd()
+        self._cli_argumente = list(argumente) if argumente else []
         self._aktuelle_zeile: int | None = None
         self._aufruf_stack: list[tuple[str, int]] = []
         self._letzter_aufruf_stack: list = []
@@ -236,6 +240,23 @@ class Interpreter:
         g.setze('datei_schreiben',  self._eb_datei_schreiben)
         g.setze('datei_anhaengen',  self._eb_datei_anhaengen)
         g.setze('datei_anhängen',   self._eb_datei_anhaengen)
+        g.setze('boden',            self._eb_boden)
+        g.setze('decke',            self._eb_decke)
+        g.setze('zufall',           self._eb_zufall)
+        g.setze('zufallszahl',      self._eb_zufallszahl)
+        g.setze('mische',           self._eb_mische)
+        g.setze('summe',            self._eb_summe)
+        g.setze('alle',             self._eb_alle)
+        g.setze('einige',           self._eb_einige)
+        g.setze('aufzaehlen',       self._eb_aufzaehlen)
+        g.setze('zippe',            self._eb_zippe)
+        g.setze('json_lesen',       self._eb_json_lesen)
+        g.setze('json_schreiben',   self._eb_json_schreiben)
+        g.setze('kommandozeilen_argumente', self._eb_kommandozeilen_argumente)
+        g.setze('passt_zu',         self._eb_passt_zu)
+        g.setze('regex_ersetze',    self._eb_regex_ersetze)
+        g.setze('regex_finde',      self._eb_regex_finde)
+        g.setze('regex_finde_alle', self._eb_regex_finde_alle)
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
@@ -449,6 +470,141 @@ class Interpreter:
         except PermissionError:
             raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
         return None
+
+    def _eb_boden(self, *args):
+        self._pruefe_args('boden', args, 1)
+        try:
+            return math.floor(args[0])
+        except TypeError:
+            raise TypeError(f"'boden' erwartet eine Zahl, bekam {self._typname(args[0])}")
+
+    def _eb_decke(self, *args):
+        self._pruefe_args('decke', args, 1)
+        try:
+            return math.ceil(args[0])
+        except TypeError:
+            raise TypeError(f"'decke' erwartet eine Zahl, bekam {self._typname(args[0])}")
+
+    def _eb_zufall(self, *args):
+        self._pruefe_args('zufall', args, 0)
+        return random.random()
+
+    def _eb_zufallszahl(self, *args):
+        self._pruefe_args('zufallszahl', args, 2)
+        try:
+            lo, hi = int(args[0]), int(args[1])
+        except (ValueError, TypeError):
+            raise TypeError("'zufallszahl' erwartet zwei Ganzzahlen")
+        if lo > hi:
+            raise ValueError(f"'zufallszahl' erwartet erstes Argument <= zweites, bekam {lo} > {hi}")
+        return random.randint(lo, hi)
+
+    def _eb_mische(self, *args):
+        self._pruefe_args('mische', args, 1)
+        if not isinstance(args[0], list):
+            raise TypeError("'mische' erwartet eine Liste")
+        random.shuffle(args[0])
+        return None
+
+    def _eb_summe(self, *args):
+        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        try:
+            return sum(werte)
+        except TypeError:
+            raise TypeError("'summe' erwartet Zahlen")
+
+    def _eb_alle(self, *args):
+        self._pruefe_args('alle', args, 1)
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'alle' erwartet eine Liste oder Menge")
+        return all(self._ist_wahr(e) for e in args[0])
+
+    def _eb_einige(self, *args):
+        self._pruefe_args('einige', args, 1)
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'einige' erwartet eine Liste oder Menge")
+        return any(self._ist_wahr(e) for e in args[0])
+
+    def _eb_aufzaehlen(self, *args):
+        if len(args) not in (1, 2):
+            raise TypeError("'aufzaehlen' erwartet 1–2 Argumente")
+        if not isinstance(args[0], (list, set)):
+            raise TypeError("'aufzaehlen' erwartet eine Liste oder Menge")
+        start = int(args[1]) if len(args) == 2 else 0
+        return [[i, e] for i, e in enumerate(args[0], start=start)]
+
+    def _eb_zippe(self, *args):
+        if len(args) < 1:
+            raise TypeError("'zippe' erwartet mindestens 1 Argument")
+        for a in args:
+            if not isinstance(a, (list, str)):
+                raise TypeError("'zippe' erwartet Listen oder Zeichenketten")
+        return [list(t) for t in zip(*args)]
+
+    def _eb_json_lesen(self, *args):
+        self._pruefe_args('json_lesen', args, 1)
+        pfad = self._zu_text(args[0])
+        try:
+            with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Ungültiges JSON in '{pfad}': {e}")
+
+    def _eb_json_schreiben(self, *args):
+        self._pruefe_args('json_schreiben', args, 2)
+        pfad, wert = self._zu_text(args[0]), args[1]
+
+        def _konvertiere(o):
+            if isinstance(o, set):
+                return self._sortiert(list(o))
+            raise TypeError(f"'{self._typname(o)}' kann nicht als JSON gespeichert werden")
+
+        try:
+            with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
+                json.dump(wert, f, default=_konvertiere, ensure_ascii=False, indent=2)
+        except IsADirectoryError:
+            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+        return None
+
+    def _eb_kommandozeilen_argumente(self, *args):
+        self._pruefe_args('kommandozeilen_argumente', args, 0)
+        return list(self._cli_argumente)
+
+    def _eb_passt_zu(self, *args):
+        self._pruefe_args('passt_zu', args, 2)
+        muster, text = self._zu_text(args[0]), self._zu_text(args[1])
+        try:
+            return re.search(muster, text) is not None
+        except re.error as e:
+            raise ValueError(f"Ungültiges Muster '{muster}': {e}")
+
+    def _eb_regex_ersetze(self, *args):
+        self._pruefe_args('regex_ersetze', args, 3)
+        muster, ersatz, text = (self._zu_text(a) for a in args)
+        try:
+            return re.sub(muster, ersatz, text)
+        except re.error as e:
+            raise ValueError(f"Ungültiges Muster '{muster}': {e}")
+
+    def _eb_regex_finde(self, *args):
+        self._pruefe_args('regex_finde', args, 2)
+        muster, text = self._zu_text(args[0]), self._zu_text(args[1])
+        try:
+            treffer = re.search(muster, text)
+        except re.error as e:
+            raise ValueError(f"Ungültiges Muster '{muster}': {e}")
+        return treffer.group(0) if treffer else None
+
+    def _eb_regex_finde_alle(self, *args):
+        self._pruefe_args('regex_finde_alle', args, 2)
+        muster, text = self._zu_text(args[0]), self._zu_text(args[1])
+        try:
+            treffer = re.findall(muster, text)
+        except re.error as e:
+            raise ValueError(f"Ungültiges Muster '{muster}': {e}")
+        return [list(t) if isinstance(t, tuple) else t for t in treffer]
 
     def _eb_woerterbuch(self, *args):
         self._pruefe_args('wörterbuch', args, 1)
