@@ -1,0 +1,16 @@
+# Hallo Welt – das erste Programm in Deutsch
+
+drucke("Hallo, Welt!")
+drucke("Willkommen zur Deutsch-Programmiersprache!")
+
+sei name = "Welt"
+drucke("Guten Tag, " + name + "!")
+
+# Grundlegende Rechenoperationen
+sei a = 10
+sei b = 3
+drucke("Summe:      " + zeichenkette(a + b))
+drucke("Differenz:  " + zeichenkette(a - b))
+drucke("Produkt:    " + zeichenkette(a * b))
+drucke("Division:   " + zeichenkette(kommazahl(a) / b))
+drucke("Rest:       " + zeichenkette(a % b))

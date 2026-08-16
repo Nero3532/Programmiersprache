@@ -1,0 +1,263 @@
+# alle_features.deu – Demo aller Deutsch 2.0 Features
+
+# ================================================================
+# 1. ZEICHENKETTEN-INTERPOLATION
+# ================================================================
+sei name = "Welt"
+sei zahl = 42
+drucke("Hallo, {name}! Die Antwort ist {zahl}.")
+drucke("Rechnung: {3 * 7} ergibt {3 * 7 == zahl}.")
+
+sei vorname = "Max"
+sei nachname = "Mustermann"
+drucke("Vollständiger Name: {vorname} {nachname}")
+
+# ================================================================
+# 2. MEHRZEILIGE ZEICHENKETTEN
+# ================================================================
+sei gedicht = """
+Roses are red,
+Veilchen sind blau,
+Deutsch ist toll,
+und das weißt du.
+"""
+drucke(gedicht)
+
+# ================================================================
+# 3. VERBUND-ZUWEISUNGEN
+# ================================================================
+drucke("=== Verbund-Zuweisungen ===")
+sei x = 10
+x += 5
+drucke("x += 5  =>  {x}")
+x -= 3
+drucke("x -= 3  =>  {x}")
+x *= 2
+drucke("x *= 2  =>  {x}")
+x /= 4
+drucke("x /= 4  =>  {x}")
+x %= 5
+drucke("x %= 5  =>  {x}")
+
+# ================================================================
+# 4. STANDARD-PARAMETER
+# ================================================================
+drucke("")
+drucke("=== Standard-Parameter ===")
+
+funktion begruesse(name, anrede = "Hallo", ausrufezeichen = "!") {
+    drucke("{anrede}, {name}{ausrufezeichen}")
+}
+
+begruesse("Anna")
+begruesse("Bob", "Guten Tag")
+begruesse("Clara", "Hi", " :-)")
+
+funktion potenz(basis, exponent = 2) {
+    sei ergebnis = 1
+    sei i = 0
+    solange i < exponent {
+        ergebnis *= basis
+        i += 1
+    }
+    zurück ergebnis
+}
+
+drucke("3^2 = {potenz(3)}")
+drucke("2^8 = {potenz(2, 8)}")
+
+# ================================================================
+# 5. VARIADISCHE ARGUMENTE
+# ================================================================
+drucke("")
+drucke("=== Variadische Argumente ===")
+
+funktion summe(*zahlen) {
+    sei gesamt = 0
+    für z in zahlen {
+        gesamt += z
+    }
+    zurück gesamt
+}
+
+drucke("Summe(1,2,3) = {summe(1, 2, 3)}")
+drucke("Summe(1..5)  = {summe(1, 2, 3, 4, 5)}")
+
+funktion protokoll(stufe, *nachrichten) {
+    für msg in nachrichten {
+        drucke("[{stufe}] {msg}")
+    }
+}
+
+protokoll("INFO", "Server gestartet", "Datenbank verbunden")
+protokoll("WARN", "Speicher niedrig")
+
+# ================================================================
+# 6. LISTEN-AUSDRÜCKE (Comprehensions)
+# ================================================================
+drucke("")
+drucke("=== Listen-Ausdrücke ===")
+
+sei quadrate = [x * x für x in bereich(1, 8)]
+drucke("Quadrate 1-7: {quadrate}")
+
+sei gerade = [x für x in bereich(1, 21) wenn x % 2 == 0]
+drucke("Gerade bis 20: {gerade}")
+
+sei woerter = ["hallo", "welt", "deutsch", "programm"]
+sei gross = [w.groß() für w in woerter wenn länge(w) > 4]
+drucke("Lange Wörter groß: {gross}")
+
+sei paare = [[x, x * x] für x in bereich(1, 6)]
+drucke("Paare: {paare}")
+
+# ================================================================
+# 7. IN-OPERATOR
+# ================================================================
+drucke("")
+drucke("=== In-Operator ===")
+
+sei obst = ["Apfel", "Banane", "Kirsche"]
+drucke("Apfel in Liste?   {'Apfel' in obst}")
+drucke("Traube in Liste?  {'Traube' in obst}")
+
+sei info = {"name": "Anna", "alter": 30}
+drucke("'name' im Woerterbuch?  {'name' in info}")
+drucke("'email' im Woerterbuch? {'email' in info}")
+
+sei nadel = "ello"
+drucke("'ello' in 'Hallo'?  {nadel in 'Hallo'}")
+
+# ================================================================
+# 8. FEHLERBEHANDLUNG
+# ================================================================
+drucke("")
+drucke("=== Fehlerbehandlung ===")
+
+versuche {
+    sei ergebnis = 10 / 0
+    drucke("Ergebnis: {ergebnis}")
+} fange fehler {
+    drucke("Caught: {fehler}")
+} endlich {
+    drucke("Immer ausgefuehrt.")
+}
+
+versuche {
+    sei liste = [1, 2, 3]
+    drucke(liste[99])
+} fange fehler {
+    drucke("Indexfehler: {fehler}")
+}
+
+funktion sicheres_teilen(a, b) {
+    versuche {
+        zurück a / b
+    } fange fehler {
+        drucke("Fehler: {fehler}")
+        zurück nichts
+    }
+}
+
+drucke(sicheres_teilen(10, 2))
+drucke(sicheres_teilen(5, 0))
+
+# ================================================================
+# 9. TYP-HINWEISE (ignoriert zur Laufzeit)
+# ================================================================
+drucke("")
+drucke("=== Typ-Hinweise ===")
+
+sei alter: Ganzzahl = 25
+sei pi: Kommazahl = 3.14159
+sei gruss: Zeichenkette = "Hallo"
+
+funktion addiere(a: Ganzzahl, b: Ganzzahl) -> Ganzzahl {
+    zurück a + b
+}
+
+drucke("alter = {alter}, typ = {typ(alter)}")
+drucke("pi    = {pi},    typ = {typ(pi)}")
+drucke("5 + 7 = {addiere(5, 7)}")
+
+# ================================================================
+# 10. KLASSEN MIT ALLEN FEATURES
+# ================================================================
+drucke("")
+drucke("=== Klassen ===")
+
+klasse Stapel {
+    funktion __init__(selbst) {
+        selbst.elemente = []
+        selbst.groesse = 0
+    }
+
+    funktion ablegen(selbst, element) {
+        anhängen(selbst.elemente, element)
+        selbst.groesse += 1
+    }
+
+    funktion nehmen(selbst) {
+        wenn selbst.groesse == 0 {
+            versuche {
+                fehler()
+            } fange f {
+                drucke("Stapel ist leer!")
+                zurück nichts
+            }
+        }
+        selbst.groesse -= 1
+        zurück entferne(selbst.elemente)
+    }
+
+    funktion oben(selbst) {
+        wenn selbst.groesse == 0 { zurück nichts }
+        zurück selbst.elemente[selbst.groesse - 1]
+    }
+
+    funktion ist_leer(selbst) {
+        zurück selbst.groesse == 0
+    }
+
+    funktion __text__(selbst) {
+        zurück "Stapel{selbst.elemente}"
+    }
+}
+
+sei s = neu Stapel()
+s.ablegen(1)
+s.ablegen(2)
+s.ablegen(3)
+drucke("Stapel: {s}")
+drucke("Oben: {s.oben()}")
+drucke("Genommen: {s.nehmen()}")
+drucke("Stapel jetzt: {s}")
+drucke("Leer? {s.ist_leer()}")
+
+# ================================================================
+# 11. KOMBINATION: FibStapel mit Comprehension und Interpolation
+# ================================================================
+drucke("")
+drucke("=== Alles zusammen: Primzahlfilter ===")
+
+funktion ist_prim(n: Ganzzahl) -> Wahrheitswert {
+    wenn n < 2 { zurück falsch }
+    wenn n == 2 { zurück wahr }
+    wenn n % 2 == 0 { zurück falsch }
+    sei i = 3
+    solange i * i <= n {
+        wenn n % i == 0 { zurück falsch }
+        i += 2
+    }
+    zurück wahr
+}
+
+sei primzahlen = [x für x in bereich(2, 50) wenn ist_prim(x)]
+drucke("Primzahlen bis 50: {primzahlen}")
+drucke("Anzahl: {länge(primzahlen)}")
+
+sei prim_quadrate = [p * p für p in primzahlen wenn p < 20]
+drucke("Quadrate der Primzahlen < 20: {prim_quadrate}")
+
+drucke("")
+drucke("Fertig! Alle Features demonstriert.")
