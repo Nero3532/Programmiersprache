@@ -27,6 +27,25 @@ class _WeiterSignal(Exception):
 
 _KONTROLLSIGNALE = (_ZurueckSignal, _AbbrechenSignal, _WeiterSignal)
 
+# Operator-Überladung: Klassen können diese Methoden definieren, um +/-/*/... selbst
+# zu implementieren. Nur der linke Operand wird geprüft (keine __radd__-artige Umkehrung),
+# und jeder Operator braucht seine eigene Methode (kein automatisches Ableiten von != aus ==).
+_OPERATOR_METHODEN = {
+    '+':  '__addiere__',
+    '-':  '__subtrahiere__',
+    '*':  '__multipliziere__',
+    '/':  '__dividiere__',
+    '//': '__ganzdividiere__',
+    '%':  '__modulo__',
+    '**': '__potenziere__',
+    '==': '__gleich__',
+    '!=': '__ungleich__',
+    '<':  '__kleiner__',
+    '>':  '__groesser__',
+    '<=': '__kleinergleich__',
+    '>=': '__groessergleich__',
+}
+
 
 class SchluesselFehler(KeyError):
     """KeyError zeigt seine Nachricht normalerweise in repr()-Anführungszeichen – hier nicht."""
@@ -64,11 +83,27 @@ class GebundeneMethode:
         return f'<Methode {self.funktion.definition.name}>'
 
 
+class DeutschNamensraum:
+    """Ergebnis von 'lade "datei.deu" als name' – kapselt die Top-Level-Bindungen der Datei."""
+    def __init__(self, name: str, bindungen: dict):
+        self.name = name
+        self.bindungen = bindungen
+
+    def __repr__(self):
+        return f'<Namensraum {self.name}>'
+
+
+_NICHT_GEFUNDEN = object()
+
+
 class DeutschKlasse:
-    def __init__(self, name: str, eltern: list, methoden: dict):
+    def __init__(self, name: str, eltern: list, methoden: dict, statische_methoden: dict = None):
         self.name = name
         self.eltern: list['DeutschKlasse'] = eltern
         self.methoden = methoden  # {name: DeutschFunktion}
+        self.statische_methoden = statische_methoden or {}  # {name: DeutschFunktion}, kein 'dies'
+        self.klassenattribute: dict = {}      # gesetzt nach __init__ in _besuche_KlassenDefinition
+        self.konstante_attribute: set = set()  # Teilmenge von klassenattribute-Schlüsseln
 
     def suche_methode(self, name: str):
         if name in self.methoden:
@@ -78,6 +113,24 @@ class DeutschKlasse:
             if m is not None:
                 return m
         return None
+
+    def suche_statische_methode(self, name: str):
+        if name in self.statische_methoden:
+            return self.statische_methoden[name]
+        for e in self.eltern:
+            m = e.suche_statische_methode(name)
+            if m is not None:
+                return m
+        return None
+
+    def suche_klassenattribut(self, name: str):
+        if name in self.klassenattribute:
+            return self.klassenattribute[name]
+        for e in self.eltern:
+            wert = e.suche_klassenattribut(name)
+            if wert is not _NICHT_GEFUNDEN:
+                return wert
+        return _NICHT_GEFUNDEN
 
     def __repr__(self):
         return f'<Klasse {self.name}>'
@@ -94,6 +147,12 @@ class DeutschInstanz:
         methode = self.klasse.suche_methode(name)
         if methode is not None:
             return GebundeneMethode(self, methode)
+        statische_methode = self.klasse.suche_statische_methode(name)
+        if statische_methode is not None:
+            return statische_methode  # unbound – kein 'dies' wird injiziert
+        wert = self.klasse.suche_klassenattribut(name)
+        if wert is not _NICHT_GEFUNDEN:
+            return wert
         raise AttributeError(f"'{self.klasse.name}' hat kein Attribut '{name}'")
 
     def setze_attribut(self, name: str, wert):
@@ -113,6 +172,7 @@ class Interpreter:
         self._aktuelle_zeile: int | None = None
         self._aufruf_stack: list[tuple[str, int]] = []
         self._letzter_aufruf_stack: list = []
+        self._lade_stack: list[str] = []
         self._dispatch = self._dispatch_aufbauen()
         self._listen_methoden = self._listen_methoden_aufbauen()
         self._string_methoden = self._string_methoden_aufbauen()
@@ -152,6 +212,8 @@ class Interpreter:
             'flach':     lambda obj: [e for sub in obj for e in (sub if isinstance(sub, list) else [sub])],
             'index_von': lambda obj, x: self._index_von(obj, x, 'Liste'),
             'zaehle':    lambda obj, x: self._zaehle(obj, x, 'Liste'),
+            'einfuegen': lambda obj, index, wert: self._liste_einfuegen(obj, index, wert),
+            'erweitere': lambda obj, andere: self._liste_erweitere(obj, andere),
         }
 
     def _string_methoden_aufbauen(self):
@@ -176,6 +238,9 @@ class Interpreter:
             'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
             'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
             'zaehle':        lambda obj, x: self._zaehle(obj, x, 'Zeichenkette'),
+            'ist_ziffer':    lambda obj: obj.isdigit(),
+            'ist_buchstabe': lambda obj: obj.isalpha(),
+            'ist_leerraum':  lambda obj: obj.isspace(),
         }
 
     def _woerterbuch_methoden_aufbauen(self):
@@ -204,6 +269,9 @@ class Interpreter:
             'schnittmenge': lambda obj, andere: self._menge_op(obj, andere, 'schnittmenge', lambda a, b: a & b),
             'differenz':    lambda obj, andere: self._menge_op(obj, andere, 'differenz', lambda a, b: a - b),
             'kopiere':      lambda obj: set(obj),
+            'teilmenge_von':          lambda obj, andere: self._menge_op(obj, andere, 'teilmenge_von', lambda a, b: a <= b),
+            'obermenge_von':          lambda obj, andere: self._menge_op(obj, andere, 'obermenge_von', lambda a, b: a >= b),
+            'symmetrische_differenz': lambda obj, andere: self._menge_op(obj, andere, 'symmetrische_differenz', lambda a, b: a ^ b),
         }
 
     # ---------------------------------------------------------- Eingebaute
@@ -245,6 +313,9 @@ class Interpreter:
         g.setze('tangens',      self._eb_tangens)
         g.setze('logarithmus',  self._eb_logarithmus)
         g.setze('exponential',  self._eb_exponential)
+        g.setze('ggt',          self._eb_ggt)
+        g.setze('kgv',          self._eb_kgv)
+        g.setze('vorzeichen',   self._eb_vorzeichen)
         g.setze('datei_lesen',      self._eb_datei_lesen)
         g.setze('datei_schreiben',  self._eb_datei_schreiben)
         g.setze('datei_anhaengen',  self._eb_datei_anhaengen)
@@ -358,6 +429,19 @@ class Interpreter:
         except TypeError:
             raise TypeError(f"'zaehle' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
 
+    def _liste_einfuegen(self, obj, index, wert):
+        try:
+            obj.insert(int(index), wert)
+        except (ValueError, TypeError):
+            raise TypeError(f"'einfuegen' erwartet einen Ganzzahl-Index, bekam {self._typname(index)}")
+        return None
+
+    def _liste_erweitere(self, obj, andere):
+        if not isinstance(andere, (list, set)):
+            raise TypeError(f"'erweitere' erwartet eine Liste oder Menge, bekam {self._typname(andere)}")
+        obj.extend(andere)
+        return None
+
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
         liste, elem = args
@@ -453,6 +537,32 @@ class Interpreter:
             return math.exp(args[0])
         except TypeError:
             raise TypeError(f"'exponential' erwartet eine Zahl, bekam {self._typname(args[0])}")
+
+    def _eb_ggt(self, *args):
+        if not args:
+            raise TypeError("'ggt' erwartet mindestens 1 Argument")
+        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        try:
+            return math.gcd(*[int(w) for w in werte])
+        except (TypeError, ValueError):
+            raise TypeError("'ggt' erwartet Ganzzahlen")
+
+    def _eb_kgv(self, *args):
+        if not args:
+            raise TypeError("'kgv' erwartet mindestens 1 Argument")
+        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        try:
+            return math.lcm(*[int(w) for w in werte])
+        except (TypeError, ValueError):
+            raise TypeError("'kgv' erwartet Ganzzahlen")
+
+    def _eb_vorzeichen(self, *args):
+        self._pruefe_args('vorzeichen', args, 1)
+        try:
+            wert = args[0]
+            return (wert > 0) - (wert < 0)
+        except TypeError:
+            raise TypeError(f"'vorzeichen' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_logarithmus(self, *args):
         if len(args) not in (1, 2):
@@ -804,6 +914,7 @@ class Interpreter:
         if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
+        if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
         if callable(wert):            return 'Funktion'
         return type(wert).__name__
@@ -932,10 +1043,24 @@ class Interpreter:
         ergebnis = []
         for elem in iterable:
             iter_u = Umgebung(u)
-            iter_u.setze(k.variable, elem)
+            self._schleifenvariable_binden(k.variable, elem, iter_u)
             if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
                 ergebnis.append(self._besuche(k.ausdruck, iter_u))
         return ergebnis
+
+    def _schleifenvariable_binden(self, variable, elem, u):
+        """variable: str (einfache Bindung) | list[str] (Destrukturierung)."""
+        if isinstance(variable, list):
+            if not isinstance(elem, (list, tuple)):
+                raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(elem)}")
+            if len(elem) != len(variable):
+                raise TypeError(
+                    f"Destrukturierung erwartet {len(variable)} Werte, bekam {len(elem)}"
+                )
+            for name, wert in zip(variable, elem):
+                u.setze(name, wert)
+        else:
+            u.setze(variable, elem)
 
     # Typ-Hinweise
     def _pruefe_typ(self, wert, typhinweis, kontext_msg, u):
@@ -972,7 +1097,12 @@ class Interpreter:
     def _besuche_VariableDeklaration(self, k, u):
         wert = self._besuche(k.wert, u)
         self._pruefe_typ(wert, k.typhinweis, f"Variable '{k.name}'", u)
-        u.setze(k.name, wert)
+        if k.name in u.konstanten:
+            raise TypeError(f"'{k.name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
+        if k.ist_konstante:
+            u.setze_konstante(k.name, wert)
+        else:
+            u.setze(k.name, wert)
         return wert
 
     def _besuche_DestrukturierendeDeklaration(self, k, u):
@@ -1009,6 +1139,13 @@ class Interpreter:
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
                 obj.setze_attribut(ziel.attribut, wert)
+            elif isinstance(obj, DeutschKlasse):
+                if ziel.attribut in obj.konstante_attribute:
+                    raise TypeError(
+                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{obj.name}' "
+                        f"und kann nicht neu zugewiesen werden"
+                    )
+                obj.klassenattribute[ziel.attribut] = wert
             else:
                 raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
         elif isinstance(ziel, ast.IndexZugriff):
@@ -1038,6 +1175,12 @@ class Interpreter:
         return self._binaerer_operator(k.operator, l, r)
 
     def _binaerer_operator(self, op, l, r):
+        if isinstance(l, DeutschInstanz):
+            methoden_name = _OPERATOR_METHODEN.get(op)
+            if methoden_name is not None:
+                m = l.klasse.suche_methode(methoden_name)
+                if m is not None:
+                    return self._funktion_aufrufen(m, [l, r])
         try:
             if op == '+':
                 if isinstance(l, str) or isinstance(r, str):
@@ -1110,7 +1253,7 @@ class Interpreter:
         iterable = self._besuche(k.iterable, u)
         schleifen_u = Umgebung(u)
         for elem in iterable:
-            schleifen_u.setze(k.variable, elem)
+            self._schleifenvariable_binden(k.variable, elem, schleifen_u)
             try:
                 self._besuche(k.koerper, schleifen_u)
             except _AbbrechenSignal: break
@@ -1123,6 +1266,13 @@ class Interpreter:
     def _besuche_WerfeAnweisung(self, k, u):
         raise AusnahmeFehler(self._besuche(k.wert, u))
 
+    def _besuche_PruefeAnweisung(self, k, u):
+        if not self._ist_wahr(self._besuche(k.bedingung, u)):
+            if k.meldung is not None:
+                raise AssertionError(self._zu_text(self._besuche(k.meldung, u)))
+            raise AssertionError('Prüfung fehlgeschlagen')
+        return None
+
     def _besuche_AbbrechenAnweisung(self, k, u): raise _AbbrechenSignal()
     def _besuche_WeiterAnweisung(self, k, u):    raise _WeiterSignal()
 
@@ -1132,16 +1282,27 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise  # Kontrollfluss-Signale niemals abfangen
         except Exception as e:
-            if k.fange_koerper is not None:
+            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen):
                 fange_u = Umgebung(u)
                 if k.fange_name:
                     wert = e.wert if isinstance(e, AusnahmeFehler) else str(e)
                     fange_u.setze(k.fange_name, wert)
                 self._besuche(k.fange_koerper, fange_u)
+            else:
+                raise
         finally:
             if k.endlich_koerper is not None:
                 self._besuche(k.endlich_koerper, u)
         return None
+
+    @staticmethod
+    def _fehlertyp_passt(e, fange_typen):
+        """Prüft ob fange_typen (str-Namen, z.B. 'TypeError') den Fehler oder eine seiner
+        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten)."""
+        if fange_typen is None:
+            return True
+        namen = {klasse.__name__ for klasse in type(e).__mro__}
+        return not namen.isdisjoint(fange_typen)
 
     def _pfad_aufloesen(self, pfad: str) -> str:
         if not os.path.isabs(pfad):
@@ -1161,12 +1322,26 @@ class Interpreter:
         from .lexer import Lexer
         from .parser import Parser
         pfad = self._pfad_aufloesen(self._besuche(k.pfad, u))
-        with open(pfad, 'r', encoding='utf-8') as f:
-            quelltext = f.read()
-        tokens = Lexer(quelltext).tokenisieren()
-        baum = Parser(tokens).parse()
-        # Im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
-        return self.ausfuehren(baum, self.global_umgebung)
+        if pfad in self._lade_stack:
+            kette = ' -> '.join(os.path.basename(p) for p in self._lade_stack + [pfad])
+            raise ImportError(f"Zyklischer 'lade'-Import erkannt: {kette}")
+        self._lade_stack.append(pfad)
+        try:
+            with open(pfad, 'r', encoding='utf-8') as f:
+                quelltext = f.read()
+            tokens = Lexer(quelltext).tokenisieren()
+            baum = Parser(tokens).parse()
+            if k.als_name is not None:
+                # Isolierter Scope: Top-Level-Bindungen landen im Namensraum, nicht im globalen Scope
+                namensraum_u = Umgebung(self.global_umgebung)
+                self.ausfuehren(baum, namensraum_u)
+                namensraum = DeutschNamensraum(k.als_name, dict(namensraum_u.variablen))
+                u.setze(k.als_name, namensraum)
+                return namensraum
+            # Ohne 'als': im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
+            return self.ausfuehren(baum, self.global_umgebung)
+        finally:
+            self._lade_stack.pop()
 
     # Funktionen
     def _besuche_FunktionDefinition(self, k, u):
@@ -1178,29 +1353,36 @@ class Interpreter:
     def _besuche_FunktionAufruf(self, k, u):
         fn = self._besuche(k.funktion, u)
         args = [self._besuche(a, u) for a in k.argumente]
-        return self._aufrufen(fn, args)
+        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        return self._aufrufen(fn, args, kwargs)
 
-    def _aufrufen(self, fn, args):
-        if callable(fn):
-            return fn(*args)
+    def _aufrufen(self, fn, args, kwargs=None):
+        kwargs = kwargs or {}
         if isinstance(fn, DeutschFunktion):
-            return self._funktion_aufrufen(fn, args)
+            return self._funktion_aufrufen(fn, args, kwargs)
         if isinstance(fn, GebundeneMethode):
-            return self._funktion_aufrufen(fn.funktion, [fn.instanz] + args)
+            return self._funktion_aufrufen(fn.funktion, [fn.instanz] + args, kwargs)
+        if callable(fn):
+            if kwargs:
+                raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
+            return fn(*args)
         raise TypeError(f"'{self._zu_text(fn)}' ist nicht aufrufbar")
 
-    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list):
+    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+        kwargs = kwargs or {}
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
 
         # Parameterstruktur analysieren
         variadic_idx = next((i for i, (_, _, v, _) in enumerate(params) if v), None)
-        n_pflicht = sum(1 for _, d, v, _ in params if d is None and not v)
+        param_namen = [p[0] for p in params]
         n_gesamt = len(params) - (1 if variadic_idx is not None else 0)  # ohne variadic
 
-        if len(args) < n_pflicht:
+        unbekannt = set(kwargs) - set(param_namen)
+        if unbekannt:
+            raise TypeError(f"'{fn.definition.name}' hat kein Parameter '{next(iter(unbekannt))}'")
+        if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
             raise TypeError(
-                f"'{fn.definition.name}' erwartet mindestens {n_pflicht} Argument(e), "
-                f"bekam {len(args)}"
+                f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
             )
         if variadic_idx is None and len(args) > n_gesamt:
             raise TypeError(
@@ -1209,18 +1391,29 @@ class Interpreter:
             )
 
         fn_u = Umgebung(fn.umgebung)
+        fehlende = []
         for i, (p_name, p_default, p_variadic, p_typ) in enumerate(params):
             if p_variadic:
                 fn_u.setze(p_name, list(args[i:]))
                 break
             if i < len(args):
+                if p_name in kwargs:
+                    raise TypeError(
+                        f"'{fn.definition.name}' erhielt mehrere Werte für Parameter '{p_name}'"
+                    )
                 wert = args[i]
-                self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
-                fn_u.setze(p_name, wert)
+            elif p_name in kwargs:
+                wert = kwargs[p_name]
             elif p_default is not None:
-                fn_u.setze(p_name, self._besuche(p_default, fn.umgebung))
+                wert = self._besuche(p_default, fn.umgebung)
             else:
-                raise TypeError(f"Pflichtargument '{p_name}' fehlt")
+                fehlende.append(p_name)
+                continue
+            self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
+            fn_u.setze(p_name, wert)
+
+        if fehlende:
+            raise TypeError(f"'{fn.definition.name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
         self._aufruf_stack.append((fn.definition.name or '<anonym>', self._aktuelle_zeile))
         try:
@@ -1244,8 +1437,16 @@ class Interpreter:
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
         methoden = {m.name: DeutschFunktion(m, u) for m in k.methoden}
-        klasse = DeutschKlasse(k.name, eltern, methoden)
+        statische_methoden = {m.name: DeutschFunktion(m, u) for m in k.statische_methoden}
+        klasse = DeutschKlasse(k.name, eltern, methoden, statische_methoden)
         u.setze(k.name, klasse)
+        # Klassenattribute (sei/konstante im Klassenkörper) in einem eigenen Scope auswerten,
+        # damit sei/konstante-Semantik (inkl. Typ-Hinweise, Destrukturierung) automatisch gilt
+        klassen_u = Umgebung(u)
+        for deklaration in k.klassenattribute:
+            self._besuche(deklaration, klassen_u)
+        klasse.klassenattribute = dict(klassen_u.variablen)
+        klasse.konstante_attribute = set(klassen_u.konstanten)
         return klasse
 
     def _besuche_NeuInstanz(self, k, u):
@@ -1254,9 +1455,10 @@ class Interpreter:
             raise TypeError(f"'{k.name}' ist keine Klasse")
         instanz = DeutschInstanz(klasse)
         args = [self._besuche(a, u) for a in k.argumente]
+        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
         init = klasse.suche_methode('__init__')
         if init:
-            self._funktion_aufrufen(init, [instanz] + args)
+            self._funktion_aufrufen(init, [instanz] + args, kwargs)
         return instanz
 
     # Attribut- und Index-Zugriff
@@ -1266,10 +1468,20 @@ class Interpreter:
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(k.attribut)
 
+        if isinstance(obj, DeutschNamensraum):
+            if k.attribut in obj.bindungen:
+                return obj.bindungen[k.attribut]
+            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{k.attribut}'")
+
         if isinstance(obj, DeutschKlasse):
             m = obj.suche_methode(k.attribut)
             if m: return m
-            raise AttributeError(f"Klasse '{obj.name}' hat keine Methode '{k.attribut}'")
+            sm = obj.suche_statische_methode(k.attribut)
+            if sm: return sm
+            wert = obj.suche_klassenattribut(k.attribut)
+            if wert is not _NICHT_GEFUNDEN:
+                return wert
+            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{k.attribut}'")
 
         # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
         # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.

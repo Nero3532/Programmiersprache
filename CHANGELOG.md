@@ -4,6 +4,52 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.7.0]
+
+### Hinzugefügt
+- `konstante X = wert` — unveränderliche Bindungen; Neuzuweisung (auch per Verbund-Zuweisung) und
+  Redeklaration im selben Geltungsbereich werfen `TypeError`. Verschachtelte Scopes können weiterhin
+  schatten (eigene lokale Konstante mit gleichem Namen).
+- Typisiertes `fange (Typ1, Typ2) name { ... }` — fängt nur passende Fehlerarten (inkl. Basisklassen,
+  z. B. fängt `KeyError` auch `SchluesselFehler`); nicht passende Fehler propagieren weiter,
+  `endlich` läuft trotzdem. Ohne Typ-Liste unverändertes Verhalten (alles fangen).
+- `lade "datei.deu" als name` — lädt in einen isolierten Scope statt in den globalen; Bindungen über
+  `name.attribut` erreichbar statt den aufrufenden Scope zu verändern.
+- Statische Klassenattribute (`sei`/`konstante` direkt im Klassenkörper, geteilt über alle Instanzen
+  und per `Klasse.attribut` lesbar/schreibbar) und statische Methoden (`statisch funktion ...`, kein
+  `dies`, aufrufbar über Klasse oder Instanz ohne automatische Bindung). Werden vererbt.
+- 19 neue Regressionstests (149 gesamt).
+
+## [2.6.0]
+
+### Hinzugefügt
+- `pruefe bedingung[, meldung]` — Assertion-Anweisung, wirft `AssertionError` bei Fehlschlag.
+- Mengen: `teilmenge_von`, `obermenge_von`, `symmetrische_differenz`.
+- Liste: `einfuegen(index, wert)`, `erweitere(andere_liste)`.
+- Mathe: `ggt`, `kgv`, `vorzeichen`.
+- Zeichenkette: `ist_ziffer`, `ist_buchstabe`, `ist_leerraum`.
+- 11 neue Regressionstests (130 gesamt).
+
+## [2.5.0]
+
+### Hinzugefügt
+- Destrukturierung in `für`-Schleifen und List-Comprehensions: `für [i, wert] in aufzaehlen(liste) { ... }`,
+  `[x*y für [x, y] in zippe(a, b)]`.
+- Keyword-Argumente bei Funktionsaufrufen und `neu Klasse(...)`: `f(b=2, a=1)`, gemischt mit
+  positionalen Argumenten (die vor Keyword-Argumenten stehen müssen).
+- Zyklische `lade`-Importe werden erkannt und werfen einen klaren `ImportError` statt einer
+  Endlosschleife/Rekursionsfehler; mehrfaches nicht-zyklisches Laden bleibt erlaubt.
+- Operator-Überladung für Klassen: `__addiere__`, `__subtrahiere__`, `__multipliziere__`,
+  `__dividiere__`, `__ganzdividiere__`, `__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`,
+  `__kleiner__`, `__groesser__`, `__kleinergleich__`, `__groessergleich__` — nur linker Operand,
+  jeder Operator einzeln definierbar.
+- 18 neue Regressionstests (114 gesamt).
+
+### Behoben
+- Doppelte Keyword-Argumente (`f(a=1, a=2)`) wurden stillschweigend akzeptiert (letzter Wert
+  gewinnt) statt wie in Python als Fehler abgelehnt zu werden.
+- 5 weitere Regressionstests (119 gesamt).
+
 ## [2.4.0]
 
 ### Hinzugefügt

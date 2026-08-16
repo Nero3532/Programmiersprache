@@ -36,6 +36,10 @@ class TokenTyp(Enum):
     PASSE = auto()        # match
     FALL = auto()         # case
     WERFE = auto()        # throw
+    PRUEFE = auto()       # assert
+    KONSTANTE = auto()    # const
+    STATISCH = auto()     # static
+    ALS = auto()          # as (lade ... als)
 
     # Operatoren (einfach)
     PLUS = auto()
