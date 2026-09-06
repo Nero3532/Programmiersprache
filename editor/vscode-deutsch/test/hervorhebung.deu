@@ -1,0 +1,92 @@
+# SYNTAX TEST "source.deutsch" "Hervorhebung"
+
+# ein Kommentar
+# <- comment.line.number-sign.deutsch
+
+sei zahl = 42
+# <- keyword.declaration.deutsch
+#   ^^^^ variable.other.definition.deutsch
+#          ^^ constant.numeric.integer.deutsch
+
+konstante PI = 3.14
+# <- keyword.declaration.deutsch
+#         ^^ variable.other.definition.deutsch
+#              ^^^^ constant.numeric.float.deutsch
+
+sei ja = wahr
+#        ^^^^ constant.language.boolean.deutsch
+
+sei leer = nichts
+#          ^^^^^^ constant.language.null.deutsch
+
+funktion verdopple(x) {
+# <- keyword.declaration.function.deutsch
+#        ^^^^^^^^^ entity.name.function.deutsch
+    zurück x * 2
+#   ^^^^^^ keyword.control.flow.deutsch
+#            ^ keyword.operator.arithmetic.deutsch
+}
+
+klasse Zaehler(Basis) {
+# <- keyword.declaration.class.deutsch
+#      ^^^^^^^ entity.name.type.class.deutsch
+    statisch funktion los() { zurück 0 }
+#   ^^^^^^^^ keyword.declaration.deutsch
+}
+
+sei k = neu Zaehler()
+#       ^^^ keyword.operator.new.deutsch
+#           ^^^^^^^ entity.name.type.deutsch
+
+wenn zahl > 3 und nicht ja {
+# <- keyword.control.conditional.deutsch
+#             ^^^ keyword.operator.logical.deutsch
+#                 ^^^^^ keyword.operator.logical.deutsch
+    drucke("Hallo")
+#   ^^^^^^ support.function.builtin.deutsch
+} sonst {
+    solange wahr { abbrechen }
+#   ^^^^^^^ keyword.control.loop.deutsch
+#                  ^^^^^^^^^ keyword.control.loop.deutsch
+}
+
+für i in bereich(10) {
+# <- keyword.control.loop.deutsch
+#     ^^ keyword.control.loop.deutsch
+#        ^^^^^^^ support.function.builtin.deutsch
+    versuche { werfe "x" } fange f { drucke(f) }
+#   ^^^^^^^^ keyword.control.exception.deutsch
+#              ^^^^^ keyword.control.exception.deutsch
+#                          ^^^^^ keyword.control.exception.deutsch
+}
+
+sei text = "Pi ist {PI:.2f} genau"
+#          ^ string.quoted.double.deutsch
+#                  ^ punctuation.definition.template-expression.begin.deutsch
+#                      ^ constant.other.format-spec.deutsch
+#                         ^ punctuation.definition.template-expression.end.deutsch
+
+sei roh = "Zeile\nZeile"
+#               ^^ constant.character.escape.deutsch
+
+funktion typisiert(a: Ganzzahl) -> Zeichenkette {
+#                     ^^^^^^^^ support.type.builtin.deutsch
+#                                  ^^^^^^^^^^^^ entity.name.type.deutsch
+    zurück "x"
+}
+
+sei liste = [1, 2]
+liste.anhaengen(3)
+#     ^^^^^^^^^ entity.name.function.method.deutsch
+sei laenge_davon = liste.laenge()
+#                        ^^^^^^ entity.name.function.method.deutsch
+
+klasse Punkt {
+    funktion __init__(dies, x) { dies.x = x }
+#                     ^^^^ variable.language.this.deutsch
+}
+
+lade "modul.deu" als m
+# <- keyword.control.import.deutsch
+#                ^^^ keyword.control.import.deutsch
+#                    ^ entity.name.namespace.deutsch

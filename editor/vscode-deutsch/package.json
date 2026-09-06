@@ -1,0 +1,86 @@
+{
+  "name": "deutsch-lang",
+  "displayName": "Deutsch",
+  "description": "Sprachunterstützung für die Programmiersprache Deutsch: Hervorhebung, Fehler, Vervollständigung, Navigation",
+  "version": "0.1.0",
+  "license": "GPL-3.0-or-later",
+  "publisher": "nero3532",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Nero3532/Programmiersprache.git",
+    "directory": "editor/vscode-deutsch"
+  },
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "main": "./src/extension.js",
+  "activationEvents": [
+    "onLanguage:deutsch"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "deutsch",
+        "aliases": [
+          "Deutsch",
+          "deutsch"
+        ],
+        "extensions": [
+          ".deu"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "deutsch",
+        "scopeName": "source.deutsch",
+        "path": "./syntaxes/deutsch.tmLanguage.json"
+      }
+    ],
+    "configuration": {
+      "title": "Deutsch",
+      "properties": {
+        "deutsch.serverBefehl": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "deutsch",
+            "--lsp"
+          ],
+          "markdownDescription": "Befehl, der den Language Server startet. Voreinstellung `deutsch --lsp` – das setzt `pip install -e .` im Projektverzeichnis voraus. Alternativ etwa `[\"python\", \"C:/Pfad/zu/main.py\", \"--lsp\"]`."
+        },
+        "deutsch.sprachserverAktiv": {
+          "type": "boolean",
+          "default": true,
+          "description": "Language Server starten (Fehleranzeige, Vervollständigung, Navigation). Ohne ihn bleibt die Syntaxhervorhebung erhalten."
+        },
+        "deutsch.ablaufverfolgung": {
+          "type": "string",
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
+          "default": "off",
+          "description": "Protokolliert den Austausch mit dem Language Server im Ausgabefenster."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "test": "vscode-tmgrammar-test -g syntaxes/deutsch.tmLanguage.json \"test/*.deu\"",
+    "pruefe-syntax": "node --check src/extension.js"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  },
+  "devDependencies": {
+    "vscode-tmgrammar-test": "^0.1.3"
+  }
+}

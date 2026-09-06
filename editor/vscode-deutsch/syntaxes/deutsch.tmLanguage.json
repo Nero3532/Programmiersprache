@@ -1,0 +1,272 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Deutsch",
+  "scopeName": "source.deutsch",
+  "patterns": [
+    { "include": "#kommentare" },
+    { "include": "#zeichenketten" },
+    { "include": "#definitionen" },
+    { "include": "#schluesselwoerter" },
+    { "include": "#konstanten" },
+    { "include": "#zahlen" },
+    { "include": "#typ-hinweise" },
+    { "include": "#aufrufe" },
+    { "include": "#operatoren" }
+  ],
+  "repository": {
+    "kommentare": {
+      "name": "comment.line.number-sign.deutsch",
+      "begin": "#",
+      "end": "$",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.comment.deutsch" }
+      }
+    },
+
+    "zeichenketten": {
+      "patterns": [
+        {
+          "name": "string.quoted.triple.double.deutsch",
+          "begin": "\"\"\"",
+          "end": "\"\"\"",
+          "patterns": [
+            { "include": "#escape" },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "string.quoted.triple.single.deutsch",
+          "begin": "'''",
+          "end": "'''",
+          "patterns": [
+            { "include": "#escape" },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "string.quoted.double.deutsch",
+          "begin": "\"",
+          "end": "\"",
+          "patterns": [
+            { "include": "#escape" },
+            { "include": "#interpolation" }
+          ]
+        },
+        {
+          "name": "string.quoted.single.deutsch",
+          "begin": "'",
+          "end": "'",
+          "patterns": [
+            { "include": "#escape" },
+            { "include": "#interpolation" }
+          ]
+        }
+      ]
+    },
+
+    "escape": {
+      "name": "constant.character.escape.deutsch",
+      "match": "\\\\."
+    },
+
+    "interpolation": {
+      "name": "meta.embedded.expression.deutsch",
+      "begin": "\\{",
+      "end": "\\}",
+      "beginCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.begin.deutsch" }
+      },
+      "endCaptures": {
+        "0": { "name": "punctuation.definition.template-expression.end.deutsch" }
+      },
+      "patterns": [
+        { "include": "#format-spezifizierer" },
+        { "include": "#zahlen" },
+        { "include": "#konstanten" },
+        { "include": "#schluesselwoerter" },
+        { "include": "#aufrufe" },
+        { "include": "#operatoren" }
+      ]
+    },
+
+    "format-spezifizierer": {
+      "name": "constant.other.format-spec.deutsch",
+      "match": ":[^{}\"']*(?=\\})"
+    },
+
+    "definitionen": {
+      "patterns": [
+        {
+          "match": "\\b(funktion)\\s+([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.function.deutsch" },
+            "2": { "name": "entity.name.function.deutsch" }
+          }
+        },
+        {
+          "match": "\\b(klasse)\\s+([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.class.deutsch" },
+            "2": { "name": "entity.name.type.class.deutsch" }
+          }
+        },
+        {
+          "match": "\\b(neu)\\s+([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_.]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.new.deutsch" },
+            "2": { "name": "entity.name.type.deutsch" }
+          }
+        },
+        {
+          "match": "\\b(lade)\\b(?:.*\\b(als)\\s+([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*))?",
+          "captures": {
+            "1": { "name": "keyword.control.import.deutsch" },
+            "2": { "name": "keyword.control.import.deutsch" },
+            "3": { "name": "entity.name.namespace.deutsch" }
+          }
+        },
+        {
+          "match": "\\b(sei|konstante)\\s+([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.declaration.deutsch" },
+            "2": { "name": "variable.other.definition.deutsch" }
+          }
+        }
+      ]
+    },
+
+    "schluesselwoerter": {
+      "patterns": [
+        {
+          "name": "keyword.control.conditional.deutsch",
+          "match": "\\b(wenn|sonst|passe|fall)\\b"
+        },
+        {
+          "name": "keyword.control.loop.deutsch",
+          "match": "\\b(solange|für|fuer|in|abbrechen|weiter)\\b"
+        },
+        {
+          "name": "keyword.control.flow.deutsch",
+          "match": "\\b(zurück|zurueck)\\b"
+        },
+        {
+          "name": "keyword.control.exception.deutsch",
+          "match": "\\b(versuche|fange|endlich|werfe|pruefe)\\b"
+        },
+        {
+          "name": "keyword.declaration.deutsch",
+          "match": "\\b(sei|konstante|funktion|klasse|statisch|neu|lade|als)\\b"
+        },
+        {
+          "name": "keyword.operator.logical.deutsch",
+          "match": "\\b(und|oder|nicht)\\b"
+        },
+        {
+          "name": "variable.language.this.deutsch",
+          "match": "\\bdies\\b"
+        }
+      ]
+    },
+
+    "konstanten": {
+      "patterns": [
+        {
+          "name": "constant.language.boolean.deutsch",
+          "match": "\\b(wahr|falsch)\\b"
+        },
+        {
+          "name": "constant.language.null.deutsch",
+          "match": "\\bnichts\\b"
+        },
+        {
+          "name": "support.constant.builtin.deutsch",
+          "match": "\\b(pi|e)\\b(?!\\s*\\()"
+        }
+      ]
+    },
+
+    "zahlen": {
+      "patterns": [
+        {
+          "name": "constant.numeric.float.deutsch",
+          "match": "\\b\\d+\\.\\d+([eE][+-]?\\d+)?\\b"
+        },
+        {
+          "name": "constant.numeric.float.deutsch",
+          "match": "\\b\\d+[eE][+-]?\\d+\\b"
+        },
+        {
+          "name": "constant.numeric.integer.deutsch",
+          "match": "\\b\\d+\\b"
+        }
+      ]
+    },
+
+    "typ-hinweise": {
+      "patterns": [
+        {
+          "match": "(->)\\s*([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)",
+          "captures": {
+            "1": { "name": "keyword.operator.arrow.deutsch" },
+            "2": { "name": "entity.name.type.deutsch" }
+          }
+        },
+        {
+          "match": "(:)\\s*(Ganzzahl|Kommazahl|Zeichenkette|Wahrheitswert|Liste|Woerterbuch|Wörterbuch|Menge|Nichts|Funktion)\\b",
+          "captures": {
+            "1": { "name": "punctuation.separator.type.deutsch" },
+            "2": { "name": "support.type.builtin.deutsch" }
+          }
+        }
+      ]
+    },
+
+    "aufrufe": {
+      "patterns": [
+        {
+          "name": "support.function.builtin.deutsch",
+          "match": "\\b(drucke|eingabe|laenge|länge|typ|ganzzahl|kommazahl|zeichenkette|wahrheitswert|bereich|sortiere|anhaengen|anhängen|entferne|umkehren|verbinde|max|min|abs|runde|liste|woerterbuch|wörterbuch|menge|wurzel|sinus|kosinus|tangens|logarithmus|exponential|boden|decke|ggt|kgv|vorzeichen|zufall|zufallszahl|mische|summe|alle|einige|aufzaehlen|zippe|datei_lesen|datei_schreiben|datei_anhaengen|datei_anhängen|json_lesen|json_schreiben|passt_zu|regex_ersetze|regex_finde_alle|regex_finde|mittelwert|median|stdabweichung|jetzt|datum_formatieren|tiefe_kopie|hash_sha256|base64_kodieren|base64_dekodieren|pfad_existiert|dateien_auflisten|ordner_erstellen|kommandozeilen_argumente|umgebungsvariable)\\b(?=\\s*\\()"
+        },
+        {
+          "match": "(\\.)([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)(?=\\s*\\()",
+          "captures": {
+            "1": { "name": "punctuation.accessor.deutsch" },
+            "2": { "name": "entity.name.function.method.deutsch" }
+          }
+        },
+        {
+          "name": "entity.name.function.call.deutsch",
+          "match": "\\b[A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*\\b(?=\\s*\\()"
+        },
+        {
+          "match": "(\\.)([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)",
+          "captures": {
+            "1": { "name": "punctuation.accessor.deutsch" },
+            "2": { "name": "variable.other.property.deutsch" }
+          }
+        }
+      ]
+    },
+
+    "operatoren": {
+      "patterns": [
+        {
+          "name": "keyword.operator.assignment.compound.deutsch",
+          "match": "(\\*\\*=|//=|\\+=|-=|\\*=|/=|%=)"
+        },
+        {
+          "name": "keyword.operator.comparison.deutsch",
+          "match": "(==|!=|<=|>=|<|>)"
+        },
+        {
+          "name": "keyword.operator.arithmetic.deutsch",
+          "match": "(\\*\\*|//|\\+|-|\\*|/|%)"
+        },
+        {
+          "name": "keyword.operator.assignment.deutsch",
+          "match": "="
+        }
+      ]
+    }
+  }
+}

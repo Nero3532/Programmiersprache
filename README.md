@@ -268,6 +268,25 @@ Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`li
 `dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)
 für eine vollständige Demonstration.
 
+## Editor-Unterstützung
+
+```
+python main.py --lsp        # Language Server (LSP über stdio)
+```
+
+Der Language Server liefert Syntaxfehler als Inline-Diagnosen, eine Gliederung mit Klassen und
+Methoden, kontextabhängige Vervollständigung (nach einem `.` nur Methoden), Kurzinfos zu
+eingebauten Funktionen und Sprung zur Definition. Er wertet den Code nur syntaktisch aus und
+führt ihn nie aus.
+
+Unter [editor/](editor/) liegen zwei Grammatiken für die Syntaxhervorhebung:
+
+- [`vscode-deutsch/`](editor/vscode-deutsch) — VS-Code-Erweiterung (TextMate-Grammatik plus
+  Anbindung des Language Servers). Ausprobieren mit
+  `cd editor/vscode-deutsch && npm install && code --extensionDevelopmentPath=.`
+- [`tree-sitter-deutsch/`](editor/tree-sitter-deutsch) — tree-sitter-Grammatik für Neovim,
+  Helix, Zed, Emacs und GitHub, samt Abfragen für Hervorhebung, Faltung und Geltungsbereiche.
+
 ## Bekannte Einschränkungen
 
 - Kein Bytecode-Compiler — reiner Baum-Interpreter (bewusste Design-Entscheidung, siehe unten).
