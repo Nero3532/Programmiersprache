@@ -40,6 +40,7 @@ class TokenTyp(Enum):
     KONSTANTE = auto()    # const
     STATISCH = auto()     # static
     ALS = auto()          # as (lade ... als)
+    ERGIBT = auto()       # yield
 
     # Operatoren (einfach)
     PLUS = auto()

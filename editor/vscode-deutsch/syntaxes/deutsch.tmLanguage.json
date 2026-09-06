@@ -148,7 +148,7 @@
         },
         {
           "name": "keyword.control.flow.deutsch",
-          "match": "\\b(zurück|zurueck)\\b"
+          "match": "\\b(zurück|zurueck|ergibt)\\b"
         },
         {
           "name": "keyword.control.exception.deutsch",

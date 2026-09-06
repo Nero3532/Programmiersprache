@@ -99,3 +99,26 @@ für [i, wert] in aufzaehlen(liste) { drucke(i) }
     variable: (namensliste (bezeichner) (bezeichner))
     iterable: (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner))))
     koerper: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner))))))))
+
+==================
+Generator mit ergibt
+==================
+
+funktion zaehle(bis) {
+    für i in bereich(bis) { ergibt i }
+}
+
+---
+
+(quelldatei
+  (funktion_definition
+    name: (bezeichner)
+    parameter: (parameterliste (parameter name: (bezeichner)))
+    koerper: (block
+      (fuer_anweisung
+        variable: (bezeichner)
+        iterable: (aufruf
+          funktion: (bezeichner)
+          argumente: (argumentliste (argument (bezeichner))))
+        koerper: (block
+          (ergibt_anweisung wert: (bezeichner)))))))

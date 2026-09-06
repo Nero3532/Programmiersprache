@@ -213,15 +213,22 @@ class FuerAnweisung(Knoten):
 
 class FunktionDefinition(Knoten):
     """
-    parameter: [(name, default_expr|None, is_variadic), ...]
-    typhinweis: str | None  (Rückgabetyp, ignoriert zur Laufzeit)
+    parameter: [(name, default_expr|None, is_variadic, typhinweis), ...]
+    typhinweis: str | None  (Rückgabetyp, zur Laufzeit geprüft)
+    ist_generator: enthält der Körper ein 'ergibt'? Dann liefert der Aufruf einen Generator.
     """
-    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis')
-    def __init__(self, name, parameter, koerper, typhinweis=None):
+    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'ist_generator')
+    def __init__(self, name, parameter, koerper, typhinweis=None, ist_generator=False):
         self.name = name
         self.parameter = parameter
         self.koerper = koerper
         self.typhinweis = typhinweis
+        self.ist_generator = ist_generator
+
+class ErgibtAnweisung(Knoten):
+    """'ergibt wert' – reicht einen Wert an den Durchlaufenden weiter."""
+    __slots__ = ('wert',)
+    def __init__(self, wert): self.wert = wert
 
 class ZurueckAnweisung(Knoten):
     __slots__ = ('wert',)

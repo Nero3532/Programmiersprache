@@ -34,6 +34,7 @@ SCHLUESSELWOERTER = {
     'konstante': TokenTyp.KONSTANTE,
     'statisch':  TokenTyp.STATISCH,
     'als':       TokenTyp.ALS,
+    'ergibt':    TokenTyp.ERGIBT,
 }
 
 _ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\',

@@ -41,6 +41,7 @@ module.exports = grammar({
     [$.zuweisung, $.ternaer_ausdruck],
     [$.verbund_zuweisung, $.ternaer_ausdruck],
     [$.werfe_anweisung, $.ternaer_ausdruck],
+    [$.ergibt_anweisung, $.ternaer_ausdruck],
   ],
 
   rules: {
@@ -62,6 +63,7 @@ module.exports = grammar({
       $.passe_anweisung,
       $.versuche_anweisung,
       $.zurueck_anweisung,
+      $.ergibt_anweisung,
       $.werfe_anweisung,
       $.pruefe_anweisung,
       $.lade_anweisung,
@@ -198,6 +200,8 @@ module.exports = grammar({
       choice('zurück', 'zurueck'),
       optional($._ausdruck),
     )),
+
+    ergibt_anweisung: $ => seq('ergibt', field('wert', $._ausdruck)),
 
     werfe_anweisung: $ => seq('werfe', $._ausdruck),
 

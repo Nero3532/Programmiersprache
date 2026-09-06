@@ -41,6 +41,8 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.pos = 0
+        # Ein Eintrag je gerade geparster Funktion: enthielt sie ein 'ergibt'?
+        self._ergibt_gesehen: list[bool] = []
 
     # ---------------------------------------------------------------- Hilfsm.
 
@@ -110,6 +112,7 @@ class Parser:
         elif typ == TokenTyp.FUNKTION:  anw = self._funktion_definition()
         elif typ == TokenTyp.KLASSE:    anw = self._klassen_definition()
         elif typ == TokenTyp.ZURUECK:   anw = self._zurueck_anweisung()
+        elif typ == TokenTyp.ERGIBT:    anw = self._ergibt_anweisung()
         elif typ == TokenTyp.VERSUCHE:  anw = self._versuche_anweisung()
         elif typ == TokenTyp.LADE:      anw = self._lade_anweisung()
         elif typ == TokenTyp.PASSE:     anw = self._passe_anweisung()
@@ -227,8 +230,10 @@ class Parser:
             self.pos += 1
             typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
 
+        self._ergibt_gesehen.append(False)
         koerper = self._block()
-        return ast.FunktionDefinition(name, parameter, koerper, typhinweis)
+        ist_generator = self._ergibt_gesehen.pop()
+        return ast.FunktionDefinition(name, parameter, koerper, typhinweis, ist_generator)
 
     def _klassen_definition(self):
         self._verbrauche(TokenTyp.KLASSE)
@@ -330,6 +335,13 @@ class Parser:
         ):
             return ast.ZurueckAnweisung(ast.Nichts())
         return ast.ZurueckAnweisung(self._ausdruck())
+
+    def _ergibt_anweisung(self):
+        self._verbrauche(TokenTyp.ERGIBT)
+        if not self._ergibt_gesehen:
+            self._fehler("'ergibt' ist nur innerhalb einer Funktion erlaubt")
+        self._ergibt_gesehen[-1] = True
+        return ast.ErgibtAnweisung(self._ausdruck())
 
     def _werfe_anweisung(self):
         self._verbrauche(TokenTyp.WERFE)

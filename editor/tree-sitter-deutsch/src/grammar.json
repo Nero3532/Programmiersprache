@@ -75,6 +75,10 @@
         },
         {
           "type": "SYMBOL",
+          "name": "ergibt_anweisung"
+        },
+        {
+          "type": "SYMBOL",
           "name": "werfe_anweisung"
         },
         {
@@ -1066,6 +1070,23 @@
           }
         ]
       }
+    },
+    "ergibt_anweisung": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "ergibt"
+        },
+        {
+          "type": "FIELD",
+          "name": "wert",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ausdruck"
+          }
+        }
+      ]
     },
     "werfe_anweisung": {
       "type": "SEQ",
@@ -3160,6 +3181,10 @@
     ],
     [
       "werfe_anweisung",
+      "ternaer_ausdruck"
+    ],
+    [
+      "ergibt_anweisung",
       "ternaer_ausdruck"
     ]
   ],
