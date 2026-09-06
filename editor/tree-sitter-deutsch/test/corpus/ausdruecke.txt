@@ -9,7 +9,7 @@ Vorrang: Potenz bindet staerker als unaeres Minus
 (quelldatei
   (ausdrucks_anweisung
     (unaere_operation
-      operand: (binaere_operation links: (ganzzahl) operator: (ganzzahl)))))
+      operand: (binaere_operation links: (ganzzahl) rechts: (ganzzahl)))))
 
 ==================
 Zeichenkette mit Interpolation und Formatangabe
