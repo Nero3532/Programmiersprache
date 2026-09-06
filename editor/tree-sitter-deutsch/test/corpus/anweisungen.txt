@@ -94,7 +94,7 @@ für [i, wert] in aufzaehlen(liste) { drucke(i) }
       sonst: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl))))))))
   (solange_anweisung
     bedingung: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
-    koerper: (block (verbund_zuweisung ziel: (bezeichner) operator: (ganzzahl))))
+    koerper: (block (verbund_zuweisung ziel: (bezeichner) wert: (ganzzahl))))
   (fuer_anweisung
     variable: (namensliste (bezeichner) (bezeichner))
     iterable: (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner))))
