@@ -72,11 +72,14 @@ Listen-Abstraktion mit Filter
   (ausdrucks_anweisung
     (listen_abstraktion
       ausdruck: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
-      variable: (bezeichner)
-      iterable: (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl))))
-      bedingung: (binaere_operation
-        links: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
-        rechts: (ganzzahl)))))
+      (abstraktions_klausel
+        variable: (bezeichner)
+        iterable: (aufruf
+          funktion: (bezeichner)
+          argumente: (argumentliste (argument (ganzzahl))))
+        bedingung: (binaere_operation
+          links: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
+          rechts: (ganzzahl))))))
 
 ==================
 Ternaer gegen Folgeanweisung: 'wenn' nach einem Ausdruck
