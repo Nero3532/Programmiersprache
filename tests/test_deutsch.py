@@ -250,6 +250,101 @@ class TestFehlermeldungen(unittest.TestCase):
         self.assertEqual(ergebnis, 1.0e10)
 
 
+class TestEingebauteMethodenArity(unittest.TestCase):
+    """Falsche Argumentanzahl bei eingebauten Instanzmethoden muss eine deutsche
+    Meldung liefern statt Pythons '<lambda>() missing 1 required positional argument'."""
+
+    def _meldung(self, code: str) -> str:
+        with self.assertRaises(TypeError) as ctx:
+            lauf(code)
+        text = str(ctx.exception)
+        self.assertNotIn('lambda', text)
+        self.assertNotIn('positional argument', text)
+        self.assertNotIn('Interpreter.', text)
+        return text
+
+    def test_zu_wenige_argumente(self):
+        self.assertIn("'Liste.einfuegen' erwartet 2 Argument(e), bekam 1",
+                      self._meldung('[1,2].einfuegen(0)'))
+
+    def test_zu_viele_argumente(self):
+        self.assertIn("'Liste.laenge' erwartet 0 Argument(e), bekam 1",
+                      self._meldung('[1].laenge(9)'))
+
+    def test_optionale_argumente_als_bereich(self):
+        self.assertIn("'Wörterbuch.hole' erwartet 1–2 Argument(e), bekam 3",
+                      self._meldung('{"a": 1}.hole("a", 2, 3)'))
+
+    def test_zeichenkette_und_menge(self):
+        self.assertIn("'Zeichenkette.ersetze' erwartet 2", self._meldung('"ab".ersetze("a")'))
+        self.assertIn("'Menge.vereinigung' erwartet 1", self._meldung('{1}.vereinigung()'))
+
+    def test_optionale_argumente_funktionieren_weiter(self):
+        self.assertEqual(lauf('"a,b".teile(",")')[0], ['a', 'b'])
+        self.assertEqual(lauf('"a b".teile()')[0], ['a', 'b'])
+        self.assertEqual(lauf('{"a": 1}.hole("a")')[0], 1)
+        self.assertEqual(lauf('{"a": 1}.hole("z", "ersatz")')[0], 'ersatz')
+        self.assertEqual(lauf('sei l = [1,2,3]; l.entferne()')[0], 3)
+        self.assertEqual(lauf('sei l = [1,2,3]; l.entferne(0)')[0], 1)
+
+
+class TestKeineRohenPythonMeldungen(unittest.TestCase):
+    """Laufzeitfehler dürfen keine englischen Python-Originalmeldungen durchreichen."""
+
+    ROH = ('object ', 'must be', 'not iterable', 'could not convert', 'invalid literal',
+           'unsupported operand', 'division by zero', 'unhashable', 'Errno', 'lambda')
+
+    def _pruefe(self, code: str, erwartet: str):
+        with self.assertRaises(Exception) as ctx:
+            lauf(code)
+        text = str(ctx.exception)
+        for roh in self.ROH:
+            self.assertNotIn(roh, text, f'Rohe Python-Meldung in {code!r}: {text}')
+        self.assertIn(erwartet, text)
+
+    def test_unaeres_minus_auf_zeichenkette(self):
+        self._pruefe('-"a"', "Operator '-' nicht unterstützt für Zeichenkette")
+
+    def test_modulo_durch_null(self):
+        self._pruefe('5 % 0', 'Modulo durch Null')
+
+    def test_null_hoch_negativ(self):
+        self._pruefe('0 ** (0-1)', 'negativem Exponenten')
+
+    def test_slice_schrittweite_null(self):
+        self._pruefe('[1,2][::0]', 'Slice-Schrittweite darf nicht 0 sein')
+
+    def test_unhashbarer_woerterbuch_schluessel(self):
+        self._pruefe('sei d = {[1]: 2}', 'hashbar')
+
+    def test_nicht_iterierbar_in_schleife(self):
+        self._pruefe('für x in 5 { }', 'Iterierbares')
+
+    def test_nicht_iterierbar_in_comprehension(self):
+        self._pruefe('[x für x in 5]', 'Iterierbares')
+
+    def test_zahl_aus_ungueltiger_zeichenkette(self):
+        self._pruefe('"5x".zahl()', "Kann '5x' nicht in eine Zahl umwandeln")
+
+    def test_lade_datei_fehlt(self):
+        self._pruefe('lade "gibt_es_wirklich_nicht.deu"', 'Datei zum Laden nicht gefunden')
+
+    def test_zahl_argumente_werden_geprueft(self):
+        self._pruefe('abs("a")', "'abs' erwartet eine Zahl")
+        self._pruefe('runde("a")', "'runde' erwartet eine Zahl")
+        self._pruefe('bereich("a")', "'bereich' erwartet eine Ganzzahl")
+        self._pruefe('"a".wiederhole("x")', "'wiederhole' erwartet eine Ganzzahl")
+
+    def test_entferne_auf_leerer_liste(self):
+        self._pruefe('entferne([])', 'leeren Liste')
+
+    def test_max_mit_gemischten_typen(self):
+        self._pruefe('max([1, "a"])', 'gemischter Typen')
+
+    def test_zeichenkette_ist_unveraenderlich(self):
+        self._pruefe('sei s = "abc"; s[0] = "x"', 'unveränderlich')
+
+
 class TestStacktrace(unittest.TestCase):
     def test_aufruf_stack_wird_gefuellt_bei_unbehandeltem_fehler(self):
         interpreter = Interpreter()
@@ -503,8 +598,16 @@ class TestDatumZeit(unittest.TestCase):
         self.assertEqual(ergebnis, '1970')
 
     def test_ungueltiger_zeitstempel_wirft_fehler(self):
-        with self.assertRaises(ValueError):
+        # Falscher Typ -> TypeError (wie bei 'wurzel'/'boden'), deutsche Meldung
+        with self.assertRaises(TypeError) as ctx:
             lauf('datum_formatieren("keine_zahl", "%Y")')
+        self.assertIn('erwartet eine Zahl', str(ctx.exception))
+        self.assertIn('Zeichenkette', str(ctx.exception))
+
+    def test_zeitstempel_ausserhalb_des_bereichs_wirft_wertfehler(self):
+        with self.assertRaises(ValueError) as ctx:
+            lauf('datum_formatieren(1e30, "%Y")')
+        self.assertIn('Ungültiger Zeitstempel', str(ctx.exception))
 
 
 class TestIndexUndZaehlen(unittest.TestCase):

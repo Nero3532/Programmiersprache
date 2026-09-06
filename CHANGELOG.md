@@ -4,6 +4,30 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Behoben
+- Eingebaute Instanzmethoden von Liste/Zeichenkette/Wörterbuch/Menge prüfen ihre Argumentanzahl
+  selbst. Vorher zeigte ein falscher Aufruf Python-Interna
+  (`Interpreter._listen_methoden_aufbauen.<locals>.<lambda>() missing 1 required positional
+  argument: 'wert'`), jetzt z. B. `'Liste.einfuegen' erwartet 2 Argument(e), bekam 1`.
+- Keine rohen englischen Python-Meldungen mehr bei: unärem `-` auf Nicht-Zahlen, `%` und `**`
+  durch Null, Slice-Schrittweite `0`, unhashbaren Wörterbuch-Schlüsseln und Mengen-Elementen,
+  `für`/List-Comprehension über nicht-iterierbare Werte, `lade` auf fehlende/unlesbare Dateien,
+  `json_schreiben` in ein fehlendes Verzeichnis, `zahl()` auf ungültigen Zeichenketten sowie
+  Typfehlern in `abs`, `runde`, `bereich`, `aufzaehlen`, `logarithmus`, `max`/`min`, `entferne`,
+  `teile`, `ersetze`, `wiederhole`, `beginnt_mit`/`endet_mit`, `enthält` und `hole`.
+- `entferne` auf einer leeren Liste und mit ungültigem Index meldet dies auf Deutsch statt
+  `pop from empty list` bzw. `pop index out of range`.
+- Index-Zuweisung auf eine Zeichenkette meldet jetzt `Zeichenketten sind unveränderlich` statt
+  irreführend `Ungültiger Index-Typ`.
+- 19 neue Regressionstests (168 gesamt).
+
+### Geändert
+- `datum_formatieren` mit einem Zeitstempel falschen Typs wirft `TypeError` statt `ValueError`
+  (konsistent mit `wurzel`, `sinus`, `boden`); ein numerischer Zeitstempel außerhalb des gültigen
+  Bereichs wirft weiterhin `ValueError`.
+- `bereich` und `aufzaehlen` akzeptieren keine Zahlen mehr in Zeichenketten-Form
+  (`bereich("5")`) – Argumente müssen Zahlen sein.
+
 ## [2.7.0]
 
 ### Hinzugefügt

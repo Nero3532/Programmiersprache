@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import os
 import math
-import functools
+import inspect
 import random
 import json
 import re
@@ -94,6 +94,75 @@ class DeutschNamensraum:
 
 
 _NICHT_GEFUNDEN = object()
+
+# Markiert ein nicht übergebenes optionales Argument einer eingebauten Instanzmethode.
+_OHNE_WERT = object()
+
+
+def _arity_ermitteln(fn):
+    """Erlaubte Argumentanzahl einer Methoden-Implementierung ohne das führende 'obj'.
+
+    Gibt (min, max) zurück; max ist None bei *args."""
+    parameter = list(inspect.signature(fn).parameters.values())[1:]
+    minimum = maximum = 0
+    for p in parameter:
+        if p.kind is inspect.Parameter.VAR_POSITIONAL:
+            return minimum, None
+        if p.default is inspect.Parameter.empty:
+            minimum += 1
+        maximum += 1
+    return minimum, maximum
+
+
+class _EingebauteMethode:
+    """Eingebaute Instanzmethode von Liste/Zeichenkette/Wörterbuch/Menge.
+
+    Prüft die Argumentanzahl selbst, damit ein falscher Aufruf eine deutsche Meldung
+    liefert statt Pythons roher '<lambda>() missing 1 required positional argument'."""
+    __slots__ = ('name', 'typname', 'fn', 'min_args', 'max_args')
+
+    def __init__(self, name: str, typname: str, fn):
+        self.name = name
+        self.typname = typname
+        self.fn = fn
+        self.min_args, self.max_args = _arity_ermitteln(fn)
+
+    def _erwartet_text(self) -> str:
+        if self.max_args is None:
+            return f'mindestens {self.min_args}'
+        if self.min_args == self.max_args:
+            return str(self.min_args)
+        return f'{self.min_args}–{self.max_args}'
+
+    def binden(self, obj):
+        return _GebundeneEingebauteMethode(self, obj)
+
+    def argumentfehler(self, anzahl):
+        return TypeError(
+            f"'{self.typname}.{self.name}' erwartet {self._erwartet_text()} "
+            f'Argument(e), bekam {anzahl}'
+        )
+
+    def __repr__(self):
+        return f'<Methode {self.typname}.{self.name}>'
+
+
+class _GebundeneEingebauteMethode:
+    """An ihr Objekt gebundene eingebaute Methode – prüft beim Aufruf die Argumentanzahl."""
+    __slots__ = ('methode', 'obj')
+
+    def __init__(self, methode: _EingebauteMethode, obj):
+        self.methode = methode
+        self.obj = obj
+
+    def __call__(self, *args):
+        m = self.methode
+        if len(args) < m.min_args or (m.max_args is not None and len(args) > m.max_args):
+            raise m.argumentfehler(len(args))
+        return m.fn(self.obj, *args)
+
+    def __repr__(self):
+        return repr(self.methode)
 
 
 class DeutschKlasse:
@@ -194,15 +263,23 @@ class Interpreter:
     # Eingebaute Instanz-Methoden für Liste/Zeichenkette/Wörterbuch/Menge werden hier
     # EINMAL aufgebaut (statt bei jedem .attribut-Zugriff neu) – jede Funktion nimmt
     # 'obj' als expliziten ersten Parameter statt ihn per Closure einzufangen, damit
-    # dieselbe Funktion für jede Instanz per functools.partial(fn, obj) wiederverwendet wird.
+    # dieselbe Funktion für jede Instanz wiederverwendet und beim Zugriff nur noch
+    # gebunden wird (siehe _EingebauteMethode.binden).
+    # _methoden_registrieren liest die erlaubte Argumentanzahl aus der Signatur ab,
+    # damit falsche Aufrufe eine deutsche Meldung statt Python-Interna liefern –
+    # optionale Argumente deshalb als echte Defaults schreiben, nicht als *args.
+
+    @staticmethod
+    def _methoden_registrieren(typname: str, methoden: dict) -> dict:
+        return {name: _EingebauteMethode(name, typname, fn) for name, fn in methoden.items()}
 
     def _listen_methoden_aufbauen(self):
-        return {
-            'anhaengen': lambda obj, *a: (obj.append(a[0]), None)[1],
-            'anhängen':  lambda obj, *a: (obj.append(a[0]), None)[1],
+        return self._methoden_registrieren('Liste', {
+            'anhaengen': lambda obj, x: (obj.append(x), None)[1],
+            'anhängen':  lambda obj, x: (obj.append(x), None)[1],
             'laenge':    lambda obj: len(obj),
             'länge':     lambda obj: len(obj),
-            'entferne':  lambda obj, *a: obj.pop(int(a[0])) if a else obj.pop(),
+            'entferne':  lambda obj, index=_OHNE_WERT: self._liste_entferne(obj, index),
             'enthält':   lambda obj, x: x in obj,
             'umkehren':  lambda obj: (obj.reverse(), None)[1],
             'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
@@ -214,54 +291,54 @@ class Interpreter:
             'zaehle':    lambda obj, x: self._zaehle(obj, x, 'Liste'),
             'einfuegen': lambda obj, index, wert: self._liste_einfuegen(obj, index, wert),
             'erweitere': lambda obj, andere: self._liste_erweitere(obj, andere),
-        }
+        })
 
     def _string_methoden_aufbauen(self):
-        return {
+        return self._methoden_registrieren('Zeichenkette', {
             'gross':         lambda obj: obj.upper(),
             'groß':          lambda obj: obj.upper(),
             'klein':         lambda obj: obj.lower(),
             'laenge':        lambda obj: len(obj),
             'länge':         lambda obj: len(obj),
-            'teile':         lambda obj, *a: obj.split(a[0]) if a else obj.split(),
-            'enthält':       lambda obj, x: x in obj,
-            'ersetze':       lambda obj, alt, neu: obj.replace(alt, neu),
+            'teile':         lambda obj, trenner=_OHNE_WERT: self._string_teile(obj, trenner),
+            'enthält':       lambda obj, x: self._string_enthaelt(obj, x),
+            'ersetze':       lambda obj, alt, neu: self._string_ersetze(obj, alt, neu),
             'trimmen':       lambda obj: obj.strip(),
             'links_trimmen': lambda obj: obj.lstrip(),
             'rechts_trimmen':lambda obj: obj.rstrip(),
-            'beginnt_mit':   lambda obj, x: obj.startswith(x),
-            'endet_mit':     lambda obj, x: obj.endswith(x),
+            'beginnt_mit':   lambda obj, x: self._string_praefix(obj, x, 'beginnt_mit'),
+            'endet_mit':     lambda obj, x: self._string_praefix(obj, x, 'endet_mit'),
             'grossschreibe': lambda obj: obj.capitalize(),
             'großschreibe':  lambda obj: obj.capitalize(),
             'zeichen':       lambda obj: list(obj),
-            'wiederhole':    lambda obj, n: obj * int(n),
-            'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
+            'wiederhole':    lambda obj, n: self._string_wiederhole(obj, n),
+            'zahl':          lambda obj: self._string_zahl(obj),
             'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
             'zaehle':        lambda obj, x: self._zaehle(obj, x, 'Zeichenkette'),
             'ist_ziffer':    lambda obj: obj.isdigit(),
             'ist_buchstabe': lambda obj: obj.isalpha(),
             'ist_leerraum':  lambda obj: obj.isspace(),
-        }
+        })
 
     def _woerterbuch_methoden_aufbauen(self):
-        return {
+        return self._methoden_registrieren('Wörterbuch', {
             'schluessel': lambda obj: list(obj.keys()),
             'schlüssel':  lambda obj: list(obj.keys()),
             'werte':      lambda obj: list(obj.values()),
             'paare':      lambda obj: [[k, v] for k, v in obj.items()],
-            'enthält':    lambda obj, x: x in obj,
+            'enthält':    lambda obj, x: self._enthaelt_hashbar(obj, x, 'Wörterbuch'),
             'entferne':   lambda obj, x: self._woerterbuch_entferne(obj, x),
             'laenge':     lambda obj: len(obj),
             'länge':      lambda obj: len(obj),
-            'hole':       lambda obj, k, *d: obj.get(k, d[0] if d else None),
+            'hole':       lambda obj, schluessel, standard=None: self._woerterbuch_hole(obj, schluessel, standard),
             'kopiere':    lambda obj: dict(obj),
-        }
+        })
 
     def _menge_methoden_aufbauen(self):
-        return {
+        return self._methoden_registrieren('Menge', {
             'laenge':       lambda obj: len(obj),
             'länge':        lambda obj: len(obj),
-            'enthält':      lambda obj, x: x in obj,
+            'enthält':      lambda obj, x: self._enthaelt_hashbar(obj, x, 'Menge'),
             'hinzufuegen':  lambda obj, x: self._menge_hinzufuegen(obj, x),
             'hinzufügen':   lambda obj, x: self._menge_hinzufuegen(obj, x),
             'entferne':     lambda obj, x: self._menge_entfernen(obj, x),
@@ -272,7 +349,7 @@ class Interpreter:
             'teilmenge_von':          lambda obj, andere: self._menge_op(obj, andere, 'teilmenge_von', lambda a, b: a <= b),
             'obermenge_von':          lambda obj, andere: self._menge_op(obj, andere, 'obermenge_von', lambda a, b: a >= b),
             'symmetrische_differenz': lambda obj, andere: self._menge_op(obj, andere, 'symmetrische_differenz', lambda a, b: a ^ b),
-        }
+        })
 
     # ---------------------------------------------------------- Eingebaute
 
@@ -392,10 +469,12 @@ class Interpreter:
         return self._ist_wahr(args[0])
 
     def _eb_bereich(self, *args):
-        if len(args) == 1:   return list(range(int(args[0])))
-        if len(args) == 2:   return list(range(int(args[0]), int(args[1])))
-        if len(args) == 3:   return list(range(int(args[0]), int(args[1]), int(args[2])))
-        raise TypeError("'bereich' erwartet 1–3 Argumente")
+        if not 1 <= len(args) <= 3:
+            raise TypeError("'bereich' erwartet 1–3 Argumente")
+        grenzen = [self._ganzzahl_pruefen(a, 'bereich') for a in args]
+        if len(grenzen) == 3 and grenzen[2] == 0:
+            raise ValueError("'bereich' erwartet eine Schrittweite ungleich 0")
+        return list(range(*grenzen))
 
     def _eb_sortiere(self, *args):
         self._pruefe_args('sortiere', args, 1)
@@ -442,6 +521,74 @@ class Interpreter:
         obj.extend(andere)
         return None
 
+    def _liste_entferne(self, obj, index):
+        if not obj:
+            raise IndexError("'entferne' auf einer leeren Liste nicht möglich")
+        if index is _OHNE_WERT:
+            return obj.pop()
+        try:
+            i = int(index)
+        except (ValueError, TypeError):
+            raise TypeError(f"'entferne' erwartet einen Ganzzahl-Index, bekam {self._typname(index)}")
+        try:
+            return obj.pop(i)
+        except IndexError:
+            raise IndexError(f'Index {i} ist außerhalb des Bereichs')
+
+    def _string_teile(self, obj, trenner):
+        if trenner is _OHNE_WERT:
+            return obj.split()
+        if not isinstance(trenner, str):
+            raise TypeError(f"'teile' erwartet eine Zeichenkette als Trenner, bekam {self._typname(trenner)}")
+        if not trenner:
+            raise ValueError("'teile' erwartet einen nicht-leeren Trenner")
+        return obj.split(trenner)
+
+    def _string_enthaelt(self, obj, x):
+        if not isinstance(x, str):
+            raise TypeError(f"'enthält' erwartet eine Zeichenkette, bekam {self._typname(x)}")
+        return x in obj
+
+    def _string_ersetze(self, obj, alt, neu):
+        for wert in (alt, neu):
+            if not isinstance(wert, str):
+                raise TypeError(f"'ersetze' erwartet Zeichenketten, bekam {self._typname(wert)}")
+        return obj.replace(alt, neu)
+
+    def _string_praefix(self, obj, x, name):
+        if not isinstance(x, str):
+            raise TypeError(f"'{name}' erwartet eine Zeichenkette, bekam {self._typname(x)}")
+        return obj.startswith(x) if name == 'beginnt_mit' else obj.endswith(x)
+
+    def _string_wiederhole(self, obj, n):
+        try:
+            anzahl = int(n)
+        except (ValueError, TypeError):
+            raise TypeError(f"'wiederhole' erwartet eine Ganzzahl, bekam {self._typname(n)}")
+        return obj * anzahl
+
+    def _string_zahl(self, obj):
+        try:
+            return int(obj) if obj.lstrip('-').isdigit() else float(obj)
+        except ValueError:
+            raise ValueError(f"Kann '{obj}' nicht in eine Zahl umwandeln")
+
+    def _enthaelt_hashbar(self, obj, x, typname):
+        try:
+            return x in obj
+        except TypeError:
+            raise TypeError(
+                f"'enthält' erwartet einen hashbaren Wert für {typname}, bekam {self._typname(x)}"
+            )
+
+    def _woerterbuch_hole(self, obj, schluessel, standard):
+        try:
+            return obj.get(schluessel, standard)
+        except TypeError:
+            raise TypeError(
+                f"'hole' erwartet einen hashbaren Schlüssel, bekam {self._typname(schluessel)}"
+            )
+
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
         liste, elem = args
@@ -456,7 +603,7 @@ class Interpreter:
         liste = args[0]
         if not isinstance(liste, list):
             raise TypeError("Erstes Argument von 'entferne' muss eine Liste sein")
-        return liste.pop(int(args[1]) if len(args) == 2 else -1)
+        return self._liste_entferne(liste, args[1] if len(args) == 2 else _OHNE_WERT)
 
     def _eb_umkehren(self, *args):
         self._pruefe_args('umkehren', args, 1)
@@ -475,24 +622,31 @@ class Interpreter:
         return trenn.join(self._zu_text(e) for e in liste)
 
     def _eb_max(self, *args):
-        if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
-        if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
-        return max(werte)
+        return self._eb_extremum('max', max, args)
 
     def _eb_min(self, *args):
-        if not args: raise TypeError("'min' erwartet mindestens 1 Argument")
+        return self._eb_extremum('min', min, args)
+
+    def _eb_extremum(self, name, fn, args):
+        if not args:
+            raise TypeError(f"'{name}' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
-        if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
-        return min(werte)
+        if not werte:
+            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste")
+        try:
+            return fn(werte)
+        except TypeError:
+            raise TypeError(f"'{name}' kann Werte gemischter Typen nicht vergleichen")
 
     def _eb_abs(self, *args):
-        self._pruefe_args('abs', args, 1); return abs(args[0])
+        self._pruefe_args('abs', args, 1)
+        return abs(self._zahl_pruefen(args[0], 'abs'))
 
     def _eb_runde(self, *args):
         if len(args) not in (1, 2): raise TypeError("'runde' erwartet 1–2 Argumente")
-        stellen = int(args[1]) if len(args) == 2 else 0
-        return round(float(args[0]), stellen) if stellen > 0 else int(round(args[0]))
+        zahl = self._zahl_pruefen(args[0], 'runde')
+        stellen = self._ganzzahl_pruefen(args[1], 'runde') if len(args) == 2 else 0
+        return round(float(zahl), stellen) if stellen > 0 else int(round(zahl))
 
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
@@ -567,12 +721,18 @@ class Interpreter:
     def _eb_logarithmus(self, *args):
         if len(args) not in (1, 2):
             raise TypeError("'logarithmus' erwartet 1–2 Argumente")
+        self._zahl_pruefen(args[0], 'logarithmus')
+        if len(args) == 2:
+            basis = self._zahl_pruefen(args[1], 'logarithmus')
+            if basis <= 0 or basis == 1:
+                raise ValueError(
+                    f"'logarithmus' erwartet eine Basis größer 0 und ungleich 1, "
+                    f'bekam {self._zu_text(basis)}'
+                )
         try:
             return math.log(args[0]) if len(args) == 1 else math.log(args[0], args[1])
         except ValueError:
             raise ValueError(f"'logarithmus' nicht definiert für {args[0]}")
-        except TypeError:
-            raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_datei_lesen(self, *args):
         self._pruefe_args('datei_lesen', args, 1)
@@ -676,7 +836,7 @@ class Interpreter:
             raise TypeError("'aufzaehlen' erwartet 1–2 Argumente")
         if not isinstance(args[0], (list, set)):
             raise TypeError("'aufzaehlen' erwartet eine Liste oder Menge")
-        start = int(args[1]) if len(args) == 2 else 0
+        start = self._ganzzahl_pruefen(args[1], 'aufzaehlen') if len(args) == 2 else 0
         return [[i, e] for i, e in enumerate(args[0], start=start)]
 
     def _eb_zippe(self, *args):
@@ -710,8 +870,12 @@ class Interpreter:
         try:
             with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
                 json.dump(wert, f, default=_konvertiere, ensure_ascii=False, indent=2)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
         except IsADirectoryError:
             raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
         return None
 
     def _eb_kommandozeilen_argumente(self, *args):
@@ -759,10 +923,13 @@ class Interpreter:
     def _eb_datum_formatieren(self, *args):
         self._pruefe_args('datum_formatieren', args, 2)
         zeitstempel, format_str = args[0], self._zu_text(args[1])
+        self._zahl_pruefen(zeitstempel, 'datum_formatieren')
         try:
             return datetime.fromtimestamp(zeitstempel).strftime(format_str)
-        except (TypeError, ValueError, OSError) as e:
-            raise ValueError(f"Ungültiger Zeitstempel oder Format: {e}")
+        except (ValueError, OSError, OverflowError):
+            raise ValueError(
+                f"Ungültiger Zeitstempel für 'datum_formatieren': {self._zu_text(zeitstempel)}"
+            )
 
     def _eb_mittelwert(self, *args):
         self._pruefe_args('mittelwert', args, 1)
@@ -887,6 +1054,8 @@ class Interpreter:
     def _menge_entfernen(obj, x):
         try:
             obj.remove(x)
+        except TypeError:
+            raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
         except KeyError:
             raise SchluesselFehler(f"'{x}' ist nicht in der Menge enthalten")
         return None
@@ -902,6 +1071,17 @@ class Interpreter:
     def _pruefe_args(name, args, n):
         if len(args) != n:
             raise TypeError(f"'{name}' erwartet {n} Argument(e), bekam {len(args)}")
+
+    def _zahl_pruefen(self, wert, funktion: str):
+        """Stellt sicher, dass ein Argument eine Zahl ist – sonst käme Pythons rohe Meldung."""
+        if not isinstance(wert, (int, float)):
+            raise TypeError(f"'{funktion}' erwartet eine Zahl, bekam {self._typname(wert)}")
+        return wert
+
+    def _ganzzahl_pruefen(self, wert, funktion: str):
+        if not isinstance(wert, (int, float)):
+            raise TypeError(f"'{funktion}' erwartet eine Ganzzahl, bekam {self._typname(wert)}")
+        return int(wert)
 
     def _typname(self, wert) -> str:
         if wert is None:              return 'Nichts'
@@ -1029,7 +1209,18 @@ class Interpreter:
         return [self._besuche(e, u) for e in k.elemente]
 
     def _besuche_Woerterbuch(self, k, u):
-        return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+        ergebnis = {}
+        for schluessel_knoten, wert_knoten in k.paare:
+            schluessel = self._besuche(schluessel_knoten, u)
+            wert = self._besuche(wert_knoten, u)
+            try:
+                ergebnis[schluessel] = wert
+            except TypeError:
+                raise TypeError(
+                    'Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher), '
+                    f'bekam {self._typname(schluessel)}'
+                )
+        return ergebnis
 
     def _besuche_MengenLiteral(self, k, u):
         elemente = [self._besuche(e, u) for e in k.elemente]
@@ -1039,7 +1230,7 @@ class Interpreter:
             raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
     def _besuche_ListenAusdruck(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._pruefe_iterierbar(self._besuche(k.iterable, u), 'List-Comprehension')
         ergebnis = []
         for elem in iterable:
             iter_u = Umgebung(u)
@@ -1047,6 +1238,14 @@ class Interpreter:
             if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
                 ergebnis.append(self._besuche(k.ausdruck, iter_u))
         return ergebnis
+
+    def _pruefe_iterierbar(self, wert, kontext: str):
+        if not isinstance(wert, (list, str, dict, set)):
+            raise TypeError(
+                f'{kontext} erwartet etwas Iterierbares (Liste, Zeichenkette, Wörterbuch '
+                f'oder Menge), bekam {self._typname(wert)}'
+            )
+        return wert
 
     def _schleifenvariable_binden(self, variable, elem, u):
         """variable: str (einfache Bindung) | list[str] (Destrukturierung)."""
@@ -1152,6 +1351,8 @@ class Interpreter:
             if isinstance(ziel.index, ast.SliceAusdruck):
                 raise TypeError('Slice-Zuweisung wird nicht unterstützt')
             obj = self._besuche(ziel.objekt, u)
+            if isinstance(obj, str):
+                raise TypeError('Zeichenketten sind unveränderlich – Index-Zuweisung nicht möglich')
             idx = self._besuche(ziel.index, u)
             try:
                 obj[idx] = wert
@@ -1194,8 +1395,13 @@ class Interpreter:
             if op == '//':
                 if r == 0: raise ZeroDivisionError('Ganzzahldivision durch Null')
                 return l // r
-            if op == '**':  return l ** r
-            if op == '%':   return l % r
+            if op == '**':
+                if l == 0 and isinstance(r, (int, float)) and r < 0:
+                    raise ZeroDivisionError('Null kann nicht mit negativem Exponenten potenziert werden')
+                return l ** r
+            if op == '%':
+                if r == 0: raise ZeroDivisionError('Modulo durch Null')
+                return l % r
             if op == '==':  return l == r
             if op == '!=':  return l != r
             if op == '<':   return l < r
@@ -1212,7 +1418,11 @@ class Interpreter:
 
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
-        if k.operator == '-':    return -val
+        if k.operator == '-':
+            try:
+                return -val
+            except TypeError:
+                raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
 
@@ -1250,7 +1460,7 @@ class Interpreter:
         return None
 
     def _besuche_FuerAnweisung(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._pruefe_iterierbar(self._besuche(k.iterable, u), "'für'")
         schleifen_u = Umgebung(u)
         for elem in iterable:
             self._schleifenvariable_binden(k.variable, elem, schleifen_u)
@@ -1321,14 +1531,26 @@ class Interpreter:
     def _besuche_LadeAnweisung(self, k, u):
         from .lexer import Lexer
         from .parser import Parser
-        pfad = self._pfad_aufloesen(self._besuche(k.pfad, u))
+        rohpfad = self._besuche(k.pfad, u)
+        if not isinstance(rohpfad, str):
+            raise TypeError(f"'lade' erwartet einen Pfad als Zeichenkette, bekam {self._typname(rohpfad)}")
+        pfad = self._pfad_aufloesen(rohpfad)
         if pfad in self._lade_stack:
             kette = ' -> '.join(os.path.basename(p) for p in self._lade_stack + [pfad])
             raise ImportError(f"Zyklischer 'lade'-Import erkannt: {kette}")
         self._lade_stack.append(pfad)
         try:
-            with open(pfad, 'r', encoding='utf-8') as f:
-                quelltext = f.read()
+            try:
+                with open(pfad, 'r', encoding='utf-8') as f:
+                    quelltext = f.read()
+            except FileNotFoundError:
+                raise FileNotFoundError(f"Datei zum Laden nicht gefunden: '{rohpfad}'")
+            except IsADirectoryError:
+                raise IsADirectoryError(f"'{rohpfad}' ist ein Ordner, keine Datei")
+            except PermissionError:
+                raise PermissionError(f"Keine Berechtigung zum Lesen von '{rohpfad}'")
+            except UnicodeDecodeError:
+                raise ValueError(f"'{rohpfad}' ist keine gültige UTF-8-Textdatei")
             tokens = Lexer(quelltext).tokenisieren()
             baum = Parser(tokens).parse()
             if k.als_name is not None:
@@ -1486,28 +1708,28 @@ class Interpreter:
         # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
         # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.
         if isinstance(obj, list):
-            fn = self._listen_methoden.get(k.attribut)
-            if fn is None:
+            methode = self._listen_methoden.get(k.attribut)
+            if methode is None:
                 raise AttributeError(f"Liste hat kein Attribut '{k.attribut}'")
-            return functools.partial(fn, obj)
+            return methode.binden(obj)
 
         if isinstance(obj, str):
-            fn = self._string_methoden.get(k.attribut)
-            if fn is None:
+            methode = self._string_methoden.get(k.attribut)
+            if methode is None:
                 raise AttributeError(f"Zeichenkette hat kein Attribut '{k.attribut}'")
-            return functools.partial(fn, obj)
+            return methode.binden(obj)
 
         if isinstance(obj, dict):
-            fn = self._woerterbuch_methoden.get(k.attribut)
-            if fn is None:
+            methode = self._woerterbuch_methoden.get(k.attribut)
+            if methode is None:
                 raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
-            return functools.partial(fn, obj)
+            return methode.binden(obj)
 
         if isinstance(obj, set):
-            fn = self._menge_methoden.get(k.attribut)
-            if fn is None:
+            methode = self._menge_methoden.get(k.attribut)
+            if methode is None:
                 raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
-            return functools.partial(fn, obj)
+            return methode.binden(obj)
 
         raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
 
@@ -1515,6 +1737,8 @@ class Interpreter:
     def _woerterbuch_entferne(obj, schluessel):
         try:
             return obj.pop(schluessel)
+        except TypeError:
+            raise TypeError('Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher)')
         except KeyError:
             raise SchluesselFehler(f"Schlüssel '{schluessel}' nicht im Wörterbuch")
 
@@ -1522,6 +1746,8 @@ class Interpreter:
         start = self._besuche(slice_knoten.start, u) if slice_knoten.start is not None else None
         stop = self._besuche(slice_knoten.stop, u) if slice_knoten.stop is not None else None
         step = self._besuche(slice_knoten.step, u) if slice_knoten.step is not None else None
+        if step == 0:
+            raise ValueError('Slice-Schrittweite darf nicht 0 sein')
         return slice(start, stop, step)
 
     def _besuche_IndexZugriff(self, k, u):
