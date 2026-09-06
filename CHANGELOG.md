@@ -18,6 +18,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Statische Prüfung** (`deutsch --pruefe datei.deu`, `deutsch/pruefer.py`): findet Fehler,
+  ohne das Programm auszuführen — unbekannte Namen samt Vorschlag, Zuweisung an Konstanten,
+  falsche Argumentanzahlen und Keyword-Namen, unbekannte Typ-Hinweise, Typkonflikte bei
+  Deklaration und Rückgabewert, nicht existierende Mitglieder der Standardbibliothek und
+  Methoden auf eingebauten Typen. Der Language Server zeigt dieselben Befunde als Diagnosen.
+  Leitlinie: nur melden, was sicher ist — wo ein Typ nicht ableitbar ist, schweigt die
+  Prüfung. Alle Beispielskripte sind befundfrei, ein CI-Schritt hält das fest.
 - **Generatoren**: eine Funktion mit `ergibt` liefert ihre Werte erst beim Durchlaufen.
   Der Körper läuft nur so weit, wie Werte abgerufen werden — unendliche Folgen sind damit
   möglich. `ergibt` ist überall im Körper erlaubt (auch in `wenn`, Schleifen, `passe`,

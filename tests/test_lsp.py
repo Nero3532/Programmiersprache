@@ -14,7 +14,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from deutsch.lsp import (Server, diagnosen, symbole, zeilen_bereich,
+from deutsch.lsp import (Server, diagnosen, symbole, zeilen_bereich, pfad_aus_uri,
                          nachricht_lesen, nachricht_senden, _wort_an_position,
                          S_KLASSE, S_METHODE, S_FUNKTION, S_VARIABLE, S_KONSTANTE)
 
@@ -353,6 +353,41 @@ class TestStandardbibliothekImLSP(unittest.TestCase):
         erg = ergebnisse(fahre([oeffnen(self.QUELLE),
                                 anfrage(1, 'textDocument/hover', bei(0, 16))]))
         self.assertIn('mathe.wurzel', erg[1]['contents']['value'])
+
+
+class TestStatischePruefungImLSP(unittest.TestCase):
+    """Befunde des Prüfers erscheinen als Diagnosen, nicht nur Syntaxfehler."""
+
+    def test_unbekannter_name_wird_gemeldet(self):
+        d = diagnosen('sei zaehler = 1\nzaehlrer = 2\n')
+        self.assertEqual(len(d), 1)
+        self.assertEqual(d[0]['range']['start']['line'], 1)
+        self.assertIn('nicht deklariert', d[0]['message'])
+        self.assertEqual(d[0]['severity'], 1)
+
+    def test_mehrere_befunde_werden_alle_gemeldet(self):
+        text = 'drucke(mathe.wurzl(4))\nsei x: Ganzzahl = "a"\n'
+        self.assertEqual(len(diagnosen(text)), 2)
+
+    def test_sauberes_dokument_bleibt_leer(self):
+        self.assertEqual(diagnosen('sei x = 1\ndrucke(x)\n'), [])
+
+    def test_syntaxfehler_verdraengt_die_statische_pruefung(self):
+        # Ohne gültigen Baum gibt es nichts zu prüfen – nur der Syntaxfehler zählt
+        d = diagnosen('klasse A { kaputt }\nzaehlrer = 2\n')
+        self.assertEqual(len(d), 1)
+        self.assertIn('Klasse', d[0]['message'])
+
+    def test_pruefung_fuehrt_den_code_nicht_aus(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            beweis = os.path.join(tmp, 'beweis.txt').replace('\\', '/')
+            diagnosen(f'datei.schreiben("{beweis}", "x")')
+            self.assertFalse(os.path.exists(beweis))
+
+    def test_uri_wird_zu_einem_verzeichnis(self):
+        pfad = pfad_aus_uri('file:///c%3A/Projekt/unter/datei.deu')
+        self.assertTrue(pfad.endswith('Projekt/unter') or pfad.endswith('Projekt\\unter'))
+        self.assertIsNone(pfad_aus_uri('untitled:Untitled-1'))
 
 
 if __name__ == '__main__':

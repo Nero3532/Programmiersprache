@@ -18,6 +18,12 @@ jobs:
       - name: Tests ausführen
         run: python -m unittest discover -s tests -v
 
+      - name: Beispielskripte statisch pruefen
+        run: |
+          for datei in beispiele/*.deu; do
+            python main.py --pruefe "$datei" || exit 1
+          done
+
   grammatik:
     name: tree-sitter-Grammatik
     runs-on: ubuntu-latest

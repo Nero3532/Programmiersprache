@@ -5,6 +5,7 @@ Deutsch 2.0 – Einstiegspunkt
 Verwendung:
     python main.py              → interaktive REPL
     python main.py datei.deu    → Datei ausführen
+    python main.py --pruefe d.deu → statisch prüfen, ohne auszuführen
     python main.py --lsp        → Language Server (LSP über stdio)
     python main.py --version    → Version ausgeben
 
@@ -102,6 +103,36 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
         return None, _fehler_anzeigen(e, quelltext, dateiname, getattr(interpreter, '_letzter_aufruf_stack', None))
 
 
+def datei_pruefen(pfad: str) -> int:
+    """Statische Prüfung ohne Ausführung. Gibt den Rückgabecode zurück."""
+    if not os.path.exists(pfad):
+        print(f'Fehler: Datei nicht gefunden: {pfad!r}', file=sys.stderr)
+        return 1
+
+    with open(pfad, 'r', encoding='utf-8') as f:
+        quelltext = f.read()
+
+    try:
+        baum = Parser(Lexer(quelltext).tokenisieren()).parse()
+    except SyntaxError as e:
+        print(_fehler_anzeigen(e, quelltext, pfad), file=sys.stderr)
+        return 1
+
+    from deutsch.pruefer import pruefe
+    linien = quelltext.split('\n')
+    befunde = pruefe(baum, os.path.dirname(os.path.abspath(pfad)))
+    for befund in befunde:
+        print(f'{pfad}:{befund.zeile}: {befund.meldung}')
+        if 0 < befund.zeile <= len(linien):
+            print(f'    {linien[befund.zeile - 1].strip()}')
+    if befunde:
+        anzahl = len(befunde)
+        print(f'\n{anzahl} Befund' + ('e' if anzahl != 1 else ''))
+        return 1
+    print(f'{pfad}: keine Befunde')
+    return 0
+
+
 def datei_starten(pfad: str, argumente: list = None):
     if not os.path.exists(pfad):
         print(f'Fehler: Datei nicht gefunden: {pfad!r}', file=sys.stderr)
@@ -164,6 +195,11 @@ def repl():
 
 def main():
     if len(sys.argv) > 1:
+        if sys.argv[1] == '--pruefe':
+            if len(sys.argv) < 3:
+                print('Fehler: --pruefe braucht eine Datei', file=sys.stderr)
+                return 1
+            return datei_pruefen(sys.argv[2])
         if sys.argv[1] == '--lsp':
             from deutsch.lsp import main as lsp_main
             return lsp_main(sys.argv[2:])
@@ -177,4 +213,4 @@ def main():
 
 
 if __name__ == '__main__':
-    main()
+    sys.exit(main() or 0)

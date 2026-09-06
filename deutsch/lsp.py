@@ -9,16 +9,20 @@ Lexer/Parser. So bleibt das Projekt installationsfrei.
 Start:  deutsch --lsp
 """
 import json
+import os
 import re
 import sys
+import urllib.parse
 
 from .lexer import Lexer, SCHLUESSELWOERTER
 from .parser import Parser
 from . import ast_knoten as ast
 from .interpreter import Interpreter, DeutschNamensraum
+from .pruefer import pruefe, FEHLER as BEFUND_FEHLER
 
 # LSP-Konstanten (Auszug, damit keine Bibliothek nötig ist)
 FEHLER = 1                       # DiagnosticSeverity.Error
+WARNUNG = 2
 K_METHODE, K_FUNKTION, K_VARIABLE = 2, 3, 6
 K_MODUL = 9
 K_KLASSE, K_SCHLUESSELWORT, K_KONSTANTE = 7, 14, 21
@@ -71,10 +75,24 @@ def zeilen_bereich(text: str, zeile: int) -> dict:
             'end': {'line': i, 'character': ende}}
 
 
-def diagnosen(text: str) -> list:
-    """Syntaxfehler als LSP-Diagnosen. Der Code wird nur gelesen, nie ausgeführt."""
+def pfad_aus_uri(uri: str) -> str | None:
+    """Verzeichnis einer file:-URI – Basis für 'lade' in der statischen Prüfung."""
+    if not uri.startswith('file:'):
+        return None
+    zerlegt = urllib.parse.urlparse(uri)
+    pfad = urllib.parse.unquote(zerlegt.path)
+    if os.name == 'nt' and pfad.startswith('/') and len(pfad) > 2 and pfad[2] == ':':
+        pfad = pfad[1:]
+    return os.path.dirname(pfad)
+
+
+def diagnosen(text: str, ladepfad: str | None = None) -> list:
+    """Syntaxfehler und Befunde der statischen Prüfung als LSP-Diagnosen.
+
+    Der Code wird dabei nur gelesen, nie ausgeführt.
+    """
     try:
-        Parser(Lexer(text).tokenisieren()).parse()
+        baum = Parser(Lexer(text).tokenisieren()).parse()
     except SyntaxError as fehler:
         meldung = str(fehler)
         treffer = _ZEILE_MUSTER.search(meldung)
@@ -92,7 +110,21 @@ def diagnosen(text: str) -> list:
             'source': 'deutsch',
             'message': str(fehler),
         }]
-    return []
+
+    # Statische Prüfung erst, wenn die Syntax stimmt
+    ergebnis = []
+    try:
+        befunde = pruefe(baum, ladepfad)
+    except Exception:
+        return ergebnis          # ein Fehler im Prüfer darf den Editor nicht stören
+    for befund in befunde:
+        ergebnis.append({
+            'range': zeilen_bereich(text, befund.zeile),
+            'severity': FEHLER if befund.art == BEFUND_FEHLER else WARNUNG,
+            'source': 'deutsch',
+            'message': befund.meldung,
+        })
+    return ergebnis
 
 
 def _knoten_zeile(knoten, standard=1) -> int:
@@ -249,7 +281,7 @@ class Server:
     def _diagnosen_melden(self, uri):
         self._benachrichtigung('textDocument/publishDiagnostics', {
             'uri': uri,
-            'diagnostics': diagnosen(self.dokumente.get(uri, '')),
+            'diagnostics': diagnosen(self.dokumente.get(uri, ''), pfad_aus_uri(uri)),
         })
 
     # ---- Hauptschleife

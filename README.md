@@ -367,8 +367,34 @@ Listen, Zeichenketten, Wörterbücher, Mengen und Bereiche haben zusätzlich Met
 ## Editor-Unterstützung
 
 ```
-python main.py --lsp        # Language Server (LSP über stdio)
+python main.py --pruefe datei.deu   # statisch prüfen, ohne auszuführen
+python main.py --lsp                # Language Server (LSP über stdio)
 ```
+
+### Statische Prüfung
+
+`--pruefe` findet Fehler, ohne das Programm laufen zu lassen — unbekannte Namen und
+Tippfehler (mit Vorschlag), Zuweisungen an Konstanten, falsche Argumentanzahlen und
+Keyword-Namen, unbekannte Typ-Hinweise, Typkonflikte bei Deklaration und Rückgabe,
+sowie nicht existierende Mitglieder der Standardbibliothek und Methoden auf eingebauten
+Typen.
+
+```
+datei.deu:5: Variable 'zaehlrer' wurde nicht deklariert (benutze 'sei') – meintest du 'zaehler'?
+    zaehlrer = 5
+datei.deu:6: Namensraum 'mathe' hat kein Attribut 'wurzl' – meintest du 'wurzel'?
+    drucke(mathe.wurzl(4))
+```
+
+Leitlinie ist, **nur zu melden, was sicher ist**: Deutsch ist dynamisch typisiert, und wo
+ein Typ nicht ableitbar ist, schweigt die Prüfung. Sie ersetzt deshalb keinen Typechecker
+einer statisch typisierten Sprache, erzeugt dafür aber keine Fehlalarme — alle
+Beispielskripte sind befundfrei, und die CI prüft das bei jedem Push.
+
+`lade "datei.deu"` wird verfolgt, damit Namen aus geladenen Dateien bekannt sind; lässt sich
+eine Datei nicht lesen, hört die Namensprüfung auf, statt zu raten.
+
+Der Language Server zeigt dieselben Befunde direkt im Editor an.
 
 Der Language Server liefert Syntaxfehler als Inline-Diagnosen, eine Gliederung mit Klassen und
 Methoden, kontextabhängige Vervollständigung (nach einem `.` nur Methoden), Kurzinfos zu
