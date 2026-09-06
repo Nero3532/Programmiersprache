@@ -198,6 +198,7 @@ lade "andere_datei.deu"
 lade "andere_datei.deu" als modul   # Namensraum statt globaler Vermischung
 modul.funktion()
 modul.KONSTANTE
+neu modul.Klasse(...)               # Klassen aus dem Namensraum instanziieren
 ```
 Ohne `als` landen alle Top-Level-Definitionen der geladenen Datei im globalen Scope (wie bisher).
 Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindungen werden stattdessen

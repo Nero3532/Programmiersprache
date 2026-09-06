@@ -122,9 +122,11 @@ class SliceAusdruck(Knoten):
         self.step = step
 
 class NeuInstanz(Knoten):
-    __slots__ = ('name', 'argumente', 'keyword_argumente')
-    def __init__(self, name, argumente, keyword_argumente=None):
-        self.name = name
+    """neu Klasse(...) oder neu modul.Klasse(...)"""
+    __slots__ = ('klasse', 'name', 'argumente', 'keyword_argumente')
+    def __init__(self, klasse, name, argumente, keyword_argumente=None):
+        self.klasse = klasse    # Bezeichner | AttributZugriff – ergibt die Klasse
+        self.name = name        # gepunkteter Pfad als Text, nur für Fehlermeldungen
         self.argumente = argumente
         self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
 

@@ -257,7 +257,12 @@ class Parser:
             elif self._aktuell().typ == TokenTyp.KONSTANTE:
                 klassenattribute.append(self._konstante_deklaration())
             else:
-                self.pos += 1
+                # Früher still übersprungen – ein Tippfehler im Klassenkörper
+                # verschwand dadurch spurlos
+                self._fehler(
+                    f"Im Körper von Klasse '{name}' sind nur 'funktion', 'statisch funktion', "
+                    "'sei' und 'konstante' erlaubt"
+                )
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
         return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)
@@ -722,8 +727,15 @@ class Parser:
 
     def _neu_instanz(self):
         self._verbrauche(TokenTyp.NEU)
-        name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        # Gepunkteter Pfad, damit auch 'neu modul.Klasse(...)' geht. Die Schleife endet
+        # an der '(' des Aufrufs, 'neu Klasse().methode()' bleibt also unberührt.
+        teile = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+        klasse = ast.Bezeichner(teile[0])
+        while self._aktuell().typ == TokenTyp.PUNKT:
+            self.pos += 1
+            teile.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            klasse = ast.AttributZugriff(klasse, teile[-1])
         self._verbrauche(TokenTyp.LPAREN)
         args, kwargs = self._argumente_lesen()
         self._verbrauche(TokenTyp.RPAREN)
-        return ast.NeuInstanz(name, args, kwargs)
+        return ast.NeuInstanz(klasse, '.'.join(teile), args, kwargs)

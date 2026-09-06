@@ -1676,7 +1676,7 @@ class Interpreter:
         return klasse
 
     def _besuche_NeuInstanz(self, k, u):
-        klasse = u.hole(k.name)
+        klasse = self._besuche(k.klasse, u)
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
         instanz = DeutschInstanz(klasse)
