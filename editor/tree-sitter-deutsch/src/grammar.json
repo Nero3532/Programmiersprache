@@ -1368,7 +1368,7 @@
     },
     "ternaer_ausdruck": {
       "type": "PREC_RIGHT",
-      "value": 1,
+      "value": 0,
       "content": {
         "type": "SEQ",
         "members": [
@@ -3024,7 +3024,36 @@
       "name": "kommentar"
     }
   ],
-  "conflicts": [],
+  "conflicts": [
+    [
+      "ausdrucks_anweisung",
+      "ternaer_ausdruck"
+    ],
+    [
+      "variable_deklaration",
+      "ternaer_ausdruck"
+    ],
+    [
+      "konstanten_deklaration",
+      "ternaer_ausdruck"
+    ],
+    [
+      "destrukturierende_deklaration",
+      "ternaer_ausdruck"
+    ],
+    [
+      "zuweisung",
+      "ternaer_ausdruck"
+    ],
+    [
+      "verbund_zuweisung",
+      "ternaer_ausdruck"
+    ],
+    [
+      "werfe_anweisung",
+      "ternaer_ausdruck"
+    ]
+  ],
   "precedences": [],
   "externals": [],
   "inline": [],
