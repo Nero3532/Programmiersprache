@@ -409,9 +409,38 @@ Unter [editor/](editor/) liegen zwei Grammatiken für die Syntaxhervorhebung:
 - [`tree-sitter-deutsch/`](editor/tree-sitter-deutsch) — tree-sitter-Grammatik für Neovim,
   Helix, Zed, Emacs und GitHub, samt Abfragen für Hervorhebung, Faltung und Geltungsbereiche.
 
+## Ausführung
+
+Funktionskörper werden beim ersten Aufruf in Bytecode übersetzt und danach von einer
+Stapelmaschine ausgeführt. Der Gewinn kommt daher, dass lokale Variablen einmalig in
+Steckplätze aufgelöst werden statt bei jedem Zugriff durch eine Kette von Wörterbüchern
+zu laufen, und dass pro Knoten keine Besuchermethode mehr aufgerufen wird.
+
+Gemessen gegenüber dem reinen Baum-Interpreter:
+
+| | Baum | Maschine | |
+|---|---|---|---|
+| `fib(24)` rekursiv | 1,35 s | 0,89 s | 1,52× |
+| Schleife mit Arithmetik | 1,52 s | 0,99 s | 1,54× |
+| Listen und Indizes | 0,87 s | 0,74 s | 1,18× |
+| Methodenaufrufe | 0,75 s | 0,61 s | 1,24× |
+
+Das ist kein Sprung um Größenordnungen, und das kann es auch nicht sein: die Maschine
+läuft selbst in Python, ihre Befehlsschleife kostet also weiterhin Python-Operationen.
+Der Abstand zu CPython (rund 20×) rührt daher, dass dessen Maschine in C geschrieben ist.
+
+Nicht jeder Körper wird übersetzt. Verschachtelte Funktionen, Klassen, `versuche`,
+`passe`, Generatoren, Abstraktionen und `konstante` im Funktionskörper bleiben beim
+Baum-Interpreter — der Compiler prüft das vorher, sodass die Maschine die Sprache nie
+nur halb unterstützt. In den Beispielskripten sind 84 % der Funktionen übersetzbar.
+
+Beide Wege teilen sich dieselbe Laufzeit (Operatoren, Aufrufe, Attributzugriff,
+Fehlermeldungen); ersetzt ist nur die Ablaufsteuerung. Ein Test führt jedes Programm
+über beide Wege aus und vergleicht Ergebnis, Ausgabe und Fehlermeldung. Mit
+`DEUTSCH_OHNE_VM=1` lässt sich die Maschine abschalten.
+
 ## Bekannte Einschränkungen
 
-- Kein Bytecode-Compiler — reiner Baum-Interpreter (bewusste Design-Entscheidung, siehe unten).
 - Variadische Parameter (`*args`) werden nicht einzeln typgeprüft.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
 - Rekursionslimit ist auf 10000 gesetzt (`sys.setrecursionlimit`), tief rekursive Deutsch-Programme

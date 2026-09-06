@@ -18,6 +18,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Bytecode-Maschine**: Funktionskörper werden beim ersten Aufruf übersetzt und danach
+  von einer Stapelmaschine ausgeführt (`deutsch/bytecode.py`). Lokale Variablen liegen in
+  Steckplätzen statt in einer Kette von Wörterbüchern, und pro Knoten entfällt der
+  Methodenaufruf. Gemessen 1,18× bis 1,54× gegenüber dem Baum-Interpreter, je nach
+  Programm. Körper mit verschachtelten Funktionen, Klassen, `versuche`, `passe`,
+  Generatoren, Abstraktionen oder `konstante` werden nicht übersetzt und laufen
+  unverändert weiter. Abschaltbar mit `DEUTSCH_OHNE_VM=1`.
 - **Statische Prüfung** (`deutsch --pruefe datei.deu`, `deutsch/pruefer.py`): findet Fehler,
   ohne das Programm auszuführen — unbekannte Namen samt Vorschlag, Zuweisung an Konstanten,
   falsche Argumentanzahlen und Keyword-Namen, unbekannte Typ-Hinweise, Typkonflikte bei
