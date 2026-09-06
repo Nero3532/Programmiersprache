@@ -18,6 +18,11 @@ jobs:
       - name: Tests ausführen
         run: python -m unittest discover -s tests -v
 
+      - name: Tests ohne Bytecode-Maschine
+        run: python -m unittest discover -s tests
+        env:
+          DEUTSCH_OHNE_VM: "1"
+
       - name: Beispielskripte statisch pruefen
         run: |
           for datei in beispiele/*.deu; do

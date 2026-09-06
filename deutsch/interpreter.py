@@ -11,6 +11,7 @@ import hashlib
 import base64
 from datetime import datetime
 from . import ast_knoten as ast
+from . import bytecode
 from .umgebung import Umgebung
 
 
@@ -45,6 +46,14 @@ _OPERATOR_METHODEN = {
     '<=': '__kleinergleich__',
     '>=': '__groessergleich__',
 }
+
+
+class _Attributname:
+    """Trägt einen Attributnamen so, wie die Zugriffslogik ihn erwartet."""
+    __slots__ = ('attribut',)
+
+    def __init__(self, attribut):
+        self.attribut = attribut
 
 
 class SchluesselFehler(KeyError):
@@ -317,6 +326,8 @@ class Interpreter:
         self._woerterbuch_methoden = self._woerterbuch_methoden_aufbauen()
         self._menge_methoden = self._menge_methoden_aufbauen()
         self._bereich_methoden = self._bereich_methoden_aufbauen()
+        # Zum Vergleichen abschaltbar: DEUTSCH_OHNE_VM=1 nutzt nur den Baum-Interpreter
+        self._vm_aktiv = os.environ.get('DEUTSCH_OHNE_VM') != '1'
         self._eingebaute_laden()
 
     def _dispatch_aufbauen(self) -> dict:
@@ -1308,15 +1319,22 @@ class Interpreter:
         except SyntaxError:
             raise
         except Exception as e:
-            if isinstance(e, AusnahmeFehler):
-                if zeile is not None and 'Zeile' not in str(e):
-                    self._letzter_aufruf_stack = list(self._aufruf_stack)
-                    raise AusnahmeFehler(e.wert, nachricht=f'Zeile {zeile}: {e}') from e
-                raise
-            if zeile is not None and 'Zeile' not in str(e):
-                self._letzter_aufruf_stack = list(self._aufruf_stack)
-                raise type(e)(f'Zeile {zeile}: {e}') from e
-            raise
+            self._mit_zeile(e, zeile)
+
+    def _mit_zeile(self, fehler, zeile):
+        """Reichert einen Laufzeitfehler um Zeile und Aufrufkette an und wirft ihn weiter.
+
+        Wird sowohl vom Baum-Interpreter als auch von der Maschine benutzt, damit die
+        Fehleranzeige auf beiden Wegen gleich aussieht.
+        """
+        if isinstance(fehler, _KONTROLLSIGNALE) or isinstance(fehler, SyntaxError):
+            raise fehler
+        if zeile is None or 'Zeile' in str(fehler):
+            raise fehler
+        self._letzter_aufruf_stack = list(self._aufruf_stack)
+        if isinstance(fehler, AusnahmeFehler):
+            raise AusnahmeFehler(fehler.wert, nachricht=f'Zeile {zeile}: {fehler}') from fehler
+        raise type(fehler)(f'Zeile {zeile}: {fehler}') from fehler
 
     # Literale
     def _besuche_Ganzzahl(self,     k, u): return k.wert
@@ -1329,16 +1347,17 @@ class Interpreter:
         teile = []
         for teil in k.teile:
             if isinstance(teil, ast.FormatierterAusdruck):
-                wert = self._besuche(teil.ausdruck, u)
-                try:
-                    teile.append(format(wert, teil.format_spec))
-                except (ValueError, TypeError):
-                    raise ValueError(
-                        f"Ungültiges Format '{teil.format_spec}' für {self._typname(wert)}"
-                    )
+                teile.append(self._formatieren(self._besuche(teil.ausdruck, u), teil.format_spec))
             else:
                 teile.append(self._zu_text(self._besuche(teil, u)))
         return ''.join(teile)
+
+    def _formatieren(self, wert, spezifizierer: str) -> str:
+        try:
+            return format(wert, spezifizierer)
+        except (ValueError, TypeError):
+            raise ValueError(
+                f"Ungültiges Format '{spezifizierer}' für {self._typname(wert)}")
 
     def _besuche_Bezeichner(self, k, u):
         return u.hole(k.name)
@@ -1351,17 +1370,22 @@ class Interpreter:
         for schluessel_knoten, wert_knoten in k.paare:
             schluessel = self._besuche(schluessel_knoten, u)
             wert = self._besuche(wert_knoten, u)
-            try:
-                ergebnis[schluessel] = wert
-            except TypeError:
-                raise TypeError(
-                    'Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher), '
-                    f'bekam {self._typname(schluessel)}'
-                )
+            self._woerterbuch_eintragen(ergebnis, schluessel, wert)
         return ergebnis
 
+    def _woerterbuch_eintragen(self, ziel: dict, schluessel, wert):
+        try:
+            ziel[schluessel] = wert
+        except TypeError:
+            raise TypeError(
+                'Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher), '
+                f'bekam {self._typname(schluessel)}'
+            )
+
     def _besuche_MengenLiteral(self, k, u):
-        elemente = [self._besuche(e, u) for e in k.elemente]
+        return self._menge_bauen([self._besuche(e, u) for e in k.elemente])
+
+    def _menge_bauen(self, elemente):
         try:
             return set(elemente)
         except TypeError:
@@ -1515,42 +1539,52 @@ class Interpreter:
             # damit ein Tippfehler keine stille neue Variable anlegt
             u.weise_zu(ziel.name, wert)
         elif isinstance(ziel, ast.AttributZugriff):
-            obj = self._besuche(ziel.objekt, u)
-            if isinstance(obj, DeutschInstanz):
-                # Eine Klassenkonstante darf auch nicht pro Instanz überdeckt werden,
-                # sonst liefe 'dies.MAX = 1' am Konstanten-Versprechen vorbei
-                besitzer = obj.klasse.konstante_deklaration(ziel.attribut)
-                if besitzer is not None:
-                    raise TypeError(
-                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{besitzer.name}' "
-                        'und kann nicht pro Instanz überdeckt werden'
-                    )
-                obj.setze_attribut(ziel.attribut, wert)
-            elif isinstance(obj, DeutschKlasse):
-                besitzer = obj.konstante_deklaration(ziel.attribut)
-                if besitzer is not None:
-                    raise TypeError(
-                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{besitzer.name}' "
-                        'und kann nicht neu zugewiesen werden'
-                    )
-                obj.klassenattribute[ziel.attribut] = wert
-            else:
-                raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
+            self._attribut_setzen(self._besuche(ziel.objekt, u), ziel.attribut, wert)
         elif isinstance(ziel, ast.IndexZugriff):
             obj = self._besuche(ziel.objekt, u)
-            if isinstance(obj, str):
-                raise TypeError('Zeichenketten sind unveränderlich – Index-Zuweisung nicht möglich')
-            if isinstance(obj, range):
-                raise TypeError('Bereiche sind unveränderlich – Index-Zuweisung nicht möglich')
             if isinstance(ziel.index, ast.SliceAusdruck):
-                return self._slice_zuweisen(obj, ziel.index, wert, u)
-            idx = self._besuche(ziel.index, u)
-            try:
-                obj[idx] = wert
-            except IndexError:
-                raise IndexError(f'Index {idx} ist außerhalb des Bereichs')
-            except TypeError:
-                raise TypeError(f"Ungültiger Index-Typ '{self._typname(idx)}' für {self._typname(obj)}")
+                self._index_setzen(obj, self._slice_bauen(ziel.index, u), wert, ist_slice=True)
+            else:
+                self._index_setzen(obj, self._besuche(ziel.index, u), wert)
+
+    def _attribut_setzen(self, obj, name: str, wert):
+        """Attribut setzen – gemeinsam genutzt von Besucher und Maschine."""
+        if isinstance(obj, DeutschInstanz):
+            # Eine Klassenkonstante darf auch nicht pro Instanz überdeckt werden,
+            # sonst liefe 'dies.MAX = 1' am Konstanten-Versprechen vorbei
+            besitzer = obj.klasse.konstante_deklaration(name)
+            if besitzer is not None:
+                raise TypeError(
+                    f"'{name}' ist eine Konstante der Klasse '{besitzer.name}' "
+                    'und kann nicht pro Instanz überdeckt werden'
+                )
+            obj.setze_attribut(name, wert)
+        elif isinstance(obj, DeutschKlasse):
+            besitzer = obj.konstante_deklaration(name)
+            if besitzer is not None:
+                raise TypeError(
+                    f"'{name}' ist eine Konstante der Klasse '{besitzer.name}' "
+                    'und kann nicht neu zugewiesen werden'
+                )
+            obj.klassenattribute[name] = wert
+        else:
+            raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
+
+    def _index_setzen(self, obj, idx, wert, ist_slice: bool = False):
+        """Index- oder Schnittzuweisung – gemeinsam genutzt von Besucher und Maschine."""
+        if isinstance(obj, str):
+            raise TypeError('Zeichenketten sind unveränderlich – Index-Zuweisung nicht möglich')
+        if isinstance(obj, range):
+            raise TypeError('Bereiche sind unveränderlich – Index-Zuweisung nicht möglich')
+        if ist_slice:
+            return self._slice_zuweisen(obj, idx, wert)
+        try:
+            obj[idx] = wert
+        except IndexError:
+            raise IndexError(f'Index {idx} ist außerhalb des Bereichs')
+        except TypeError:
+            raise TypeError(
+                f"Ungültiger Index-Typ '{self._typname(idx)}' für {self._typname(obj)}")
 
     # Operationen
     def _besuche_BinaereOperation(self, k, u):
@@ -1628,12 +1662,15 @@ class Interpreter:
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
         if k.operator == '-':
-            try:
-                return -val
-            except TypeError:
-                raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
+            return self._unaeres_minus(val)
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
+
+    def _unaeres_minus(self, wert):
+        try:
+            return -wert
+        except TypeError:
+            raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(wert)}")
 
     def _besuche_VergleichsKette(self, k, u):
         links_wert = self._besuche(k.operanden[0], u)
@@ -1683,12 +1720,20 @@ class Interpreter:
         raise _ZurueckSignal(self._besuche(k.wert, u))
 
     def _besuche_WerfeAnweisung(self, k, u):
-        raise AusnahmeFehler(self._besuche(k.wert, u))
+        raise self._ausnahme(self._besuche(k.wert, u))
+
+    @staticmethod
+    def _ausnahme(wert):
+        return AusnahmeFehler(wert)
 
     def _besuche_PruefeAnweisung(self, k, u):
-        if not self._ist_wahr(self._besuche(k.bedingung, u)):
-            if k.meldung is not None:
-                raise AssertionError(self._zu_text(self._besuche(k.meldung, u)))
+        meldung = self._besuche(k.meldung, u) if k.meldung is not None else None
+        return self._pruefen(self._besuche(k.bedingung, u), meldung)
+
+    def _pruefen(self, bedingung, meldung=None):
+        if not self._ist_wahr(bedingung):
+            if meldung is not None:
+                raise AssertionError(self._zu_text(meldung))
             raise AssertionError('Prüfung fehlgeschlagen')
         return None
 
@@ -1835,9 +1880,12 @@ class Interpreter:
 
         fn_u = Umgebung(fn.umgebung)
         fehlende = []
+        gebunden = []
         for i, (p_name, p_default, p_variadic, p_typ) in enumerate(params):
             if p_variadic:
-                fn_u.setze(p_name, list(args[i:]))
+                rest = list(args[i:])
+                fn_u.setze(p_name, rest)
+                gebunden.append(rest)
                 break
             if i < len(args):
                 if p_name in kwargs:
@@ -1854,6 +1902,7 @@ class Interpreter:
                 continue
             self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
             fn_u.setze(p_name, wert)
+            gebunden.append(wert)
 
         if fehlende:
             raise TypeError(f"'{fn_name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
@@ -1862,9 +1911,21 @@ class Interpreter:
             # Der Körper läuft erst beim Durchlaufen; deshalb hier kein Aufruf-Stack
             return DeutschGenerator(fn_name, self._generator_koerper(fn.definition.koerper, fn_u))
 
+        kontext = f"Rückgabewert von '{fn_name}'"
+        code = self._code_fuer(fn.definition)
+        if code is not None:
+            lokale = [None] * code.anzahl_lokale
+            lokale[:len(gebunden)] = gebunden
+            self._aufruf_stack.append((fn_name, self._aktuelle_zeile))
+            try:
+                ergebnis = bytecode.fuehre_aus(self, code, lokale, fn_u)
+            finally:
+                self._aufruf_stack.pop()
+            self._pruefe_typ(ergebnis, fn.definition.typhinweis, kontext, fn.umgebung)
+            return ergebnis
+
         self._aufruf_stack.append((fn_name, self._aktuelle_zeile))
         try:
-            kontext = f"Rückgabewert von '{fn_name}'"
             try:
                 self._besuche(fn.definition.koerper, fn_u)
             except _ZurueckSignal as r:
@@ -1977,6 +2038,17 @@ class Interpreter:
         else:
             self._besuche_anweisung(knoten, u)
 
+    def _code_fuer(self, definition):
+        """Übersetzten Körper holen; einmal je Definition, dann gemerkt.
+
+        None heißt: dieser Körper bleibt beim Baum-Interpreter.
+        """
+        if not self._vm_aktiv:
+            return None
+        if definition.code is False:
+            definition.code = bytecode.kompiliere(definition)
+        return definition.code
+
     # Klassen
     def _besuche_KlassenDefinition(self, k, u):
         eltern = []
@@ -2004,19 +2076,26 @@ class Interpreter:
 
     def _besuche_NeuInstanz(self, k, u):
         klasse = self._besuche(k.klasse, u)
-        if not isinstance(klasse, DeutschKlasse):
-            raise TypeError(f"'{k.name}' ist keine Klasse")
-        instanz = DeutschInstanz(klasse)
         args = self._argumente_auswerten(k.argumente, u)
         kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        return self._instanz_erzeugen(klasse, args, kwargs, k.name)
+
+    def _instanz_erzeugen(self, klasse, args, kwargs, anzeigename):
+        if not isinstance(klasse, DeutschKlasse):
+            raise TypeError(f"'{anzeigename}' ist keine Klasse")
+        instanz = DeutschInstanz(klasse)
         init = klasse.suche_methode('__init__')
         if init:
-            self._funktion_aufrufen(init, [instanz] + args, kwargs)
+            self._funktion_aufrufen(init, [instanz] + list(args), kwargs)
         return instanz
 
     # Attribut- und Index-Zugriff
     def _besuche_AttributZugriff(self, k, u):
-        obj = self._besuche(k.objekt, u)
+        return self._attribut(self._besuche(k.objekt, u), k.attribut)
+
+    def _attribut(self, obj, name: str):
+        """Attribut- oder Methodenzugriff – gemeinsam genutzt von Besucher und VM."""
+        k = _Attributname(name)
 
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(k.attribut)
@@ -2079,7 +2158,7 @@ class Interpreter:
         except KeyError:
             raise SchluesselFehler(f"Schlüssel '{schluessel}' nicht im Wörterbuch")
 
-    def _slice_zuweisen(self, obj, slice_knoten, wert, u):
+    def _slice_zuweisen(self, obj, schnitt, wert):
         """liste[1:3] = folge – ersetzt den Ausschnitt durch die Werte der Folge."""
         if not isinstance(obj, list):
             raise TypeError(
@@ -2090,7 +2169,6 @@ class Interpreter:
                 'Slice-Zuweisung erwartet rechts eine Liste, Menge oder einen Bereich, '
                 f'bekam {self._typname(wert)}'
             )
-        schnitt = self._slice_bauen(slice_knoten, u)
         werte = list(wert)
         try:
             obj[schnitt] = werte
@@ -2115,13 +2193,16 @@ class Interpreter:
 
     def _besuche_IndexZugriff(self, k, u):
         obj = self._besuche(k.objekt, u)
-        ist_slice = isinstance(k.index, ast.SliceAusdruck)
-        if ist_slice:
+        if isinstance(k.index, ast.SliceAusdruck):
             if isinstance(obj, dict):
                 raise TypeError('Wörterbücher unterstützen kein Slicing')
-            idx = self._slice_bauen(k.index, u)
-        else:
-            idx = self._besuche(k.index, u)
+            return self._index(obj, self._slice_bauen(k.index, u), ist_slice=True)
+        return self._index(obj, self._besuche(k.index, u))
+
+    def _index(self, obj, idx, ist_slice: bool = False):
+        """Index- oder Schnittzugriff – gemeinsam genutzt von Besucher und VM."""
+        if ist_slice and isinstance(obj, dict):
+            raise TypeError('Wörterbücher unterstützen kein Slicing')
         try:
             return obj[idx]
         except IndexError:

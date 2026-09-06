@@ -217,13 +217,14 @@ class FunktionDefinition(Knoten):
     typhinweis: str | None  (Rückgabetyp, zur Laufzeit geprüft)
     ist_generator: enthält der Körper ein 'ergibt'? Dann liefert der Aufruf einen Generator.
     """
-    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'ist_generator')
+    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'ist_generator', 'code')
     def __init__(self, name, parameter, koerper, typhinweis=None, ist_generator=False):
         self.name = name
         self.parameter = parameter
         self.koerper = koerper
         self.typhinweis = typhinweis
         self.ist_generator = ist_generator
+        self.code = False       # False = noch nicht übersetzt, None = nicht übersetzbar
 
 class ErgibtAnweisung(Knoten):
     """'ergibt wert' – reicht einen Wert an den Durchlaufenden weiter."""
