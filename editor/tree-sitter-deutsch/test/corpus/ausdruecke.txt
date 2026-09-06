@@ -77,3 +77,33 @@ Listen-Abstraktion mit Filter
       bedingung: (binaere_operation
         links: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
         rechts: (ganzzahl)))))
+
+==================
+Ternaer gegen Folgeanweisung: 'wenn' nach einem Ausdruck
+==================
+
+sei it = f(i)
+wenn nicht (a == b) {
+    drucke(1)
+}
+sei y = 1 wenn a sonst 2
+
+---
+
+(quelldatei
+  (variable_deklaration
+    name: (bezeichner)
+    wert: (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner)))))
+  (wenn_anweisung
+    bedingung: (unaere_operation
+      operand: (klammer_ausdruck
+        (binaere_operation links: (bezeichner) rechts: (bezeichner))))
+    dann: (block
+      (ausdrucks_anweisung
+        (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl)))))))
+  (variable_deklaration
+    name: (bezeichner)
+    wert: (ternaer_ausdruck
+      dann: (ganzzahl)
+      bedingung: (bezeichner)
+      sonst: (ganzzahl))))

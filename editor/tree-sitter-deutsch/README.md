@@ -40,7 +40,23 @@ und ist an einer Stelle bewusst großzügiger:
 und Semikolons; hier zählt Leerraum durchgehend als ignorierbar. Ohne diese Vereinfachung
 bräuchte die Grammatik einen externen Scanner in C, was das Einbinden deutlich erschwert.
 
-Praktische Folge: einzelne Konstrukte werden anders gruppiert, als der Interpreter sie liest.
+Ein Sonderfall verdient Erwähnung, weil er in echtem Code ständig vorkommt:
+
+```
+sei it = f(i)
+wenn bedingung { … }
+```
+
+Ohne Zeilenenden ist `wenn` hier mehrdeutig – es kann den Ternär `a wenn b sonst c`
+fortsetzen oder eine neue Anweisung beginnen. Statt das per Vorrangregel zu erzwingen
+(was eine der beiden Lesarten immer kaputtmacht), ist der Konflikt deklariert: tree-sitters
+GLR verfolgt beide Zweige, und der falsche stirbt kurz darauf am fehlenden `sonst`
+beziehungsweise am Block. Nach `werfe` und in Zuweisungen gilt dasselbe. Nach `zurück`,
+`pruefe` und `lade` gewinnt dagegen der Ternär – dort ist ein direkt folgendes `wenn`
+praktisch immer der Ternär.
+
+Praktische Folge davon, dass Zeilenenden fehlen: einzelne Konstrukte werden anders
+gruppiert, als der Interpreter sie liest.
 
 ```
 sei x = 5

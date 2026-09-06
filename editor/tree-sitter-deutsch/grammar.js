@@ -30,6 +30,19 @@ module.exports = grammar({
 
   word: $ => $.bezeichner,
 
+  // Ein 'wenn' nach einem vollstaendigen Ausdruck ist mehrdeutig: es kann den
+  // Ternaer fortsetzen oder eine neue Anweisung beginnen. Beide Lesarten werden
+  // verfolgt; die falsche scheitert kurz darauf am fehlenden 'sonst' bzw. Block.
+  conflicts: $ => [
+    [$.ausdrucks_anweisung, $.ternaer_ausdruck],
+    [$.variable_deklaration, $.ternaer_ausdruck],
+    [$.konstanten_deklaration, $.ternaer_ausdruck],
+    [$.destrukturierende_deklaration, $.ternaer_ausdruck],
+    [$.zuweisung, $.ternaer_ausdruck],
+    [$.verbund_zuweisung, $.ternaer_ausdruck],
+    [$.werfe_anweisung, $.ternaer_ausdruck],
+  ],
+
   rules: {
     quelldatei: $ => repeat($._anweisung),
 
@@ -241,7 +254,11 @@ module.exports = grammar({
 
     klammer_ausdruck: $ => seq('(', $._ausdruck, ')'),
 
-    ternaer_ausdruck: $ => prec.right(PREC.ternaer, seq(
+    // Ohne statische Vorrangregel: nach einem Ausdruck kann 'wenn' den Ternaer
+    // fortsetzen ODER eine neue Anweisung beginnen (die Grammatik kennt keine
+    // Zeilenenden). Der Konflikt wird deklariert, damit GLR beide Lesarten
+    // verfolgt – die falsche stirbt am fehlenden 'sonst' beziehungsweise am Block.
+    ternaer_ausdruck: $ => prec.right(seq(
       field('dann', $._ausdruck),
       'wenn',
       field('bedingung', $._ausdruck),
