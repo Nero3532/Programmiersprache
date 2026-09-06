@@ -18,6 +18,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Faule Bereiche**: `bereich(...)` liefert eine Folge, die ihre Elemente erst beim
+  Durchlaufen erzeugt. `bereich(10000000)` belegt 48 Byte statt mehrerer hundert Megabyte,
+  `laenge` und `in` arbeiten in konstanter Zeit, ein Schnitt bleibt faul. Neuer Typ `Bereich`
+  (auch als Typ-Hinweis) mit den Methoden `laenge`/`länge`, `enthält`, `liste`, `erste`,
+  `letzte`.
 - **Verschachtelte Abstraktionen** sowie **Mengen- und Wörterbuch-Abstraktionen**:
   `[x * y für x in a für y in b]`, `{x % 3 für x in bereich(10)}`,
   `{wort: länge(wort) für wort in woerter}`. Jede Klausel kann ein eigenes `wenn`-Filter
@@ -71,6 +76,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Bereichs wirft weiterhin `ValueError`.
 - `bereich` und `aufzaehlen` akzeptieren keine Zahlen mehr in Zeichenketten-Form
   (`bereich("5")`) – Argumente müssen Zahlen sein.
+- `bereich(...)` gibt keine **Liste** mehr zurück, sondern einen faulen `Bereich`.
+  Schleifen, Abstraktionen und die eingebauten Funktionen sind unverändert; wer das
+  Ergebnis als Liste braucht (Listenmethoden, Veränderung, Ausgabe als `[…]`), schreibt
+  `liste(bereich(...))`. `typ(bereich(3))` liefert jetzt `'Bereich'`, `drucke(bereich(3))`
+  gibt `bereich(0, 3)` aus.
 - Eine Klassen-`konstante` lässt sich nicht mehr pro Instanz überdecken: `instanz.MAX = 1`
   und `dies.MAX = 1` werfen jetzt `TypeError` statt still ein Instanzattribut anzulegen, das
   die Konstante beim Lesen verdeckte. Das gilt auch für geerbte Konstanten – und `Kind.MAX = 1`

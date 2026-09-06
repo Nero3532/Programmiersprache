@@ -1481,5 +1481,90 @@ class TestAbstraktionen(unittest.TestCase):
             lauf('[x für x in [1]]\nx')
 
 
+class TestFauleBereiche(unittest.TestCase):
+    """'bereich' liefert eine faule Folge statt einer Liste."""
+
+    def test_typ_und_darstellung(self):
+        self.assertEqual(lauf('typ(bereich(3))')[0], 'Bereich')
+        self.assertEqual(lauf('zeichenkette(bereich(3))')[0], 'bereich(0, 3)')
+        self.assertEqual(lauf('zeichenkette(bereich(0, 10, 2))')[0], 'bereich(0, 10, 2)')
+
+    def test_belegt_keinen_speicher_fuer_die_elemente(self):
+        ergebnis, _ = lauf('bereich(10000000)')
+        self.assertEqual(len(ergebnis), 10_000_000)
+        self.assertLess(sys.getsizeof(ergebnis), 500)
+
+    def test_laenge_index_und_schnitt(self):
+        self.assertEqual(lauf('laenge(bereich(0, 10, 2))')[0], 5)
+        self.assertEqual(lauf('bereich(0, 10, 2).laenge()')[0], 5)
+        self.assertEqual(lauf('bereich(0, 10, 2)[2]')[0], 4)
+        self.assertEqual(lauf('bereich(5)[-1]')[0], 4)
+        self.assertEqual(lauf('typ(bereich(10)[1:3])')[0], 'Bereich')   # Schnitt bleibt faul
+        self.assertEqual(lauf('liste(bereich(10)[1:3])')[0], [1, 2])
+
+    def test_index_ausserhalb_meldet_deutsch(self):
+        with self.assertRaises(IndexError) as ctx:
+            lauf('bereich(3)[9]')
+        self.assertIn('außerhalb des Bereichs', str(ctx.exception))
+
+    def test_mitgliedschaft(self):
+        self.assertIs(lauf('4 in bereich(0, 10, 2)')[0], True)
+        self.assertIs(lauf('5 in bereich(0, 10, 2)')[0], False)
+        self.assertIs(lauf('bereich(3).enthält(2)')[0], True)
+
+    def test_umwandlung(self):
+        self.assertEqual(lauf('liste(bereich(3))')[0], [0, 1, 2])
+        self.assertEqual(lauf('menge(bereich(3))')[0], {0, 1, 2})
+        self.assertEqual(lauf('bereich(3).liste()')[0], [0, 1, 2])
+        self.assertEqual(lauf('bereich(3).erste()')[0], 0)
+        self.assertEqual(lauf('bereich(3).letzte()')[0], 2)
+
+    def test_wird_von_den_eingebauten_akzeptiert(self):
+        self.assertEqual(lauf('summe(bereich(5))')[0], 10)
+        self.assertEqual(lauf('max(bereich(5))')[0], 4)
+        self.assertEqual(lauf('min(bereich(2, 5))')[0], 2)
+        self.assertIs(lauf('alle(bereich(1, 4))')[0], True)
+        self.assertIs(lauf('einige(bereich(0, 1))')[0], False)
+        self.assertEqual(lauf('sortiere(bereich(3, 0, -1))')[0], [1, 2, 3])
+        self.assertEqual(lauf('aufzaehlen(bereich(2))')[0], [[0, 0], [1, 1]])
+        self.assertEqual(lauf('mittelwert(bereich(1, 5))')[0], 2.5)
+        self.assertEqual(lauf('zippe(bereich(2), ["a", "b"])')[0], [[0, 'a'], [1, 'b']])
+
+    def test_schleifen_und_abstraktionen(self):
+        self.assertEqual(lauf('sei s = 0; für i in bereich(4) { s += i }; s')[0], 6)
+        self.assertEqual(lauf('[x * 2 für x in bereich(4)]')[0], [0, 2, 4, 6])
+        self.assertEqual(lauf('{x % 2 für x in bereich(6)}')[0], {0, 1})
+        self.assertEqual(lauf('{x: x für x in bereich(2)}')[0], {0: 0, 1: 1})
+
+    def test_wahrheitswert(self):
+        self.assertIs(lauf('wahrheitswert(bereich(0))')[0], False)
+        self.assertIs(lauf('wahrheitswert(bereich(3))')[0], True)
+
+    def test_typ_hinweis_bereich(self):
+        code = 'funktion f(b: Bereich) { zurück laenge(b) }; f(bereich(7))'
+        self.assertEqual(lauf(code)[0], 7)
+        with self.assertRaises(TypeError):
+            lauf('funktion f(b: Bereich) { zurück 1 }; f([1, 2])')
+
+    def test_bereich_ist_keine_liste(self):
+        with self.assertRaises(TypeError):
+            lauf('sei x: Liste = bereich(3)')
+
+    def test_ist_unveraenderlich(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('sei b = bereich(3); b[0] = 9')
+        self.assertIn('unveränderlich', str(ctx.exception))
+
+    def test_hat_keine_listenmethoden(self):
+        with self.assertRaises(AttributeError) as ctx:
+            lauf('bereich(3).anhaengen(1)')
+        self.assertIn('Bereich', str(ctx.exception))
+
+    def test_mische_verlangt_weiterhin_eine_liste(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('mische(bereich(3))')
+        self.assertIn("'mische' erwartet eine Liste", str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main()

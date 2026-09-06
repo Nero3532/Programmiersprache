@@ -212,7 +212,7 @@
           }
         },
         {
-          "match": "(:)\\s*(Ganzzahl|Kommazahl|Zeichenkette|Wahrheitswert|Liste|Woerterbuch|Wörterbuch|Menge|Nichts|Funktion)\\b",
+          "match": "(:)\\s*(Ganzzahl|Kommazahl|Zeichenkette|Wahrheitswert|Liste|Woerterbuch|Wörterbuch|Menge|Bereich|Nichts|Funktion)\\b",
           "captures": {
             "1": { "name": "punctuation.separator.type.deutsch" },
             "2": { "name": "support.type.builtin.deutsch" }
