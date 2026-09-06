@@ -117,6 +117,11 @@ class FunktionAufruf(Knoten):
         self.argumente = argumente                        # [Knoten, ...] positional
         self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
 
+class EntpackterAusdruck(Knoten):
+    """'*ausdruck' an einer Aufrufstelle: die Folge wird zu einzelnen Argumenten."""
+    __slots__ = ('ausdruck',)
+    def __init__(self, ausdruck): self.ausdruck = ausdruck
+
 class AttributZugriff(Knoten):
     __slots__ = ('objekt', 'attribut')
     def __init__(self, objekt, attribut):

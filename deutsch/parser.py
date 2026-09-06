@@ -543,7 +543,13 @@ class Parser:
         if self._aktuell().typ == TokenTyp.RPAREN:
             return args, kwargs
         while True:
-            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
+            if self._aktuell().typ == TokenTyp.STERN:
+                # f(*liste) – die Folge wird zu einzelnen positionalen Argumenten
+                self.pos += 1
+                if kwargs:
+                    self._fehler('Positionale Argumente müssen vor Keyword-Argumenten stehen')
+                args.append(ast.EntpackterAusdruck(self._ausdruck()))
+            elif self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
                 name = self._aktuell().wert
                 if any(n == name for n, _ in kwargs):
                     self._fehler(f"Keyword-Argument '{name}' mehrfach angegeben")

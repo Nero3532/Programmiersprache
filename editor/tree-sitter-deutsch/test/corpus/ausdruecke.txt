@@ -182,3 +182,43 @@ sei wb = {"a": 1}
   (variable_deklaration
     name: (bezeichner)
     wert: (woerterbuch (paar schluessel: (zeichenkette) wert: (ganzzahl)))))
+
+==================
+Argument-Entpackung
+==================
+
+f(*liste)
+g(1, *rest, c=3)
+
+---
+
+(quelldatei
+  (ausdrucks_anweisung
+    (aufruf
+      funktion: (bezeichner)
+      argumente: (argumentliste
+        (argument (entpacktes_argument ausdruck: (bezeichner))))))
+  (ausdrucks_anweisung
+    (aufruf
+      funktion: (bezeichner)
+      argumente: (argumentliste
+        (argument (ganzzahl))
+        (argument (entpacktes_argument ausdruck: (bezeichner)))
+        (argument name: (bezeichner) wert: (ganzzahl))))))
+
+==================
+Slice-Zuweisung
+==================
+
+l[1:3] = [9]
+l[::2] = werte
+
+---
+
+(quelldatei
+  (zuweisung
+    ziel: (index_zugriff objekt: (bezeichner) index: (schnitt (ganzzahl) (ganzzahl)))
+    wert: (liste (ganzzahl)))
+  (zuweisung
+    ziel: (index_zugriff objekt: (bezeichner) index: (schnitt (ganzzahl)))
+    wert: (bezeichner)))

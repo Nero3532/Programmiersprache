@@ -305,8 +305,12 @@ module.exports = grammar({
 
     argument: $ => choice(
       $._ausdruck,
+      $.entpacktes_argument,
       seq(field('name', $.bezeichner), '=', field('wert', $._ausdruck)),
     ),
+
+    // f(*folge) – nur an Aufrufstellen, deshalb kein Konflikt mit der Multiplikation
+    entpacktes_argument: $ => seq('*', field('ausdruck', $._ausdruck)),
 
     argumentliste: $ => seq('(', optional(commaSep1($.argument)), ')'),
 

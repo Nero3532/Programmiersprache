@@ -133,6 +133,19 @@ drucke("Riesiger Bereich: {riesig}, Länge {länge(riesig)}, Typ {typ(riesig)}")
 drucke("Zugriff ohne Erzeugen: {riesig[9999999]}, enthält 5000000: {5000000 in riesig}")
 drucke("Als Liste: {liste(bereich(0, 10, 3))}")
 
+# Argument-Entpackung: eine Folge wird zu einzelnen Argumenten
+funktion dreieck(a, b, c) { zurück a + b + c }
+sei seiten = [3, 4, 5]
+drucke("Umfang aus Liste: {dreieck(*seiten)}")
+drucke("gemischt: {dreieck(*[1, 2], c=10)}")
+
+# Slice-Zuweisung: Ausschnitt ersetzen, auch mit anderer Länge
+sei zahlen = [1, 2, 3, 4, 5]
+zahlen[1:3] = [99]
+drucke("nach l[1:3] = [99]: {zahlen}")
+zahlen[1:1] = [7, 8]
+drucke("nach Einfügen l[1:1]: {zahlen}")
+
 # ================================================================
 # 7. IN-OPERATOR
 # ================================================================

@@ -1482,13 +1482,13 @@ class Interpreter:
             else:
                 raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
         elif isinstance(ziel, ast.IndexZugriff):
-            if isinstance(ziel.index, ast.SliceAusdruck):
-                raise TypeError('Slice-Zuweisung wird nicht unterstützt')
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, str):
                 raise TypeError('Zeichenketten sind unveränderlich – Index-Zuweisung nicht möglich')
             if isinstance(obj, range):
                 raise TypeError('Bereiche sind unveränderlich – Index-Zuweisung nicht möglich')
+            if isinstance(ziel.index, ast.SliceAusdruck):
+                return self._slice_zuweisen(obj, ziel.index, wert, u)
             idx = self._besuche(ziel.index, u)
             try:
                 obj[idx] = wert
@@ -1726,9 +1726,20 @@ class Interpreter:
             u.setze(k.name, fn)
         return fn
 
+    def _argumente_auswerten(self, knoten, u) -> list:
+        """Wertet Aufruf-Argumente aus und loest '*folge' in einzelne Werte auf."""
+        args = []
+        for eintrag in knoten:
+            if isinstance(eintrag, ast.EntpackterAusdruck):
+                folge = self._besuche(eintrag.ausdruck, u)
+                args.extend(self._pruefe_iterierbar(folge, "Entpacken mit '*'"))
+            else:
+                args.append(self._besuche(eintrag, u))
+        return args
+
     def _besuche_FunktionAufruf(self, k, u):
         fn = self._besuche(k.funktion, u)
-        args = [self._besuche(a, u) for a in k.argumente]
+        args = self._argumente_auswerten(k.argumente, u)
         kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
         return self._aufrufen(fn, args, kwargs)
 
@@ -1831,7 +1842,7 @@ class Interpreter:
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
         instanz = DeutschInstanz(klasse)
-        args = [self._besuche(a, u) for a in k.argumente]
+        args = self._argumente_auswerten(k.argumente, u)
         kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
         init = klasse.suche_methode('__init__')
         if init:
@@ -1902,6 +1913,32 @@ class Interpreter:
             raise TypeError('Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher)')
         except KeyError:
             raise SchluesselFehler(f"Schlüssel '{schluessel}' nicht im Wörterbuch")
+
+    def _slice_zuweisen(self, obj, slice_knoten, wert, u):
+        """liste[1:3] = folge – ersetzt den Ausschnitt durch die Werte der Folge."""
+        if not isinstance(obj, list):
+            raise TypeError(
+                f'Slice-Zuweisung ist nur für Listen möglich, nicht für {self._typname(obj)}'
+            )
+        if not isinstance(wert, _SEQUENZ_TYPEN):
+            raise TypeError(
+                'Slice-Zuweisung erwartet rechts eine Liste, Menge oder einen Bereich, '
+                f'bekam {self._typname(wert)}'
+            )
+        schnitt = self._slice_bauen(slice_knoten, u)
+        werte = list(wert)
+        try:
+            obj[schnitt] = werte
+        except ValueError:
+            # Nur bei Schrittweite != 1: dort muss die Länge exakt passen
+            gebraucht = len(range(*schnitt.indices(len(obj))))
+            raise ValueError(
+                f'Slice-Zuweisung mit Schrittweite erwartet genau {gebraucht} '
+                f'Werte, bekam {len(werte)}'
+            )
+        except TypeError:
+            raise TypeError('Slice-Grenzen müssen Ganzzahlen sein')
+        return None
 
     def _slice_bauen(self, slice_knoten, u):
         start = self._besuche(slice_knoten.start, u) if slice_knoten.start is not None else None
