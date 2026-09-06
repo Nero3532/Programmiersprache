@@ -192,6 +192,24 @@ class DeutschKlasse:
                 return m
         return None
 
+    def _deklarierende_klasse(self, name: str):
+        """Erste Klasse in der Suchreihenfolge, die 'name' als Klassenattribut deklariert."""
+        if name in self.klassenattribute:
+            return self
+        for e in self.eltern:
+            treffer = e._deklarierende_klasse(name)
+            if treffer is not None:
+                return treffer
+        return None
+
+    def konstante_deklaration(self, name: str):
+        """Klasse, die 'name' als Konstante deklariert – sonst None. Berücksichtigt
+        Vererbung, aber nur bis zur ersten Klasse, die 'name' überhaupt deklariert."""
+        klasse = self._deklarierende_klasse(name)
+        if klasse is not None and name in klasse.konstante_attribute:
+            return klasse
+        return None
+
     def suche_klassenattribut(self, name: str):
         if name in self.klassenattribute:
             return self.klassenattribute[name]
@@ -280,7 +298,7 @@ class Interpreter:
             'laenge':    lambda obj: len(obj),
             'länge':     lambda obj: len(obj),
             'entferne':  lambda obj, index=_OHNE_WERT: self._liste_entferne(obj, index),
-            'enthält':   lambda obj, x: x in obj,
+            'enthält':   lambda obj, x: self._enthalten_in(x, obj),
             'umkehren':  lambda obj: (obj.reverse(), None)[1],
             'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
             'erste':     lambda obj: obj[0] if obj else None,
@@ -495,6 +513,11 @@ class Interpreter:
         return ergebnis
 
     def _index_von(self, obj, x, typname):
+        if isinstance(obj, list) and self._hat_gleich_ueberladung(x):
+            for i, element in enumerate(obj):
+                if self._werte_gleich(x, element):
+                    return i
+            raise ValueError(f"'{self._zu_text(x)}' nicht gefunden in {typname}")
         try:
             return obj.index(x)
         except ValueError:
@@ -503,6 +526,8 @@ class Interpreter:
             raise TypeError(f"'index_von' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
 
     def _zaehle(self, obj, x, typname):
+        if isinstance(obj, list) and self._hat_gleich_ueberladung(x):
+            return sum(1 for element in obj if self._werte_gleich(x, element))
         try:
             return obj.count(x)
         except TypeError:
@@ -1339,12 +1364,21 @@ class Interpreter:
         elif isinstance(ziel, ast.AttributZugriff):
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
+                # Eine Klassenkonstante darf auch nicht pro Instanz überdeckt werden,
+                # sonst liefe 'dies.MAX = 1' am Konstanten-Versprechen vorbei
+                besitzer = obj.klasse.konstante_deklaration(ziel.attribut)
+                if besitzer is not None:
+                    raise TypeError(
+                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{besitzer.name}' "
+                        'und kann nicht pro Instanz überdeckt werden'
+                    )
                 obj.setze_attribut(ziel.attribut, wert)
             elif isinstance(obj, DeutschKlasse):
-                if ziel.attribut in obj.konstante_attribute:
+                besitzer = obj.konstante_deklaration(ziel.attribut)
+                if besitzer is not None:
                     raise TypeError(
-                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{obj.name}' "
-                        f"und kann nicht neu zugewiesen werden"
+                        f"'{ziel.attribut}' ist eine Konstante der Klasse '{besitzer.name}' "
+                        'und kann nicht neu zugewiesen werden'
                     )
                 obj.klassenattribute[ziel.attribut] = wert
             else:
@@ -1410,13 +1444,31 @@ class Interpreter:
             if op == '>':   return l > r
             if op == '<=':  return l <= r
             if op == '>=':  return l >= r
-            if op == 'in':  return l in r
-            if op == 'nicht in': return l not in r
+            if op == 'in':  return self._enthalten_in(l, r)
+            if op == 'nicht in': return not self._enthalten_in(l, r)
         except TypeError:
             raise TypeError(
                 f"Operator '{op}' nicht unterstützt für {self._typname(l)} und {self._typname(r)}"
             )
         raise RuntimeError(f'Unbekannter Operator: {op!r}')
+
+    def _hat_gleich_ueberladung(self, wert) -> bool:
+        return (isinstance(wert, DeutschInstanz)
+                and wert.klasse.suche_methode('__gleich__') is not None)
+
+    def _werte_gleich(self, a, b) -> bool:
+        """Gleichheit wie beim '=='-Operator, inklusive überladener __gleich__-Methode."""
+        if self._hat_gleich_ueberladung(a):
+            return self._ist_wahr(self._binaerer_operator('==', a, b))
+        return a == b
+
+    def _enthalten_in(self, wert, container):
+        """Mitgliedschaft für 'in' und '.enthält()'. In Listen zählt eine überladene
+        __gleich__-Methode des gesuchten Werts (er ist der linke Operand). Mengen und
+        Wörterbücher bleiben hash-basiert – dafür bräuchte es zusätzlich __hash__."""
+        if isinstance(container, list) and self._hat_gleich_ueberladung(wert):
+            return any(self._werte_gleich(wert, element) for element in container)
+        return wert in container
 
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
@@ -1524,7 +1576,7 @@ class Interpreter:
     def _besuche_PasseAnweisung(self, k, u):
         subjekt = self._besuche(k.ausdruck, u)
         for werte, block in k.faelle:
-            if any(subjekt == self._besuche(w, u) for w in werte):
+            if any(self._werte_gleich(subjekt, self._besuche(w, u)) for w in werte):
                 return self._besuche(block, u)
         if k.sonst is not None:
             return self._besuche(k.sonst, u)

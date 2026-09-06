@@ -131,11 +131,20 @@ die kein `dies` deklarieren; sie sind sowohl über die Klasse (`Klasse.methode()
 eine Instanz (`instanz.methode()`, ohne automatische `dies`-Bindung) aufrufbar. Klassenattribute
 werden vererbt (links-nach-rechts, wie Methoden).
 
+Eine Klassen-`konstante` ist auch gegen Überdecken pro Instanz geschützt: `instanz.MAX = 1` und
+`dies.MAX = 1` werfen ebenfalls `TypeError`, ebenso in erbenden Klassen. Nicht-konstante
+Klassenattribute (`sei` im Klassenkörper) bleiben überschreibbar.
+
 **Operator-Überladung:** Klassen können `+ - * / // % **` und `== != < > <= >=` selbst definieren
 über `__addiere__`, `__subtrahiere__`, `__multipliziere__`, `__dividiere__`, `__ganzdividiere__`,
 `__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`, `__kleiner__`, `__groesser__`,
 `__kleinergleich__`, `__groessergleich__` (jeweils `(dies, andere)`). Nur der linke Operand wird
 geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
+
+`__gleich__` gilt nicht nur für `==`, sondern überall, wo auf Gleichheit geprüft wird: `passe`/`fall`,
+der `in`-Operator auf Listen sowie `liste.enthält()`, `liste.index_von()` und `liste.zaehle()` — der
+gesuchte Wert ist dabei der linke Operand. Mengen und Wörterbücher bleiben hash-basiert, dafür wäre
+zusätzlich eine `__hash__`-Überladung nötig.
 
 ### Fehlerbehandlung
 
