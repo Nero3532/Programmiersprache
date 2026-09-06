@@ -5,6 +5,16 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- **Language Server** (`deutsch --lsp`, alternativ `deutsch-lsp`): Diagnosen, Gliederung,
+  Vervollständigung, Hover und Sprung zur Definition. Die Diagnosen zeigen die bestehenden
+  deutschen Syntaxfehler inline im Editor; der Code wird dafür nur gelesen, nie ausgeführt.
+  Implementiert ohne externe Abhängigkeiten – das Protokoll (JSON-RPC über stdio) steckt in
+  `deutsch/lsp.py`, die Analyse macht der vorhandene Lexer/Parser.
+- **tree-sitter-Grammatik** unter `editor/tree-sitter-deutsch/` für Syntaxhervorhebung,
+  Faltung und Navigation, samt Abfragen (`highlights`, `locals`, `folds`) und Korpus-Tests.
+  Ein CI-Job erzeugt den Parser, prüft das eingecheckte `src/` auf Aktualität, fährt die
+  Korpus-Tests und parst alle Beispielskripte.
+- `deutsch --version` / `-V`.
 - `neu modul.Klasse(...)` — Klassen aus einem per `lade "..." als modul` geladenen Namensraum
   lassen sich direkt instanziieren (bisher ein Syntaxfehler, der nur über den Umweg
   `sei K = modul.Klasse` umgangen werden konnte). Keyword-Argumente und Verkettung
