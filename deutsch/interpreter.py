@@ -1257,14 +1257,56 @@ class Interpreter:
         except TypeError:
             raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
+    def _abstraktions_umgebungen(self, klauseln, u):
+        """Liefert für jede Kombination der Klauseln eine Umgebung mit den Bindungen.
+
+        Klauseln werden von links nach rechts abgearbeitet; eine spätere sieht die
+        Variablen der früheren."""
+        def durchlaufen(index, umgebung):
+            if index == len(klauseln):
+                yield umgebung
+                return
+            variable, iterable_knoten, bedingung = klauseln[index]
+            iterable = self._pruefe_iterierbar(
+                self._besuche(iterable_knoten, umgebung), 'Abstraktion')
+            for elem in iterable:
+                iter_u = Umgebung(umgebung)
+                self._schleifenvariable_binden(variable, elem, iter_u)
+                if bedingung is not None and not self._ist_wahr(self._besuche(bedingung, iter_u)):
+                    continue
+                yield from durchlaufen(index + 1, iter_u)
+
+        return durchlaufen(0, u)
+
     def _besuche_ListenAusdruck(self, k, u):
-        iterable = self._pruefe_iterierbar(self._besuche(k.iterable, u), 'List-Comprehension')
-        ergebnis = []
-        for elem in iterable:
-            iter_u = Umgebung(u)
-            self._schleifenvariable_binden(k.variable, elem, iter_u)
-            if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
-                ergebnis.append(self._besuche(k.ausdruck, iter_u))
+        return [self._besuche(k.ausdruck, iter_u)
+                for iter_u in self._abstraktions_umgebungen(k.klauseln, u)]
+
+    def _besuche_MengenAusdruck(self, k, u):
+        ergebnis = set()
+        for iter_u in self._abstraktions_umgebungen(k.klauseln, u):
+            wert = self._besuche(k.ausdruck, iter_u)
+            try:
+                ergebnis.add(wert)
+            except TypeError:
+                raise TypeError(
+                    'Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher), '
+                    f'bekam {self._typname(wert)}'
+                )
+        return ergebnis
+
+    def _besuche_WoerterbuchAusdruck(self, k, u):
+        ergebnis = {}
+        for iter_u in self._abstraktions_umgebungen(k.klauseln, u):
+            schluessel = self._besuche(k.schluessel, iter_u)
+            wert = self._besuche(k.wert, iter_u)
+            try:
+                ergebnis[schluessel] = wert
+            except TypeError:
+                raise TypeError(
+                    'Wörterbuch-Schlüssel müssen hashbar sein (keine Listen/Wörterbücher), '
+                    f'bekam {self._typname(schluessel)}'
+                )
         return ergebnis
 
     def _pruefe_iterierbar(self, wert, kontext: str):

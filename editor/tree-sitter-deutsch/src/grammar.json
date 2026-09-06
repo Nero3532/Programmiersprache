@@ -1337,7 +1337,15 @@
         },
         {
           "type": "SYMBOL",
+          "name": "woerterbuch_abstraktion"
+        },
+        {
+          "type": "SYMBOL",
           "name": "menge"
+        },
+        {
+          "type": "SYMBOL",
+          "name": "mengen_abstraktion"
         },
         {
           "type": "SYMBOL",
@@ -2463,21 +2471,9 @@
         }
       ]
     },
-    "listen_abstraktion": {
+    "abstraktions_klausel": {
       "type": "SEQ",
       "members": [
-        {
-          "type": "STRING",
-          "value": "["
-        },
-        {
-          "type": "FIELD",
-          "name": "ausdruck",
-          "content": {
-            "type": "SYMBOL",
-            "name": "_ausdruck"
-          }
-        },
         {
           "type": "CHOICE",
           "members": [
@@ -2544,10 +2540,102 @@
               "type": "BLANK"
             }
           ]
+        }
+      ]
+    },
+    "listen_abstraktion": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "["
+        },
+        {
+          "type": "FIELD",
+          "name": "ausdruck",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ausdruck"
+          }
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "abstraktions_klausel"
+          }
         },
         {
           "type": "STRING",
           "value": "]"
+        }
+      ]
+    },
+    "mengen_abstraktion": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "FIELD",
+          "name": "ausdruck",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ausdruck"
+          }
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "abstraktions_klausel"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
+        }
+      ]
+    },
+    "woerterbuch_abstraktion": {
+      "type": "SEQ",
+      "members": [
+        {
+          "type": "STRING",
+          "value": "{"
+        },
+        {
+          "type": "FIELD",
+          "name": "schluessel",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ausdruck"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": ":"
+        },
+        {
+          "type": "FIELD",
+          "name": "wert",
+          "content": {
+            "type": "SYMBOL",
+            "name": "_ausdruck"
+          }
+        },
+        {
+          "type": "REPEAT1",
+          "content": {
+            "type": "SYMBOL",
+            "name": "abstraktions_klausel"
+          }
+        },
+        {
+          "type": "STRING",
+          "value": "}"
         }
       ]
     },

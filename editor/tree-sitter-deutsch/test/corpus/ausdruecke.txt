@@ -107,3 +107,75 @@ sei y = 1 wenn a sonst 2
       dann: (ganzzahl)
       bedingung: (bezeichner)
       sonst: (ganzzahl))))
+
+==================
+Verschachtelte Listen-Abstraktion
+==================
+
+[x * y für x in [1,2] für y in [10,20]]
+
+---
+
+(quelldatei
+  (ausdrucks_anweisung
+    (listen_abstraktion
+      ausdruck: (binaere_operation links: (bezeichner) rechts: (bezeichner))
+      (abstraktions_klausel
+        variable: (bezeichner)
+        iterable: (liste (ganzzahl) (ganzzahl)))
+      (abstraktions_klausel
+        variable: (bezeichner)
+        iterable: (liste (ganzzahl) (ganzzahl))))))
+
+==================
+Mengen-Abstraktion mit Filter
+==================
+
+{x % 3 für x in liste wenn x > 1}
+
+---
+
+(quelldatei
+  (ausdrucks_anweisung
+    (mengen_abstraktion
+      ausdruck: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
+      (abstraktions_klausel
+        variable: (bezeichner)
+        iterable: (bezeichner)
+        bedingung: (binaere_operation links: (bezeichner) rechts: (ganzzahl))))))
+
+==================
+Woerterbuch-Abstraktion
+==================
+
+{x: x * x für x in bereich(4)}
+
+---
+
+(quelldatei
+  (ausdrucks_anweisung
+    (woerterbuch_abstraktion
+      schluessel: (bezeichner)
+      wert: (binaere_operation links: (bezeichner) rechts: (bezeichner))
+      (abstraktions_klausel
+        variable: (bezeichner)
+        iterable: (aufruf
+          funktion: (bezeichner)
+          argumente: (argumentliste (argument (ganzzahl))))))))
+
+==================
+Literale bleiben Literale
+==================
+
+sei leer = {}
+sei menge = {1, 2}
+sei wb = {"a": 1}
+
+---
+
+(quelldatei
+  (variable_deklaration name: (bezeichner) wert: (woerterbuch))
+  (variable_deklaration name: (bezeichner) wert: (menge (ganzzahl) (ganzzahl)))
+  (variable_deklaration
+    name: (bezeichner)
+    wert: (woerterbuch (paar schluessel: (zeichenkette) wert: (ganzzahl)))))

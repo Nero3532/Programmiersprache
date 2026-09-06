@@ -654,6 +654,27 @@ class Parser:
             return teile[0]
         return ast.InterpolierteZeichenkette(teile)
 
+    def _abstraktions_klauseln(self):
+        """Liest eine oder mehrere Klauseln 'für var in iterable [wenn bedingung]'.
+
+        Mehrere Klauseln stehen für verschachtelte Schleifen; eine spätere Klausel
+        sieht die Variablen der früheren."""
+        klauseln = []
+        while self._aktuell().typ == TokenTyp.FUER:
+            self.pos += 1
+            variable = self._schleifenvariable_lesen()
+            self._verbrauche(TokenTyp.IN)
+            # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
+            # 'wenn'-Filter der Abstraktion als Ternär-Beginn gelesen wird
+            iterable = self._oder()
+            bedingung = None
+            if self._aktuell().typ == TokenTyp.WENN:
+                self.pos += 1
+                bedingung = self._oder()
+            klauseln.append((variable, iterable, bedingung))
+            self._ueberspringen_leerzeilen()
+        return klauseln
+
     def _listen_literal(self):
         self._verbrauche(TokenTyp.LECKIG)
         self._ueberspringen_leerzeilen()
@@ -664,21 +685,11 @@ class Parser:
 
         erster = self._ausdruck()
 
-        # List comprehension: [ausdruck für var in iterable wenn bed]
+        # Listen-Abstraktion: [ausdruck für var in iterable wenn bed ...]
         if self._aktuell().typ == TokenTyp.FUER:
-            self.pos += 1
-            variable = self._schleifenvariable_lesen()
-            self._verbrauche(TokenTyp.IN)
-            # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
-            # 'wenn'-Filter der Comprehension als Ternär-Beginn gelesen wird
-            iterable = self._oder()
-            bedingung = None
-            if self._aktuell().typ == TokenTyp.WENN:
-                self.pos += 1
-                bedingung = self._ausdruck()
-            self._ueberspringen_leerzeilen()
+            klauseln = self._abstraktions_klauseln()
             self._verbrauche(TokenTyp.RECKIG)
-            return ast.ListenAusdruck(erster, variable, iterable, bedingung)
+            return ast.ListenAusdruck(erster, klauseln)
 
         # Normale Liste
         elemente = [erster]
@@ -702,9 +713,13 @@ class Parser:
         erster = self._ausdruck()
 
         if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
-            # Wörterbuch: {schlüssel: wert, ...}
+            # Wörterbuch: {schlüssel: wert, ...} oder Abstraktion {schlüssel: wert für ...}
             self.pos += 1
             v = self._ausdruck()
+            if self._aktuell().typ == TokenTyp.FUER:
+                klauseln = self._abstraktions_klauseln()
+                self._verbrauche(TokenTyp.RGESCHWEIFTE)
+                return ast.WoerterbuchAusdruck(erster, v, klauseln)
             paare = [(erster, v)]
             while self._aktuell().typ == TokenTyp.KOMMA:
                 self.pos += 1
@@ -718,6 +733,12 @@ class Parser:
             self._ueberspringen_leerzeilen()
             self._verbrauche(TokenTyp.RGESCHWEIFTE)
             return ast.Woerterbuch(paare)
+
+        # Mengen-Abstraktion: {ausdruck für ...}
+        if self._aktuell().typ == TokenTyp.FUER:
+            klauseln = self._abstraktions_klauseln()
+            self._verbrauche(TokenTyp.RGESCHWEIFTE)
+            return ast.MengenAusdruck(erster, klauseln)
 
         # Menge: {elem, elem, ...}
         elemente = [erster]

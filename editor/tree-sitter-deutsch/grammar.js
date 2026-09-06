@@ -247,7 +247,9 @@ module.exports = grammar({
       $.liste,
       $.listen_abstraktion,
       $.woerterbuch,
+      $.woerterbuch_abstraktion,
       $.menge,
+      $.mengen_abstraktion,
       $._literal,
       $.bezeichner,
     ),
@@ -350,15 +352,37 @@ module.exports = grammar({
 
     liste: $ => seq('[', optional(seq(commaSep1($._ausdruck), optional(','))), ']'),
 
-    listen_abstraktion: $ => seq(
-      '[',
-      field('ausdruck', $._ausdruck),
+    // Eine Klausel je verschachtelter Schleife; die spaetere sieht die Variablen
+    // der frueheren.
+    abstraktions_klausel: $ => seq(
       choice('für', 'fuer'),
       field('variable', choice($.bezeichner, $.namensliste)),
       'in',
       field('iterable', $._ausdruck),
       optional(seq('wenn', field('bedingung', $._ausdruck))),
+    ),
+
+    listen_abstraktion: $ => seq(
+      '[',
+      field('ausdruck', $._ausdruck),
+      repeat1($.abstraktions_klausel),
       ']',
+    ),
+
+    mengen_abstraktion: $ => seq(
+      '{',
+      field('ausdruck', $._ausdruck),
+      repeat1($.abstraktions_klausel),
+      '}',
+    ),
+
+    woerterbuch_abstraktion: $ => seq(
+      '{',
+      field('schluessel', $._ausdruck),
+      ':',
+      field('wert', $._ausdruck),
+      repeat1($.abstraktions_klausel),
+      '}',
     ),
 
     paar: $ => seq(field('schluessel', $._ausdruck), ':', field('wert', $._ausdruck)),
