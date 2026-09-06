@@ -235,7 +235,7 @@ klasse Stapel {
     funktion nehmen(selbst) {
         wenn selbst.groesse == 0 {
             versuche {
-                fehler()
+                werfe "Stapel ist leer"
             } fange f {
                 drucke("Stapel ist leer!")
                 zurück nichts
