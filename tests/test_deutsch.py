@@ -198,33 +198,35 @@ class TestWerfe(unittest.TestCase):
 
 class TestMathe(unittest.TestCase):
     def test_grundfunktionen(self):
-        ergebnis, _ = lauf('wurzel(16)')
+        ergebnis, _ = lauf('mathe.wurzel(16)')
         self.assertEqual(ergebnis, 4.0)
 
     def test_konstanten(self):
         import math
-        ergebnis, _ = lauf('pi')
-        self.assertAlmostEqual(ergebnis, math.pi)
+        self.assertAlmostEqual(lauf('mathe.pi')[0], math.pi)
+        self.assertAlmostEqual(lauf('mathe.e')[0], math.e)
+        with self.assertRaises(NameError):
+            lauf('pi')          # nicht mehr global
 
     def test_wurzel_negativ_wirft_fehler(self):
         with self.assertRaises(ValueError):
-            lauf('wurzel(-1)')
+            lauf('mathe.wurzel(-1)')
 
 
 class TestDateiIO(unittest.TestCase):
     def test_schreiben_lesen_anhaengen(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            lauf('datei_schreiben("x.txt", "Hallo")', interpreter)
-            lauf('datei_anhaengen("x.txt", " Welt")', interpreter)
-            ergebnis, _ = lauf('datei_lesen("x.txt")', interpreter)
+            lauf('datei.schreiben("x.txt", "Hallo")', interpreter)
+            lauf('datei.anhaengen("x.txt", " Welt")', interpreter)
+            ergebnis, _ = lauf('datei.lesen("x.txt")', interpreter)
             self.assertEqual(ergebnis, 'Hallo Welt')
 
     def test_fehlende_datei_wirft_deutschen_fehler(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
             with self.assertRaises(FileNotFoundError) as ctx:
-                lauf('datei_lesen("nicht_da.txt")', interpreter)
+                lauf('datei.lesen("nicht_da.txt")', interpreter)
             self.assertIn('nicht gefunden', str(ctx.exception))
 
 
@@ -578,20 +580,20 @@ class TestDiagnostik(unittest.TestCase):
 
 class TestZufall(unittest.TestCase):
     def test_zufall_im_bereich(self):
-        ergebnis, _ = lauf('zufall()')
+        ergebnis, _ = lauf('zufall.komma()')
         self.assertGreaterEqual(ergebnis, 0)
         self.assertLess(ergebnis, 1)
 
     def test_zufallszahl_einzelwert(self):
-        ergebnis, _ = lauf('zufallszahl(5, 5)')
+        ergebnis, _ = lauf('zufall.zahl(5, 5)')
         self.assertEqual(ergebnis, 5)
 
     def test_zufallszahl_lo_groesser_hi_wirft_fehler(self):
         with self.assertRaises(ValueError):
-            lauf('zufallszahl(10, 1)')
+            lauf('zufall.zahl(10, 1)')
 
     def test_mische_behaelt_alle_elemente(self):
-        _, interpreter = lauf('sei l = [1,2,3,4,5]\nmische(l)')
+        _, interpreter = lauf('sei l = [1,2,3,4,5]\nzufall.mische(l)')
         self.assertEqual(sorted(interpreter.global_umgebung.hole('l')), [1, 2, 3, 4, 5])
 
 
@@ -623,23 +625,23 @@ class TestFunktionaleHelfer(unittest.TestCase):
 
 class TestBodenDecke(unittest.TestCase):
     def test_boden_und_decke(self):
-        self.assertEqual(lauf('boden(3.7)')[0], 3)
-        self.assertEqual(lauf('decke(3.2)')[0], 4)
+        self.assertEqual(lauf('mathe.boden(3.7)')[0], 3)
+        self.assertEqual(lauf('mathe.decke(3.2)')[0], 4)
 
 
 class TestJson(unittest.TestCase):
     def test_schreiben_und_lesen_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            lauf('json_schreiben("d.json", {"name": "Anna", "zahlen": [1,2,3]})', interpreter)
-            ergebnis, _ = lauf('json_lesen("d.json")', interpreter)
+            lauf('json.schreiben("d.json", {"name": "Anna", "zahlen": [1,2,3]})', interpreter)
+            ergebnis, _ = lauf('json.lesen("d.json")', interpreter)
             self.assertEqual(ergebnis, {'name': 'Anna', 'zahlen': [1, 2, 3]})
 
     def test_menge_wird_zu_sortierter_liste_konvertiert(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            lauf('json_schreiben("m.json", {"werte": {3,1,2}})', interpreter)
-            ergebnis, _ = lauf('json_lesen("m.json")', interpreter)
+            lauf('json.schreiben("m.json", {"werte": {3,1,2}})', interpreter)
+            ergebnis, _ = lauf('json.lesen("m.json")', interpreter)
             self.assertEqual(ergebnis, {'werte': [1, 2, 3]})
 
     def test_ungueltiges_json_wirft_fehler(self):
@@ -648,63 +650,63 @@ class TestJson(unittest.TestCase):
                 f.write('{nicht gueltig')
             interpreter = Interpreter(ladepfad=tmp)
             with self.assertRaises(ValueError):
-                lauf('json_lesen("kaputt.json")', interpreter)
+                lauf('json.lesen("kaputt.json")', interpreter)
 
 
 class TestKommandozeilenArgumente(unittest.TestCase):
     def test_argumente_werden_durchgereicht(self):
         interpreter = Interpreter(argumente=['eins', 'zwei'])
-        ergebnis, _ = lauf('kommandozeilen_argumente()', interpreter)
+        ergebnis, _ = lauf('system.argumente()', interpreter)
         self.assertEqual(ergebnis, ['eins', 'zwei'])
 
     def test_keine_argumente_ist_leere_liste(self):
-        ergebnis, _ = lauf('kommandozeilen_argumente()')
+        ergebnis, _ = lauf('system.argumente()')
         self.assertEqual(ergebnis, [])
 
 
 class TestRegex(unittest.TestCase):
     def test_passt_zu(self):
-        self.assertTrue(lauf(r'passt_zu("^\d+$", "12345")')[0])
-        self.assertFalse(lauf(r'passt_zu("^\d+$", "abc")')[0])
+        self.assertTrue(lauf(r'regex.passt_zu("^\d+$", "12345")')[0])
+        self.assertFalse(lauf(r'regex.passt_zu("^\d+$", "abc")')[0])
 
     def test_regex_ersetze(self):
-        ergebnis, _ = lauf(r'regex_ersetze("\s+", " ", "hallo    welt")')
+        ergebnis, _ = lauf(r'regex.ersetze("\s+", " ", "hallo    welt")')
         self.assertEqual(ergebnis, 'hallo welt')
 
     def test_regex_finde(self):
-        ergebnis, _ = lauf(r'regex_finde("\d+", "abc123def")')
+        ergebnis, _ = lauf(r'regex.finde("\d+", "abc123def")')
         self.assertEqual(ergebnis, '123')
-        ergebnis, _ = lauf(r'regex_finde("\d+", "keine zahlen")')
+        ergebnis, _ = lauf(r'regex.finde("\d+", "keine zahlen")')
         self.assertIsNone(ergebnis)
 
     def test_regex_finde_alle(self):
-        ergebnis, _ = lauf(r'regex_finde_alle("\d+", "a1b22c333")')
+        ergebnis, _ = lauf(r'regex.finde_alle("\d+", "a1b22c333")')
         self.assertEqual(ergebnis, ['1', '22', '333'])
 
     def test_ungueltiges_muster_wirft_fehler(self):
         with self.assertRaises(ValueError):
-            lauf('passt_zu("[", "x")')
+            lauf('regex.passt_zu("[", "x")')
 
 
 class TestDatumZeit(unittest.TestCase):
     def test_jetzt_ist_positiv(self):
-        ergebnis, _ = lauf('jetzt()')
+        ergebnis, _ = lauf('zeit.jetzt()')
         self.assertGreater(ergebnis, 0)
 
     def test_datum_formatieren(self):
-        ergebnis, _ = lauf('datum_formatieren(0, "%Y")')
+        ergebnis, _ = lauf('zeit.formatieren(0, "%Y")')
         self.assertEqual(ergebnis, '1970')
 
     def test_ungueltiger_zeitstempel_wirft_fehler(self):
         # Falscher Typ -> TypeError (wie bei 'wurzel'/'boden'), deutsche Meldung
         with self.assertRaises(TypeError) as ctx:
-            lauf('datum_formatieren("keine_zahl", "%Y")')
+            lauf('zeit.formatieren("keine_zahl", "%Y")')
         self.assertIn('erwartet eine Zahl', str(ctx.exception))
         self.assertIn('Zeichenkette', str(ctx.exception))
 
     def test_zeitstempel_ausserhalb_des_bereichs_wirft_wertfehler(self):
         with self.assertRaises(ValueError) as ctx:
-            lauf('datum_formatieren(1e30, "%Y")')
+            lauf('zeit.formatieren(1e30, "%Y")')
         self.assertIn('Ungültiger Zeitstempel', str(ctx.exception))
 
 
@@ -742,20 +744,20 @@ class TestIndexUndZaehlen(unittest.TestCase):
 
 class TestStatistik(unittest.TestCase):
     def test_mittelwert_median(self):
-        self.assertEqual(lauf('mittelwert([1,2,3,4,5])')[0], 3)
-        self.assertEqual(lauf('median([1,2,3,4,5])')[0], 3)
+        self.assertEqual(lauf('statistik.mittelwert([1,2,3,4,5])')[0], 3)
+        self.assertEqual(lauf('statistik.median([1,2,3,4,5])')[0], 3)
 
     def test_stdabweichung(self):
-        ergebnis, _ = lauf('stdabweichung([2,4,4,4,5,5,7,9])')
+        ergebnis, _ = lauf('statistik.stdabweichung([2,4,4,4,5,5,7,9])')
         self.assertAlmostEqual(ergebnis, 2.0)
 
     def test_leere_liste_wirft_fehler(self):
         with self.assertRaises(ValueError):
-            lauf('mittelwert([])')
+            lauf('statistik.mittelwert([])')
         with self.assertRaises(ValueError):
-            lauf('median([])')
+            lauf('statistik.median([])')
         with self.assertRaises(ValueError):
-            lauf('stdabweichung([])')
+            lauf('statistik.stdabweichung([])')
 
 
 class TestTiefeKopie(unittest.TestCase):
@@ -777,11 +779,11 @@ class TestTiefeKopie(unittest.TestCase):
 
 class TestUmgebungsvariable(unittest.TestCase):
     def test_fehlend_ohne_standard_ist_nichts(self):
-        ergebnis, _ = lauf('umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ")')
+        ergebnis, _ = lauf('system.umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ")')
         self.assertIsNone(ergebnis)
 
     def test_fehlend_mit_standard(self):
-        ergebnis, _ = lauf('umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ", "standard")')
+        ergebnis, _ = lauf('system.umgebungsvariable("GARANTIERT_NICHT_GESETZT_XYZ", "standard")')
         self.assertEqual(ergebnis, 'standard')
 
 
@@ -789,45 +791,45 @@ class TestDateisystemHelfer(unittest.TestCase):
     def test_pfad_existiert(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            self.assertTrue(lauf('pfad_existiert(".")', interpreter)[0])
-            self.assertFalse(lauf('pfad_existiert("nicht_da_xyz")', interpreter)[0])
+            self.assertTrue(lauf('pfad.existiert(".")', interpreter)[0])
+            self.assertFalse(lauf('pfad.existiert("nicht_da_xyz")', interpreter)[0])
 
     def test_ordner_erstellen_und_dateien_auflisten(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            lauf('ordner_erstellen("neu")', interpreter)
-            lauf('datei_schreiben("neu/a.txt", "x")', interpreter)
-            ergebnis, _ = lauf('dateien_auflisten("neu")', interpreter)
+            lauf('pfad.ordner_erstellen("neu")', interpreter)
+            lauf('datei.schreiben("neu/a.txt", "x")', interpreter)
+            ergebnis, _ = lauf('pfad.dateien("neu")', interpreter)
             self.assertEqual(ergebnis, ['a.txt'])
 
     def test_dateien_auflisten_fehlender_ordner_wirft_fehler(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
             with self.assertRaises(FileNotFoundError):
-                lauf('dateien_auflisten("nicht_da_xyz")', interpreter)
+                lauf('pfad.dateien("nicht_da_xyz")', interpreter)
 
     def test_ordner_erstellen_auf_existierender_datei_wirft_deutschen_fehler(self):
         with tempfile.TemporaryDirectory() as tmp:
             interpreter = Interpreter(ladepfad=tmp)
-            lauf('datei_schreiben("x.txt", "a")', interpreter)
+            lauf('datei.schreiben("x.txt", "a")', interpreter)
             with self.assertRaises(FileExistsError) as ctx:
-                lauf('ordner_erstellen("x.txt")', interpreter)
+                lauf('pfad.ordner_erstellen("x.txt")', interpreter)
             self.assertIn('existiert bereits als Datei', str(ctx.exception))
 
 
 class TestHashingKodierung(unittest.TestCase):
     def test_hash_sha256_laenge(self):
-        ergebnis, _ = lauf('hash_sha256("hallo")')
+        ergebnis, _ = lauf('kodierung.sha256("hallo")')
         self.assertEqual(len(ergebnis), 64)
 
     def test_base64_roundtrip_mit_umlauten(self):
-        code = 'sei k = base64_kodieren("Hallo Welt äöü")\nbase64_dekodieren(k)'
+        code = 'sei k = kodierung.base64_kodieren("Hallo Welt äöü")\nkodierung.base64_dekodieren(k)'
         ergebnis, _ = lauf(code)
         self.assertEqual(ergebnis, 'Hallo Welt äöü')
 
     def test_ungueltiges_base64_wirft_fehler(self):
         with self.assertRaises(ValueError):
-            lauf('base64_dekodieren("!!!nicht_gueltig!!!")')
+            lauf('kodierung.base64_dekodieren("!!!nicht_gueltig!!!")')
 
 
 class TestSchleifenDestrukturierung(unittest.TestCase):
@@ -1016,14 +1018,14 @@ class TestListeErweitern(unittest.TestCase):
 
 class TestMatheUtilities(unittest.TestCase):
     def test_ggt_kgv(self):
-        self.assertEqual(lauf('ggt(12, 18)')[0], 6)
-        self.assertEqual(lauf('ggt([12, 18, 24])')[0], 6)
-        self.assertEqual(lauf('kgv(4, 6)')[0], 12)
+        self.assertEqual(lauf('mathe.ggt(12, 18)')[0], 6)
+        self.assertEqual(lauf('mathe.ggt([12, 18, 24])')[0], 6)
+        self.assertEqual(lauf('mathe.kgv(4, 6)')[0], 12)
 
     def test_vorzeichen(self):
-        self.assertEqual(lauf('vorzeichen(-5)')[0], -1)
-        self.assertEqual(lauf('vorzeichen(0)')[0], 0)
-        self.assertEqual(lauf('vorzeichen(3.5)')[0], 1)
+        self.assertEqual(lauf('mathe.vorzeichen(-5)')[0], -1)
+        self.assertEqual(lauf('mathe.vorzeichen(0)')[0], 0)
+        self.assertEqual(lauf('mathe.vorzeichen(3.5)')[0], 1)
 
 
 class TestStringPraedikate(unittest.TestCase):
@@ -1527,7 +1529,7 @@ class TestFauleBereiche(unittest.TestCase):
         self.assertIs(lauf('einige(bereich(0, 1))')[0], False)
         self.assertEqual(lauf('sortiere(bereich(3, 0, -1))')[0], [1, 2, 3])
         self.assertEqual(lauf('aufzaehlen(bereich(2))')[0], [[0, 0], [1, 1]])
-        self.assertEqual(lauf('mittelwert(bereich(1, 5))')[0], 2.5)
+        self.assertEqual(lauf('statistik.mittelwert(bereich(1, 5))')[0], 2.5)
         self.assertEqual(lauf('zippe(bereich(2), ["a", "b"])')[0], [[0, 'a'], [1, 'b']])
 
     def test_schleifen_und_abstraktionen(self):
@@ -1562,8 +1564,8 @@ class TestFauleBereiche(unittest.TestCase):
 
     def test_mische_verlangt_weiterhin_eine_liste(self):
         with self.assertRaises(TypeError) as ctx:
-            lauf('mische(bereich(3))')
-        self.assertIn("'mische' erwartet eine Liste", str(ctx.exception))
+            lauf('zufall.mische(bereich(3))')
+        self.assertIn("'zufall.mische' erwartet eine Liste", str(ctx.exception))
 
 
 if __name__ == '__main__':

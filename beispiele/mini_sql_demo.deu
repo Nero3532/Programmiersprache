@@ -101,7 +101,7 @@ sql(firma, "SELECT name, abteilung, gehalt FROM mitarbeiter WHERE abteilung = 'V
 drucke("")
 
 drucke("--- Persistenz: Datenbank als JSON sichern & wieder laden ---")
-sei temp_ordner = umgebungsvariable("TEMP", ".")
+sei temp_ordner = system.umgebungsvariable("TEMP", ".")
 sei sicherungspfad = temp_ordner + "/mini_sql_firma.json"
 drucke(db_speichern(firma, sicherungspfad))
 sei wiederhergestellt = db_laden(sicherungspfad)

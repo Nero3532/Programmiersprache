@@ -261,51 +261,43 @@ Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren 
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
 erlaubt und führt sie erneut aus.
 
-## Eingebaute Funktionen
+## Standardbibliothek
 
-**Allgemein:** `drucke`, `eingabe`, `laenge`/`länge`, `typ`, `ganzzahl`, `kommazahl`, `zeichenkette`,
-`wahrheitswert`, `bereich`, `sortiere`, `anhaengen`/`anhängen`, `entferne`, `umkehren`, `verbinde`,
-`max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`
+Global sind nur die Namen, die in fast jedem Programm vorkommen:
 
-**Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`,
-`boden`, `decke`, `ggt`, `kgv`, `vorzeichen`
+`drucke`, `eingabe`, `laenge`/`länge`, `typ`, `ganzzahl`, `kommazahl`, `zeichenkette`,
+`wahrheitswert`, `bereich`, `liste`, `woerterbuch`/`wörterbuch`, `menge`, `sortiere`,
+`anhaengen`/`anhängen`, `entferne`, `umkehren`, `verbinde`, `max`, `min`, `abs`, `runde`,
+`summe`, `alle`, `einige`, `aufzaehlen`, `zippe`, `tiefe_kopie`
 
-**Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
-eingeschlossen), `mische(liste)` (mischt in-place)
+Alles Fachliche liegt in einem Modul und wird wie ein geladenes Modul angesprochen:
 
-**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`
+| Modul | Inhalt |
+|---|---|
+| `mathe` | `pi`, `e`, `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`, `boden`, `decke`, `ggt`, `kgv`, `vorzeichen` |
+| `zufall` | `komma()` (Kommazahl in [0,1)), `zahl(min, max)` (Ganzzahl, beide Enden eingeschlossen), `mische(liste)` (in-place) |
+| `statistik` | `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung, nicht Stichprobe) |
+| `datei` | `lesen`, `schreiben`, `anhaengen`/`anhängen` |
+| `pfad` | `existiert`, `dateien`, `ordner_erstellen` |
+| `json` | `lesen`, `schreiben` (Mengen werden beim Schreiben zu sortierten Listen) |
+| `regex` | `passt_zu(muster, text)`, `ersetze(muster, ersatz, text)`, `finde`, `finde_alle` — Pythons `re`-Syntax |
+| `zeit` | `jetzt()` (Unix-Epoch-Sekunden), `formatieren(zeitstempel, format)` (`strftime`-Direktiven) |
+| `kodierung` | `sha256`, `base64_kodieren`, `base64_dekodieren` |
+| `system` | `argumente()` (hinter dem Skriptnamen), `umgebungsvariable(name[, standard])` |
 
-**Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`
+```
+sei laenge = mathe.wurzel(a * a + b * b)
+sei inhalt = datei.lesen("daten.txt")
+wenn regex.passt_zu("^[0-9]+$", inhalt) { drucke(zeit.formatieren(zeit.jetzt(), "%H:%M")) }
+```
 
-**JSON:** `json_lesen`, `json_schreiben` (Mengen werden beim Schreiben automatisch zu sortierten
-Listen konvertiert)
-
-**Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
-(erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax
-
-**Mengen:** `menge` (Umwandlung/leere Menge); Instanzmethoden zusätzlich `teilmenge_von`,
-`obermenge_von`, `symmetrische_differenz`
-
-**Statistik:** `mittelwert`, `median`, `stdabweichung` (Populations-Standardabweichung, nicht
-Stichprobe — definiert auch für einelementige Listen)
-
-**Datum/Zeit:** `jetzt()` (Unix-Epoch-Sekunden), `datum_formatieren(zeitstempel, format)`
-(Python-`strftime`-Direktiven, z. B. `"%Y-%m-%d"`)
-
-**Kopieren:** `tiefe_kopie(wert)` — rekursive Kopie verschachtelter Listen/Wörterbücher/Mengen/
+`tiefe_kopie(wert)` erstellt eine rekursive Kopie verschachtelter Listen/Wörterbücher/Mengen/
 Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen Strukturen
-(`l.anhängen(l)`) `RecursionError` statt Endlosschleife
+(`l.anhängen(l)`) gibt es einen `RecursionError` statt einer Endlosschleife.
 
-**Hashing/Kodierung:** `hash_sha256`, `base64_kodieren`, `base64_dekodieren`
-
-**Dateisystem:** `pfad_existiert`, `dateien_auflisten`, `ordner_erstellen`
-
-**System:** `kommandozeilen_argumente()` — Argumente hinter dem Skriptnamen
-(`deutsch skript.deu a b` → `["a", "b"]`), `umgebungsvariable(name)`/`umgebungsvariable(name, standard)`
-
-Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
-`dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)
-für eine vollständige Demonstration.
+Listen, Zeichenketten, Wörterbücher, Mengen und Bereiche haben zusätzlich Methoden
+(`liste.laenge()`, `text.gross()`, `dict.schluessel()`, `menge.vereinigung()`, …) — siehe
+[beispiele/alle_features.deu](beispiele/alle_features.deu) für eine vollständige Demonstration.
 
 ## Editor-Unterstützung
 

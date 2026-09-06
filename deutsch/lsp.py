@@ -15,11 +15,12 @@ import sys
 from .lexer import Lexer, SCHLUESSELWOERTER
 from .parser import Parser
 from . import ast_knoten as ast
-from .interpreter import Interpreter
+from .interpreter import Interpreter, DeutschNamensraum
 
 # LSP-Konstanten (Auszug, damit keine Bibliothek nötig ist)
 FEHLER = 1                       # DiagnosticSeverity.Error
 K_METHODE, K_FUNKTION, K_VARIABLE = 2, 3, 6
+K_MODUL = 9
 K_KLASSE, K_SCHLUESSELWORT, K_KONSTANTE = 7, 14, 21
 S_KLASSE, S_METHODE, S_FUNKTION, S_VARIABLE, S_KONSTANTE = 5, 6, 12, 13, 14
 
@@ -153,14 +154,25 @@ class Wissen:
 
     def __init__(self):
         interpreter = Interpreter()
+        global_ = interpreter.global_umgebung.variablen
+        self.module = {
+            name: sorted(wert.bindungen)
+            for name, wert in global_.items()
+            if isinstance(wert, DeutschNamensraum)
+        }
         self.eingebaute = sorted(
-            name for name, wert in interpreter.global_umgebung.variablen.items()
-            if callable(wert)
+            name for name, wert in global_.items()
+            if callable(wert) and not isinstance(wert, DeutschNamensraum)
         )
         self.konstanten = sorted(
-            name for name, wert in interpreter.global_umgebung.variablen.items()
-            if not callable(wert)
+            name for name, wert in global_.items()
+            if not callable(wert) and not isinstance(wert, DeutschNamensraum)
         )
+        # Fuer Hover: welches Modul stellt welchen Namen bereit
+        self._modul_von = {}
+        for modulname, mitglieder in self.module.items():
+            for mitglied in mitglieder:
+                self._modul_von.setdefault(mitglied, []).append(modulname)
         methoden = set()
         for tabelle in (interpreter._listen_methoden, interpreter._string_methoden,
                         interpreter._woerterbuch_methoden, interpreter._menge_methoden):
@@ -179,6 +191,9 @@ class Wissen:
                 self._methoden_besitzer.setdefault(name, []).append((typ, methode))
 
     def beschreibung(self, name: str) -> str | None:
+        if name in self.module:
+            mitglieder = ', '.join(self.module[name])
+            return f'`{name}` – Modul der Standardbibliothek\n\n{mitglieder}'
         if name in self.schluesselwoerter:
             return f'`{name}` – Schlüsselwort der Sprache Deutsch'
         if name in self.eingebaute:
@@ -187,6 +202,10 @@ class Wissen:
             return f'`{name}` – eingebaute Konstante'
         if name in self.typnamen:
             return f'`{name}` – Typ-Hinweis'
+        module = self._modul_von.get(name)
+        if module:
+            zeilen = [f'`{m}.{name}(…)` – Funktion aus der Standardbibliothek' for m in module]
+            return '\n\n'.join(zeilen)
         eintraege = self._methoden_besitzer.get(name)
         if eintraege:
             zeilen = [
@@ -317,8 +336,15 @@ class Server:
         zeile = zeilen[position.get('line', 0)] if position.get('line', 0) < len(zeilen) else ''
         vor_cursor = zeile[:position.get('character', 0)]
 
-        # Nach einem Punkt nur Methodennamen anbieten
+        # Nach 'modul.' die Mitglieder dieses Moduls, nach jedem anderen Punkt die
+        # eingebauten Instanzmethoden
         if vor_cursor.rstrip().endswith('.'):
+            davor = _WORT_MUSTER.findall(vor_cursor.rstrip()[:-1])
+            if davor and davor[-1] in self.wissen.module:
+                modulname = davor[-1]
+                return [{'label': n, 'kind': K_FUNKTION,
+                         'detail': f'aus {modulname}'}
+                        for n in self.wissen.module[modulname]]
             return [{'label': n, 'kind': K_METHODE,
                      'detail': 'eingebaute Methode'} for n in self.wissen.methoden]
 
@@ -327,6 +353,8 @@ class Server:
                       for n in self.wissen.eingebaute]
         eintraege += [{'label': n, 'kind': K_KONSTANTE, 'detail': 'eingebaute Konstante'}
                       for n in self.wissen.konstanten]
+        eintraege += [{'label': n, 'kind': K_MODUL, 'detail': 'Modul der Standardbibliothek'}
+                      for n in sorted(self.wissen.module)]
         eintraege += [{'label': n, 'kind': K_KLASSE, 'detail': 'Typ-Hinweis'}
                       for n in self.wissen.typnamen]
         for symbol in symbole(text):

@@ -95,7 +95,7 @@ funktion fibonacci_bis(grenze) {
 
 funktion ist_perfektes_quadrat(x) {
     wenn x < 0 { zurück falsch }
-    sei w = runde(wurzel(x))
+    sei w = runde(mathe.wurzel(x))
     zurück w * w == x
 }
 
@@ -163,17 +163,17 @@ drucke("")
 drucke("=== Laufzeitvergleich: naiv-rekursiv vs. memoisiert vs. iterativ ===")
 sei n_test = 22
 
-sei start1 = jetzt()
+sei start1 = zeit.jetzt()
 sei ergebnis1 = fibonacci_rekursiv(n_test)
-sei dauer1 = jetzt() - start1
+sei dauer1 = zeit.jetzt() - start1
 
-sei start2 = jetzt()
+sei start2 = zeit.jetzt()
 sei ergebnis2 = fibonacci_memoisiert(n_test)
-sei dauer2 = jetzt() - start2
+sei dauer2 = zeit.jetzt() - start2
 
-sei start3 = jetzt()
+sei start3 = zeit.jetzt()
 sei ergebnis3 = fibonacci_iterativ(n_test)
-sei dauer3 = jetzt() - start3
+sei dauer3 = zeit.jetzt() - start3
 
 drucke("F(" + zeichenkette(n_test) + ") = " + zeichenkette(ergebnis1) + " (alle drei stimmen überein: " + zeichenkette(ergebnis1 == ergebnis2 und ergebnis2 == ergebnis3) + ")")
 drucke("  rekursiv (naiv):  " + zeichenkette(runde(dauer1 * 1000, 2)) + " ms")

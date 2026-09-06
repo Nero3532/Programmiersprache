@@ -387,79 +387,112 @@ class Interpreter:
     # ---------------------------------------------------------- Eingebaute
 
     def _eingebaute_laden(self):
+        """Kern global, alles Fachliche in einem Namensraum (mathe, datei, json, ...)."""
         g = self.global_umgebung
-        g.setze('drucke',       self._eb_drucke)
-        g.setze('eingabe',      self._eb_eingabe)
-        g.setze('laenge',       self._eb_laenge)
-        g.setze('länge',        self._eb_laenge)
-        g.setze('typ',          self._eb_typ)
-        g.setze('ganzzahl',     self._eb_ganzzahl)
-        g.setze('kommazahl',    self._eb_kommazahl)
-        g.setze('zeichenkette', self._eb_zeichenkette)
+        g.setze('drucke',        self._eb_drucke)
+        g.setze('eingabe',       self._eb_eingabe)
+        g.setze('laenge',        self._eb_laenge)
+        g.setze('länge',         self._eb_laenge)
+        g.setze('typ',           self._eb_typ)
+        g.setze('ganzzahl',      self._eb_ganzzahl)
+        g.setze('kommazahl',     self._eb_kommazahl)
+        g.setze('zeichenkette',  self._eb_zeichenkette)
         g.setze('wahrheitswert', self._eb_wahrheitswert)
-        g.setze('bereich',      self._eb_bereich)
-        g.setze('sortiere',     self._eb_sortiere)
-        g.setze('anhaengen',    self._eb_anhaengen)
-        g.setze('anhängen',     self._eb_anhaengen)
-        g.setze('entferne',     self._eb_entferne)
-        g.setze('umkehren',     self._eb_umkehren)
-        g.setze('verbinde',     self._eb_verbinde)
-        g.setze('max',          self._eb_max)
-        g.setze('min',          self._eb_min)
-        g.setze('abs',          self._eb_abs)
-        g.setze('runde',        self._eb_runde)
-        g.setze('liste',        self._eb_liste)
-        g.setze('woerterbuch',  self._eb_woerterbuch)
-        g.setze('wörterbuch',   self._eb_woerterbuch)
-        g.setze('menge',        self._eb_menge)
-        g.setze('wahr',         True)
-        g.setze('falsch',       False)
-        g.setze('nichts',       None)
-        g.setze('pi',           math.pi)
-        g.setze('e',            math.e)
-        g.setze('wurzel',       self._eb_wurzel)
-        g.setze('sinus',        self._eb_sinus)
-        g.setze('kosinus',      self._eb_kosinus)
-        g.setze('tangens',      self._eb_tangens)
-        g.setze('logarithmus',  self._eb_logarithmus)
-        g.setze('exponential',  self._eb_exponential)
-        g.setze('ggt',          self._eb_ggt)
-        g.setze('kgv',          self._eb_kgv)
-        g.setze('vorzeichen',   self._eb_vorzeichen)
-        g.setze('datei_lesen',      self._eb_datei_lesen)
-        g.setze('datei_schreiben',  self._eb_datei_schreiben)
-        g.setze('datei_anhaengen',  self._eb_datei_anhaengen)
-        g.setze('datei_anhängen',   self._eb_datei_anhaengen)
-        g.setze('boden',            self._eb_boden)
-        g.setze('decke',            self._eb_decke)
-        g.setze('zufall',           self._eb_zufall)
-        g.setze('zufallszahl',      self._eb_zufallszahl)
-        g.setze('mische',           self._eb_mische)
-        g.setze('summe',            self._eb_summe)
-        g.setze('alle',             self._eb_alle)
-        g.setze('einige',           self._eb_einige)
-        g.setze('aufzaehlen',       self._eb_aufzaehlen)
-        g.setze('zippe',            self._eb_zippe)
-        g.setze('json_lesen',       self._eb_json_lesen)
-        g.setze('json_schreiben',   self._eb_json_schreiben)
-        g.setze('kommandozeilen_argumente', self._eb_kommandozeilen_argumente)
-        g.setze('passt_zu',         self._eb_passt_zu)
-        g.setze('regex_ersetze',    self._eb_regex_ersetze)
-        g.setze('regex_finde',      self._eb_regex_finde)
-        g.setze('regex_finde_alle', self._eb_regex_finde_alle)
-        g.setze('jetzt',             self._eb_jetzt)
-        g.setze('datum_formatieren', self._eb_datum_formatieren)
-        g.setze('mittelwert',        self._eb_mittelwert)
-        g.setze('median',            self._eb_median)
-        g.setze('stdabweichung',     self._eb_stdabweichung)
-        g.setze('tiefe_kopie',       self._eb_tiefe_kopie)
-        g.setze('umgebungsvariable', self._eb_umgebungsvariable)
-        g.setze('pfad_existiert',    self._eb_pfad_existiert)
-        g.setze('dateien_auflisten', self._eb_dateien_auflisten)
-        g.setze('ordner_erstellen',  self._eb_ordner_erstellen)
-        g.setze('hash_sha256',       self._eb_hash_sha256)
-        g.setze('base64_kodieren',   self._eb_base64_kodieren)
-        g.setze('base64_dekodieren', self._eb_base64_dekodieren)
+        g.setze('bereich',       self._eb_bereich)
+        g.setze('sortiere',      self._eb_sortiere)
+        g.setze('anhaengen',     self._eb_anhaengen)
+        g.setze('anhängen',      self._eb_anhaengen)
+        g.setze('entferne',      self._eb_entferne)
+        g.setze('umkehren',      self._eb_umkehren)
+        g.setze('verbinde',      self._eb_verbinde)
+        g.setze('max',           self._eb_max)
+        g.setze('min',           self._eb_min)
+        g.setze('abs',           self._eb_abs)
+        g.setze('runde',         self._eb_runde)
+        g.setze('liste',         self._eb_liste)
+        g.setze('woerterbuch',   self._eb_woerterbuch)
+        g.setze('wörterbuch',    self._eb_woerterbuch)
+        g.setze('menge',         self._eb_menge)
+        g.setze('summe',         self._eb_summe)
+        g.setze('alle',          self._eb_alle)
+        g.setze('einige',        self._eb_einige)
+        g.setze('aufzaehlen',    self._eb_aufzaehlen)
+        g.setze('zippe',         self._eb_zippe)
+        g.setze('tiefe_kopie',   self._eb_tiefe_kopie)
+        g.setze('wahr',          True)
+        g.setze('falsch',        False)
+        g.setze('nichts',        None)
+
+        for modulname, mitglieder in self._standardbibliothek().items():
+            g.setze(modulname, DeutschNamensraum(modulname, mitglieder))
+
+    def _standardbibliothek(self) -> dict:
+        """Die nach Themen gruppierten Module.
+
+        Zugriff wie bei einem geladenen Modul: mathe.wurzel(2), datei.lesen(pfad).
+        Global bleibt nur das allgemeine Vokabular, das in jedem Programm vorkommt.
+        """
+        return {
+            'mathe': {
+                'pi': math.pi,
+                'e': math.e,
+                'wurzel': self._eb_wurzel,
+                'sinus': self._eb_sinus,
+                'kosinus': self._eb_kosinus,
+                'tangens': self._eb_tangens,
+                'logarithmus': self._eb_logarithmus,
+                'exponential': self._eb_exponential,
+                'boden': self._eb_boden,
+                'decke': self._eb_decke,
+                'ggt': self._eb_ggt,
+                'kgv': self._eb_kgv,
+                'vorzeichen': self._eb_vorzeichen,
+            },
+            'zufall': {
+                'komma': self._eb_zufall,
+                'zahl': self._eb_zufallszahl,
+                'mische': self._eb_mische,
+            },
+            'statistik': {
+                'mittelwert': self._eb_mittelwert,
+                'median': self._eb_median,
+                'stdabweichung': self._eb_stdabweichung,
+            },
+            'datei': {
+                'lesen': self._eb_datei_lesen,
+                'schreiben': self._eb_datei_schreiben,
+                'anhaengen': self._eb_datei_anhaengen,
+                'anhängen': self._eb_datei_anhaengen,
+            },
+            'pfad': {
+                'existiert': self._eb_pfad_existiert,
+                'dateien': self._eb_dateien_auflisten,
+                'ordner_erstellen': self._eb_ordner_erstellen,
+            },
+            'json': {
+                'lesen': self._eb_json_lesen,
+                'schreiben': self._eb_json_schreiben,
+            },
+            'regex': {
+                'passt_zu': self._eb_passt_zu,
+                'ersetze': self._eb_regex_ersetze,
+                'finde': self._eb_regex_finde,
+                'finde_alle': self._eb_regex_finde_alle,
+            },
+            'zeit': {
+                'jetzt': self._eb_jetzt,
+                'formatieren': self._eb_datum_formatieren,
+            },
+            'kodierung': {
+                'sha256': self._eb_hash_sha256,
+                'base64_kodieren': self._eb_base64_kodieren,
+                'base64_dekodieren': self._eb_base64_dekodieren,
+            },
+            'system': {
+                'argumente': self._eb_kommandozeilen_argumente,
+                'umgebungsvariable': self._eb_umgebungsvariable,
+            },
+        }
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
@@ -701,86 +734,86 @@ class Interpreter:
             raise TypeError(f"'{self._typname(args[0])}' kann nicht in Liste umgewandelt werden")
 
     def _eb_wurzel(self, *args):
-        self._pruefe_args('wurzel', args, 1)
+        self._pruefe_args('mathe.wurzel', args, 1)
         try:
             return math.sqrt(args[0])
         except ValueError:
-            raise ValueError(f"'wurzel' nicht definiert für negative Zahl {args[0]}")
+            raise ValueError(f"'mathe.wurzel' nicht definiert für negative Zahl {args[0]}")
         except TypeError:
-            raise TypeError(f"'wurzel' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.wurzel' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_sinus(self, *args):
-        self._pruefe_args('sinus', args, 1)
+        self._pruefe_args('mathe.sinus', args, 1)
         try:
             return math.sin(args[0])
         except TypeError:
-            raise TypeError(f"'sinus' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.sinus' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_kosinus(self, *args):
-        self._pruefe_args('kosinus', args, 1)
+        self._pruefe_args('mathe.kosinus', args, 1)
         try:
             return math.cos(args[0])
         except TypeError:
-            raise TypeError(f"'kosinus' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.kosinus' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_tangens(self, *args):
-        self._pruefe_args('tangens', args, 1)
+        self._pruefe_args('mathe.tangens', args, 1)
         try:
             return math.tan(args[0])
         except TypeError:
-            raise TypeError(f"'tangens' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.tangens' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_exponential(self, *args):
-        self._pruefe_args('exponential', args, 1)
+        self._pruefe_args('mathe.exponential', args, 1)
         try:
             return math.exp(args[0])
         except TypeError:
-            raise TypeError(f"'exponential' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.exponential' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_ggt(self, *args):
         if not args:
-            raise TypeError("'ggt' erwartet mindestens 1 Argument")
+            raise TypeError("'mathe.ggt' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         try:
             return math.gcd(*[int(w) for w in werte])
         except (TypeError, ValueError):
-            raise TypeError("'ggt' erwartet Ganzzahlen")
+            raise TypeError("'mathe.ggt' erwartet Ganzzahlen")
 
     def _eb_kgv(self, *args):
         if not args:
-            raise TypeError("'kgv' erwartet mindestens 1 Argument")
+            raise TypeError("'mathe.kgv' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         try:
             return math.lcm(*[int(w) for w in werte])
         except (TypeError, ValueError):
-            raise TypeError("'kgv' erwartet Ganzzahlen")
+            raise TypeError("'mathe.kgv' erwartet Ganzzahlen")
 
     def _eb_vorzeichen(self, *args):
-        self._pruefe_args('vorzeichen', args, 1)
+        self._pruefe_args('mathe.vorzeichen', args, 1)
         try:
             wert = args[0]
             return (wert > 0) - (wert < 0)
         except TypeError:
-            raise TypeError(f"'vorzeichen' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.vorzeichen' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_logarithmus(self, *args):
         if len(args) not in (1, 2):
-            raise TypeError("'logarithmus' erwartet 1–2 Argumente")
-        self._zahl_pruefen(args[0], 'logarithmus')
+            raise TypeError("'mathe.logarithmus' erwartet 1–2 Argumente")
+        self._zahl_pruefen(args[0], 'mathe.logarithmus')
         if len(args) == 2:
-            basis = self._zahl_pruefen(args[1], 'logarithmus')
+            basis = self._zahl_pruefen(args[1], 'mathe.logarithmus')
             if basis <= 0 or basis == 1:
                 raise ValueError(
-                    f"'logarithmus' erwartet eine Basis größer 0 und ungleich 1, "
+                    f"'mathe.logarithmus' erwartet eine Basis größer 0 und ungleich 1, "
                     f'bekam {self._zu_text(basis)}'
                 )
         try:
             return math.log(args[0]) if len(args) == 1 else math.log(args[0], args[1])
         except ValueError:
-            raise ValueError(f"'logarithmus' nicht definiert für {args[0]}")
+            raise ValueError(f"'mathe.logarithmus' nicht definiert für {args[0]}")
 
     def _eb_datei_lesen(self, *args):
-        self._pruefe_args('datei_lesen', args, 1)
+        self._pruefe_args('datei.lesen', args, 1)
         pfad = self._zu_text(args[0])
         try:
             with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
@@ -795,7 +828,7 @@ class Interpreter:
             raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
 
     def _eb_datei_schreiben(self, *args):
-        self._pruefe_args('datei_schreiben', args, 2)
+        self._pruefe_args('datei.schreiben', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
         try:
             with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
@@ -809,7 +842,7 @@ class Interpreter:
         return None
 
     def _eb_datei_anhaengen(self, *args):
-        self._pruefe_args('datei_anhängen', args, 2)
+        self._pruefe_args('datei.anhängen', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
         try:
             with open(self._pfad_aufloesen(pfad), 'a', encoding='utf-8') as f:
@@ -823,37 +856,37 @@ class Interpreter:
         return None
 
     def _eb_boden(self, *args):
-        self._pruefe_args('boden', args, 1)
+        self._pruefe_args('mathe.boden', args, 1)
         try:
             return math.floor(args[0])
         except TypeError:
-            raise TypeError(f"'boden' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.boden' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_decke(self, *args):
-        self._pruefe_args('decke', args, 1)
+        self._pruefe_args('mathe.decke', args, 1)
         try:
             return math.ceil(args[0])
         except TypeError:
-            raise TypeError(f"'decke' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            raise TypeError(f"'mathe.decke' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_zufall(self, *args):
-        self._pruefe_args('zufall', args, 0)
+        self._pruefe_args('zufall.komma', args, 0)
         return random.random()
 
     def _eb_zufallszahl(self, *args):
-        self._pruefe_args('zufallszahl', args, 2)
+        self._pruefe_args('zufall.zahl', args, 2)
         try:
             lo, hi = int(args[0]), int(args[1])
         except (ValueError, TypeError):
-            raise TypeError("'zufallszahl' erwartet zwei Ganzzahlen")
+            raise TypeError("'zufall.zahl' erwartet zwei Ganzzahlen")
         if lo > hi:
-            raise ValueError(f"'zufallszahl' erwartet erstes Argument <= zweites, bekam {lo} > {hi}")
+            raise ValueError(f"'zufall.zahl' erwartet erstes Argument <= zweites, bekam {lo} > {hi}")
         return random.randint(lo, hi)
 
     def _eb_mische(self, *args):
-        self._pruefe_args('mische', args, 1)
+        self._pruefe_args('zufall.mische', args, 1)
         if not isinstance(args[0], list):
-            raise TypeError("'mische' erwartet eine Liste")
+            raise TypeError("'zufall.mische' erwartet eine Liste")
         random.shuffle(args[0])
         return None
 
@@ -893,7 +926,7 @@ class Interpreter:
         return [list(t) for t in zip(*args)]
 
     def _eb_json_lesen(self, *args):
-        self._pruefe_args('json_lesen', args, 1)
+        self._pruefe_args('json.lesen', args, 1)
         pfad = self._zu_text(args[0])
         try:
             with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
@@ -904,7 +937,7 @@ class Interpreter:
             raise ValueError(f"Ungültiges JSON in '{pfad}': {e}")
 
     def _eb_json_schreiben(self, *args):
-        self._pruefe_args('json_schreiben', args, 2)
+        self._pruefe_args('json.schreiben', args, 2)
         pfad, wert = self._zu_text(args[0]), args[1]
 
         def _konvertiere(o):
@@ -924,11 +957,11 @@ class Interpreter:
         return None
 
     def _eb_kommandozeilen_argumente(self, *args):
-        self._pruefe_args('kommandozeilen_argumente', args, 0)
+        self._pruefe_args('system.argumente', args, 0)
         return list(self._cli_argumente)
 
     def _eb_passt_zu(self, *args):
-        self._pruefe_args('passt_zu', args, 2)
+        self._pruefe_args('regex.passt_zu', args, 2)
         muster, text = self._zu_text(args[0]), self._zu_text(args[1])
         try:
             return re.search(muster, text) is not None
@@ -936,7 +969,7 @@ class Interpreter:
             raise ValueError(f"Ungültiges Muster '{muster}': {e}")
 
     def _eb_regex_ersetze(self, *args):
-        self._pruefe_args('regex_ersetze', args, 3)
+        self._pruefe_args('regex.ersetze', args, 3)
         muster, ersatz, text = (self._zu_text(a) for a in args)
         try:
             return re.sub(muster, ersatz, text)
@@ -944,7 +977,7 @@ class Interpreter:
             raise ValueError(f"Ungültiges Muster '{muster}': {e}")
 
     def _eb_regex_finde(self, *args):
-        self._pruefe_args('regex_finde', args, 2)
+        self._pruefe_args('regex.finde', args, 2)
         muster, text = self._zu_text(args[0]), self._zu_text(args[1])
         try:
             treffer = re.search(muster, text)
@@ -953,7 +986,7 @@ class Interpreter:
         return treffer.group(0) if treffer else None
 
     def _eb_regex_finde_alle(self, *args):
-        self._pruefe_args('regex_finde_alle', args, 2)
+        self._pruefe_args('regex.finde_alle', args, 2)
         muster, text = self._zu_text(args[0]), self._zu_text(args[1])
         try:
             treffer = re.findall(muster, text)
@@ -962,46 +995,46 @@ class Interpreter:
         return [list(t) if isinstance(t, tuple) else t for t in treffer]
 
     def _eb_jetzt(self, *args):
-        self._pruefe_args('jetzt', args, 0)
+        self._pruefe_args('zeit.jetzt', args, 0)
         return time.time()
 
     def _eb_datum_formatieren(self, *args):
-        self._pruefe_args('datum_formatieren', args, 2)
+        self._pruefe_args('zeit.formatieren', args, 2)
         zeitstempel, format_str = args[0], self._zu_text(args[1])
-        self._zahl_pruefen(zeitstempel, 'datum_formatieren')
+        self._zahl_pruefen(zeitstempel, 'zeit.formatieren')
         try:
             return datetime.fromtimestamp(zeitstempel).strftime(format_str)
         except (ValueError, OSError, OverflowError):
             raise ValueError(
-                f"Ungültiger Zeitstempel für 'datum_formatieren': {self._zu_text(zeitstempel)}"
+                f"Ungültiger Zeitstempel für 'zeit.formatieren': {self._zu_text(zeitstempel)}"
             )
 
     def _eb_mittelwert(self, *args):
-        self._pruefe_args('mittelwert', args, 1)
+        self._pruefe_args('statistik.mittelwert', args, 1)
         if not isinstance(args[0], _SEQUENZ_TYPEN):
-            raise TypeError("'mittelwert' erwartet eine Liste, Menge oder Bereich")
+            raise TypeError("'statistik.mittelwert' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.mean(args[0])
         except statistics.StatisticsError:
-            raise ValueError("'mittelwert' erwartet eine nicht-leere Liste")
+            raise ValueError("'statistik.mittelwert' erwartet eine nicht-leere Liste")
 
     def _eb_median(self, *args):
-        self._pruefe_args('median', args, 1)
+        self._pruefe_args('statistik.median', args, 1)
         if not isinstance(args[0], _SEQUENZ_TYPEN):
-            raise TypeError("'median' erwartet eine Liste, Menge oder Bereich")
+            raise TypeError("'statistik.median' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.median(args[0])
         except statistics.StatisticsError:
-            raise ValueError("'median' erwartet eine nicht-leere Liste")
+            raise ValueError("'statistik.median' erwartet eine nicht-leere Liste")
 
     def _eb_stdabweichung(self, *args):
-        self._pruefe_args('stdabweichung', args, 1)
+        self._pruefe_args('statistik.stdabweichung', args, 1)
         if not isinstance(args[0], _SEQUENZ_TYPEN):
-            raise TypeError("'stdabweichung' erwartet eine Liste, Menge oder Bereich")
+            raise TypeError("'statistik.stdabweichung' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.pstdev(args[0])
         except statistics.StatisticsError:
-            raise ValueError("'stdabweichung' erwartet eine nicht-leere Liste")
+            raise ValueError("'statistik.stdabweichung' erwartet eine nicht-leere Liste")
 
     def _eb_tiefe_kopie(self, *args):
         self._pruefe_args('tiefe_kopie', args, 1)
@@ -1022,18 +1055,18 @@ class Interpreter:
 
     def _eb_umgebungsvariable(self, *args):
         if len(args) not in (1, 2):
-            raise TypeError("'umgebungsvariable' erwartet 1–2 Argumente")
+            raise TypeError("'system.umgebungsvariable' erwartet 1–2 Argumente")
         name = self._zu_text(args[0])
         if len(args) == 2:
             return os.environ.get(name, args[1])
         return os.environ.get(name)
 
     def _eb_pfad_existiert(self, *args):
-        self._pruefe_args('pfad_existiert', args, 1)
+        self._pruefe_args('pfad.existiert', args, 1)
         return os.path.exists(self._pfad_aufloesen(self._zu_text(args[0])))
 
     def _eb_dateien_auflisten(self, *args):
-        self._pruefe_args('dateien_auflisten', args, 1)
+        self._pruefe_args('pfad.dateien', args, 1)
         pfad = self._zu_text(args[0])
         try:
             return sorted(os.listdir(self._pfad_aufloesen(pfad)))
@@ -1045,7 +1078,7 @@ class Interpreter:
             raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
 
     def _eb_ordner_erstellen(self, *args):
-        self._pruefe_args('ordner_erstellen', args, 1)
+        self._pruefe_args('pfad.ordner_erstellen', args, 1)
         pfad = self._zu_text(args[0])
         try:
             os.makedirs(self._pfad_aufloesen(pfad), exist_ok=True)
@@ -1056,15 +1089,15 @@ class Interpreter:
         return None
 
     def _eb_hash_sha256(self, *args):
-        self._pruefe_args('hash_sha256', args, 1)
+        self._pruefe_args('kodierung.sha256', args, 1)
         return hashlib.sha256(self._zu_text(args[0]).encode('utf-8')).hexdigest()
 
     def _eb_base64_kodieren(self, *args):
-        self._pruefe_args('base64_kodieren', args, 1)
+        self._pruefe_args('kodierung.base64_kodieren', args, 1)
         return base64.b64encode(self._zu_text(args[0]).encode('utf-8')).decode('ascii')
 
     def _eb_base64_dekodieren(self, *args):
-        self._pruefe_args('base64_dekodieren', args, 1)
+        self._pruefe_args('kodierung.base64_dekodieren', args, 1)
         text = self._zu_text(args[0])
         try:
             return base64.b64decode(text, validate=True).decode('utf-8')
