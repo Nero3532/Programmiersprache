@@ -1183,5 +1183,79 @@ class TestStatischeKlassenmitglieder(unittest.TestCase):
             lauf('klasse K { }\nK.unbekannt')
 
 
+class TestKlassenkoerperSyntax(unittest.TestCase):
+    """Unerwartete Token im Klassenkörper wurden still übersprungen – ein Tippfehler
+    verschwand dadurch spurlos statt gemeldet zu werden."""
+
+    def test_unerwartetes_token_wirft_syntaxfehler(self):
+        with self.assertRaises(SyntaxError) as ctx:
+            lauf('klasse A { tippfehler }')
+        meldung = str(ctx.exception)
+        self.assertIn("Klasse 'A'", meldung)
+        self.assertIn('Zeile 1', meldung)
+
+    def test_zeile_des_fehlers_wird_gemeldet(self):
+        code = '''klasse A {
+    funktion f(dies) { zurück 1 }
+    kaputt kaputt
+}'''
+        with self.assertRaises(SyntaxError) as ctx:
+            lauf(code)
+        self.assertIn('Zeile 3', str(ctx.exception))
+
+    def test_erlaubte_elemente_funktionieren_weiter(self):
+        code = '''klasse A {
+    sei zaehler = 0
+    konstante MAX = 5
+    funktion __init__(dies) { dies.x = 1 }
+    statisch funktion hilf() { zurück "ok" }
+}
+sei a = neu A()
+[a.x, A.zaehler, A.MAX, A.hilf()]'''
+        self.assertEqual(lauf(code)[0], [1, 0, 5, 'ok'])
+
+
+class TestNeuMitNamensraum(unittest.TestCase):
+    """'neu modul.Klasse(...)' war bisher ein Syntaxfehler."""
+
+    MODUL = 'klasse Punkt { funktion __init__(dies, x) { dies.x = x } }\nsei KONST = 42\n'
+
+    def _interpreter(self, tmp):
+        with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+            f.write(self.MODUL)
+        return Interpreter(ladepfad=tmp)
+
+    def test_klasse_aus_namensraum_instanziieren(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ergebnis, _ = lauf('lade "mod.deu" als m\nsei p = neu m.Punkt(7)\np.x',
+                               self._interpreter(tmp))
+            self.assertEqual(ergebnis, 7)
+
+    def test_keyword_argument_und_verkettung(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            ergebnis, _ = lauf('lade "mod.deu" als m\nneu m.Punkt(x=3).x',
+                               self._interpreter(tmp))
+            self.assertEqual(ergebnis, 3)
+
+    def test_unbekanntes_attribut_im_namensraum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(AttributeError):
+                lauf('lade "mod.deu" als m\nneu m.Fehlt()', self._interpreter(tmp))
+
+    def test_namensraum_wert_der_keine_klasse_ist(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(TypeError) as ctx:
+                lauf('lade "mod.deu" als m\nneu m.KONST()', self._interpreter(tmp))
+            self.assertIn("'m.KONST' ist keine Klasse", str(ctx.exception))
+
+    def test_lokale_klasse_unveraendert(self):
+        code = 'klasse A { funktion __init__(dies) { dies.n = 5 } }\nneu A().n'
+        self.assertEqual(lauf(code)[0], 5)
+
+    def test_unbekannte_klasse_meldet_namensfehler(self):
+        with self.assertRaises(NameError):
+            lauf('neu Gibtsnicht()')
+
+
 if __name__ == '__main__':
     unittest.main()

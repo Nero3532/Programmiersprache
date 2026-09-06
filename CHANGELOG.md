@@ -4,6 +4,12 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- `neu modul.Klasse(...)` — Klassen aus einem per `lade "..." als modul` geladenen Namensraum
+  lassen sich direkt instanziieren (bisher ein Syntaxfehler, der nur über den Umweg
+  `sei K = modul.Klasse` umgangen werden konnte). Keyword-Argumente und Verkettung
+  (`neu modul.Klasse(x=1).methode()`) funktionieren wie bei lokalen Klassen.
+
 ### Behoben
 - Eingebaute Instanzmethoden von Liste/Zeichenkette/Wörterbuch/Menge prüfen ihre Argumentanzahl
   selbst. Vorher zeigte ein falscher Aufruf Python-Interna
@@ -29,7 +35,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Anonyme Funktionen heißen in Argument-Fehlermeldungen `<anonym>` statt `'None'`
   (`'<anonym>': Pflichtargument(e) fehlen: x`), benannte behalten ihren Namen.
 - Grammatik in der Fehlermeldung `hat kein Parameter` → `hat keinen Parameter`.
-- 34 neue Regressionstests (183 gesamt).
+- Unerwartete Token im Klassenkörper werden gemeldet statt still übersprungen: ein Tippfehler
+  wie `klasse A { tippfehler }` verschwand bisher spurlos, jetzt gibt es einen `SyntaxError`
+  mit Zeilenangabe.
+- 43 neue Regressionstests (192 gesamt).
 
 ### Geändert
 - `datum_formatieren` mit einem Zeitstempel falschen Typs wirft `TypeError` statt `ValueError`
