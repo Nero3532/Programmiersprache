@@ -1668,5 +1668,94 @@ class TestSliceZuweisung(unittest.TestCase):
         self.assertEqual(lauf('sei l = [1,2,3]; l[0] = 9; l')[0], [9, 2, 3])
 
 
+class TestC3Linearisierung(unittest.TestCase):
+    """Mehrfachvererbung folgt derselben Auflösungsreihenfolge wie Python."""
+
+    DIAMANT = '''klasse Basis { funktion f(dies) { zurück "Basis" } }
+klasse Links(Basis) { }
+klasse Rechts(Basis) { funktion f(dies) { zurück "Rechts" } }
+klasse Kind(Links, Rechts) { }
+'''
+
+    def test_diamant_nimmt_die_geschwisterklasse_vor_der_basis(self):
+        # Die frühere Tiefensuche lief Links -> Basis und fand "Basis"
+        self.assertEqual(lauf(self.DIAMANT + 'neu Kind().f()')[0], 'Rechts')
+
+    def test_diamant_auch_bei_klassenattributen(self):
+        code = '''klasse B { sei quelle = "Basis" }
+klasse L(B) { }
+klasse R(B) { sei quelle = "Rechts" }
+klasse K(L, R) { }
+K.quelle'''
+        self.assertEqual(lauf(code)[0], 'Rechts')
+
+    def test_diamant_auch_bei_statischen_methoden(self):
+        code = '''klasse B { statisch funktion s() { zurück "Basis" } }
+klasse L(B) { }
+klasse R(B) { statisch funktion s() { zurück "Rechts" } }
+klasse K(L, R) { }
+K.s()'''
+        self.assertEqual(lauf(code)[0], 'Rechts')
+
+    def test_reihenfolge_der_direkten_eltern_bleibt_erhalten(self):
+        code = '''klasse A { funktion wer(dies) { zurück "A" } }
+klasse B { funktion wer(dies) { zurück "B" } }
+klasse AB(A, B) { }
+klasse BA(B, A) { }
+[neu AB().wer(), neu BA().wer()]'''
+        self.assertEqual(lauf(code)[0], ['A', 'B'])
+
+    def test_widerspruechliche_hierarchie_wird_abgewiesen(self):
+        code = '''klasse X { }
+klasse Y(X) { }
+klasse Z(X, Y) { }'''
+        with self.assertRaises(TypeError) as ctx:
+            lauf(code)
+        self.assertIn('Widersprüchliche Vererbung', str(ctx.exception))
+        self.assertIn("'Z'", str(ctx.exception))
+
+    def test_doppelte_elternklasse_wird_abgewiesen(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('klasse A { }\nklasse B(A, A) { }')
+        self.assertIn('mehrfach als Elternklasse', str(ctx.exception))
+
+    def test_einfachvererbung_unveraendert(self):
+        code = '''klasse Tier { funktion sprich(dies) { zurück "..." } }
+klasse Hund(Tier) { funktion sprich(dies) { zurück "Wau" } }
+klasse Welpe(Hund) { }
+[neu Welpe().sprich(), neu Tier().sprich()]'''
+        self.assertEqual(lauf(code)[0], ['Wau', '...'])
+
+    def test_typ_hinweis_akzeptiert_alle_vorfahren(self):
+        code = self.DIAMANT + '''funktion nimm(x: Basis) { zurück 1 }
+nimm(neu Kind())'''
+        self.assertEqual(lauf(code)[0], 1)
+
+    def test_reihenfolge_stimmt_mit_python_ueberein(self):
+        """Gegenprobe: dieselben Hierarchien in Python gebaut und die MRO verglichen."""
+        hierarchien = [
+            [('A', []), ('B', ['A']), ('C', ['A']), ('D', ['B', 'C'])],
+            # Beispiel aus dem C3-Aufsatz
+            [('O', []), ('A', ['O']), ('B', ['O']), ('C', ['O']), ('D', ['O']),
+             ('E', ['O']), ('K1', ['A', 'B', 'C']), ('K2', ['D', 'B', 'E']),
+             ('K3', ['D', 'A']), ('Z', ['K1', 'K2', 'K3'])],
+            [('A', []), ('B', ['A']), ('C', ['B']), ('D', ['A']), ('E', ['C', 'D'])],
+            [('A', []), ('B', ['A']), ('C', ['A']), ('D', ['B', 'C']), ('E', ['C', 'B'])],
+        ]
+        for nr, hierarchie in enumerate(hierarchien, 1):
+            code = '\n'.join(
+                'klasse %s%s { }' % (name, '(' + ', '.join(eltern) + ')' if eltern else '')
+                for name, eltern in hierarchie)
+            _, interpreter = lauf(code)
+            gebaut = {}
+            for name, eltern in hierarchie:
+                gebaut[name] = type(name, tuple(gebaut[e] for e in eltern) or (object,), {})
+            for name, _ in hierarchie:
+                with self.subTest(hierarchie=nr, klasse=name):
+                    deutsch = [k.name for k in interpreter.global_umgebung.hole(name).mro]
+                    python = [k.__name__ for k in gebaut[name].__mro__ if k is not object]
+                    self.assertEqual(deutsch, python)
+
+
 if __name__ == '__main__':
     unittest.main()

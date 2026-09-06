@@ -119,3 +119,27 @@ z.verringern()
 z.anzeigen()
 z.erhoehen()
 z.anzeigen()
+
+# ================================================================
+# MEHRFACHVERERBUNG: Auflösungsreihenfolge nach C3
+# ================================================================
+drucke("")
+drucke("=== Mehrfachvererbung (C3) ===")
+
+klasse Fahrzeug {
+    funktion beschreibung(dies) { zurück "Fahrzeug" }
+    funktion raeder(dies) { zurück 4 }
+}
+klasse Elektrisch(Fahrzeug) {
+    funktion antrieb(dies) { zurück "Strom" }
+}
+klasse Zweirad(Fahrzeug) {
+    funktion raeder(dies) { zurück 2 }
+}
+klasse EBike(Elektrisch, Zweirad) { }
+
+sei rad = neu EBike()
+drucke("Antrieb: {rad.antrieb()}")
+# 'Elektrisch' hat kein raeder(), also kommt 'Zweirad' vor der gemeinsamen Basis
+drucke("Räder:   {rad.raeder()}  (Tiefensuche haette 4 aus Fahrzeug geliefert)")
+drucke("Basis:   {rad.beschreibung()}")

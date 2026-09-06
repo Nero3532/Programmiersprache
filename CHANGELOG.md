@@ -18,6 +18,12 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **C3-Linearisierung** bei Mehrfachvererbung statt links-nach-rechts-Tiefensuche — dieselbe
+  Regel wie in Python. Beim Diamant fand die Tiefensuche über den ersten Elternteil die
+  gemeinsame Basis und übersprang dabei die Geschwisterklasse; jetzt kommen Geschwister vor
+  der Basis. Die Reihenfolge wird je Klasse einmal berechnet, Methoden-, Attribut- und
+  Instanzprüfungen laufen sie linear ab. Eine Hierarchie ohne gültige Reihenfolge und eine
+  doppelt genannte Elternklasse werden bei der Definition abgewiesen.
 - **Argument-Entpackung** `f(*folge)`: eine Liste, Menge, ein Bereich oder eine
   Zeichenkette wird zu einzelnen positionalen Argumenten. Mehrfach und mit festen sowie
   Keyword-Argumenten kombinierbar, auch bei `neu Klasse(*werte)` und den eingebauten
