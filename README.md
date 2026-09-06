@@ -52,6 +52,11 @@ sei [a, b, c] = [1, 2, 3]     # Destrukturierung
 konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
 ```
 
+`sei` deklariert, `=` weist nur zu: eine Zuweisung an einen unbekannten Namen (`x = 5` ohne
+vorheriges `sei x = ...`) wirft einen `NameError`, damit ein Tippfehler keine stille neue
+Variable anlegt. Zuweisungen greifen auf die nächste umschließende Deklaration zu — eine
+Funktion kann also eine äußere Variable beschreiben, ohne sie neu zu deklarieren.
+
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
 `Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
 selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.

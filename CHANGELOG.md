@@ -46,6 +46,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Bereichs wirft weiterhin `ValueError`.
 - `bereich` und `aufzaehlen` akzeptieren keine Zahlen mehr in Zeichenketten-Form
   (`bereich("5")`) – Argumente müssen Zahlen sein.
+- Zuweisung an einen nicht deklarierten Namen ist jetzt ein Fehler statt einer stillen
+  Neuanlage: `zaehler = 5` ohne vorheriges `sei zaehler = ...` wirft
+  `Variable 'zaehler' wurde nicht deklariert (benutze 'sei')`, bei ähnlichem vorhandenem
+  Namen mit Vorschlag. Damit greift die Meldung, die `Umgebung.weise_zu` schon immer
+  enthielt, aber nie erreicht wurde. Unverändert bleiben: Zuweisung an bestehende Variablen
+  (auch aus einem inneren Geltungsbereich heraus), Schleifen- und `fange`-Variablen sowie
+  Attribut- und Index-Zuweisungen (`obj.neu = 1`, `liste[0] = 1`).
 
 ## [2.7.0]
 

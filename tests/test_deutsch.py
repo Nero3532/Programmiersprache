@@ -1257,5 +1257,52 @@ class TestNeuMitNamensraum(unittest.TestCase):
             lauf('neu Gibtsnicht()')
 
 
+class TestZuweisungOhneDeklaration(unittest.TestCase):
+    """Zuweisung an einen unbekannten Namen legte still eine neue Variable an;
+    die Fehlermeldung in Umgebung.weise_zu war dadurch unerreichbar."""
+
+    def test_zuweisung_ohne_sei_wirft_namensfehler(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('tippfelher = 5')
+        self.assertIn("benutze 'sei'", str(ctx.exception))
+
+    def test_vorschlag_bei_aehnlichem_namen(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('sei zaehler = 0\nzaehlerr = 5')
+        self.assertIn("meintest du 'zaehler'", str(ctx.exception))
+
+    def test_nach_sei_ist_zuweisung_erlaubt(self):
+        self.assertEqual(lauf('sei x = 1\nx = 2\nx')[0], 2)
+
+    def test_aeussere_variable_aus_funktion_beschreibbar(self):
+        code = '''sei zaehler = 0
+funktion hoch() { zaehler = zaehler + 1 }
+hoch()
+hoch()
+zaehler'''
+        self.assertEqual(lauf(code)[0], 2)
+
+    def test_zuweisung_endet_am_blockskope(self):
+        with self.assertRaises(NameError):
+            lauf('wenn wahr { sei nurimblock = 1 }\nnurimblock = 2')
+
+    def test_schleifen_und_fange_variablen_bleiben_zuweisbar(self):
+        self.assertEqual(lauf('für i in [1] { i = 9 }\n"ok"')[0], 'ok')
+        self.assertEqual(lauf('versuche { werfe "x" } fange f { f = 1 }\n"ok"')[0], 'ok')
+
+    def test_attribut_und_index_zuweisung_unveraendert(self):
+        self.assertEqual(lauf('sei l = [1,2]\nl[0] = 9\nl')[0], [9, 2])
+        code = '''klasse A { funktion __init__(dies) { dies.x = 1 } }
+sei a = neu A()
+a.y = 2
+a.y'''
+        self.assertEqual(lauf(code)[0], 2)
+
+    def test_konstante_meldet_weiterhin_typfehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('konstante K = 1\nK = 2')
+        self.assertIn('Konstante', str(ctx.exception))
+
+
 if __name__ == '__main__':
     unittest.main()

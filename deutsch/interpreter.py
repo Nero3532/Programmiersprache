@@ -1333,10 +1333,9 @@ class Interpreter:
 
     def _ziel_setzen(self, ziel, wert, u):
         if isinstance(ziel, ast.Bezeichner):
-            if u.existiert(ziel.name):
-                u.weise_zu(ziel.name, wert)
-            else:
-                u.setze(ziel.name, wert)
+            # Zuweisung deklariert nicht – 'weise_zu' meldet unbekannte Namen als Fehler,
+            # damit ein Tippfehler keine stille neue Variable anlegt
+            u.weise_zu(ziel.name, wert)
         elif isinstance(ziel, ast.AttributZugriff):
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
