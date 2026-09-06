@@ -247,15 +247,20 @@ class Parser:
         statische_methoden = []
         klassenattribute = []
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
+            zeile = self._aktuell().zeile
             if self._aktuell().typ == TokenTyp.FUNKTION:
-                methoden.append(self._funktion_definition())
+                mitglied = self._funktion_definition()
+                methoden.append(mitglied)
             elif self._aktuell().typ == TokenTyp.STATISCH:
                 self.pos += 1
-                statische_methoden.append(self._funktion_definition())
+                mitglied = self._funktion_definition()
+                statische_methoden.append(mitglied)
             elif self._aktuell().typ == TokenTyp.SEI:
-                klassenattribute.append(self._variable_deklaration())
+                mitglied = self._variable_deklaration()
+                klassenattribute.append(mitglied)
             elif self._aktuell().typ == TokenTyp.KONSTANTE:
-                klassenattribute.append(self._konstante_deklaration())
+                mitglied = self._konstante_deklaration()
+                klassenattribute.append(mitglied)
             else:
                 # Früher still übersprungen – ein Tippfehler im Klassenkörper
                 # verschwand dadurch spurlos
@@ -263,6 +268,7 @@ class Parser:
                     f"Im Körper von Klasse '{name}' sind nur 'funktion', 'statisch funktion', "
                     "'sei' und 'konstante' erlaubt"
                 )
+            mitglied.zeile = zeile   # Klassenmitglieder tragen ihre Zeile fuer Werkzeuge
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
         return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)

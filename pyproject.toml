@@ -12,6 +12,7 @@ license = { file = "LICENSE" }
 
 [project.scripts]
 deutsch = "main:main"
+deutsch-lsp = "deutsch.lsp:main"
 
 [tool.setuptools]
 py-modules = ["main"]

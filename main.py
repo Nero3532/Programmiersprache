@@ -5,6 +5,8 @@ Deutsch 2.0 – Einstiegspunkt
 Verwendung:
     python main.py              → interaktive REPL
     python main.py datei.deu    → Datei ausführen
+    python main.py --lsp        → Language Server (LSP über stdio)
+    python main.py --version    → Version ausgeben
 
 Copyright (C) 2026  txtblock93@gmail.com
 Lizenziert unter der GNU General Public License v3.0 oder später.
@@ -162,6 +164,13 @@ def repl():
 
 def main():
     if len(sys.argv) > 1:
+        if sys.argv[1] == '--lsp':
+            from deutsch.lsp import main as lsp_main
+            return lsp_main(sys.argv[2:])
+        if sys.argv[1] in ('--version', '-V'):
+            from deutsch import __version__
+            print(f'Deutsch {__version__}')
+            return 0
         datei_starten(sys.argv[1], sys.argv[2:])
     else:
         repl()
