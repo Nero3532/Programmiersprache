@@ -121,7 +121,7 @@ klasse Tier {
 klasse Hund(Tier) {
     funktion sprich(dies) { zurück dies.name + ": Wau!" }
 }
-klasse Zwitter(Hund, EineAndereKlasse) { }   # Mehrfachvererbung (links-nach-rechts DFS)
+klasse Zwitter(Hund, EineAndereKlasse) { }   # Mehrfachvererbung (C3, wie in Python)
 neu Hund(name="Rex")                          # Keyword-Argumente auch bei neu
 
 klasse Zaehler {
@@ -138,6 +138,23 @@ Statische Methoden sind normale `funktion`-Definitionen im Klassenkörper mit `s
 die kein `dies` deklarieren; sie sind sowohl über die Klasse (`Klasse.methode()`) als auch über
 eine Instanz (`instanz.methode()`, ohne automatische `dies`-Bindung) aufrufbar. Klassenattribute
 werden vererbt (links-nach-rechts, wie Methoden).
+
+**Mehrfachvererbung** löst nach C3 auf — derselben Regel wie Python. Die Reihenfolge wird bei
+der Klassendefinition einmal berechnet; jede Methoden- und Attributsuche läuft sie dann linear
+ab. Beim Diamant heißt das, dass Geschwisterklassen vor der gemeinsamen Basis kommen:
+
+```
+klasse Basis  { funktion f(dies) { zurück "Basis" } }
+klasse Links(Basis)  { }
+klasse Rechts(Basis) { funktion f(dies) { zurück "Rechts" } }
+klasse Kind(Links, Rechts) { }
+
+neu Kind().f()      # "Rechts" – nicht "Basis"
+```
+
+Lässt sich keine Reihenfolge finden, die alle Elternklassen einhält (`klasse Z(X, Y)`, wobei
+`Y` schon von `X` erbt), wirft die Definition einen `TypeError`. Dieselbe Klasse zweimal als
+Elternteil zu nennen ebenfalls.
 
 Eine Klassen-`konstante` ist auch gegen Überdecken pro Instanz geschützt: `instanz.MAX = 1` und
 `dies.MAX = 1` werfen ebenfalls `TypeError`, ebenso in erbenden Klassen. Nicht-konstante
@@ -339,7 +356,6 @@ Unter [editor/](editor/) liegen zwei Grammatiken für die Syntaxhervorhebung:
 ## Bekannte Einschränkungen
 
 - Kein Bytecode-Compiler — reiner Baum-Interpreter (bewusste Design-Entscheidung, siehe unten).
-- Mehrfachvererbung nutzt einfache links-nach-rechts-Tiefensuche, keine echte C3-Linearisierung.
 - Variadische Parameter (`*args`) werden nicht einzeln typgeprüft.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
 - Rekursionslimit ist auf 10000 gesetzt (`sys.setrecursionlimit`), tief rekursive Deutsch-Programme

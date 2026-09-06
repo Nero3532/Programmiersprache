@@ -169,6 +169,41 @@ class _GebundeneEingebauteMethode:
         return repr(self.methode)
 
 
+def _c3_linearisieren(klasse) -> list:
+    """Auflösungsreihenfolge nach C3 – dieselbe Regel wie in Python.
+
+    Ergebnis ist die Klasse selbst, gefolgt von allen Vorfahren in einer Reihenfolge,
+    die drei Zusagen einhält: jede Klasse kommt vor ihren Eltern, die Reihenfolge der
+    direkten Eltern bleibt erhalten, und beides gilt auch für die geerbten
+    Reihenfolgen. Eine einfache Tiefensuche verletzt das beim Diamant.
+    """
+    if not klasse.eltern:
+        return [klasse]
+
+    # Die Vorlagen: die Reihenfolgen der Eltern, dazu die Elternliste selbst
+    sequenzen = [list(e.mro) for e in klasse.eltern] + [list(klasse.eltern)]
+    ergebnis = [klasse]
+    while True:
+        sequenzen = [s for s in sequenzen if s]
+        if not sequenzen:
+            return ergebnis
+        # Nimm den ersten Kopf, der in keiner anderen Sequenz weiter hinten steht
+        for sequenz in sequenzen:
+            kopf = sequenz[0]
+            if not any(kopf in andere[1:] for andere in sequenzen):
+                break
+        else:
+            namen = ', '.join(dict.fromkeys(k.name for s in sequenzen for k in s))
+            raise TypeError(
+                f"Widersprüchliche Vererbung in Klasse '{klasse.name}': für "
+                f'{namen} gibt es keine Reihenfolge, die alle Elternklassen einhält'
+            )
+        ergebnis.append(kopf)
+        for sequenz in sequenzen:
+            if sequenz[0] is kopf:
+                del sequenz[0]
+
+
 class DeutschKlasse:
     def __init__(self, name: str, eltern: list, methoden: dict, statische_methoden: dict = None):
         self.name = name
@@ -177,33 +212,26 @@ class DeutschKlasse:
         self.statische_methoden = statische_methoden or {}  # {name: DeutschFunktion}, kein 'dies'
         self.klassenattribute: dict = {}      # gesetzt nach __init__ in _besuche_KlassenDefinition
         self.konstante_attribute: set = set()  # Teilmenge von klassenattribute-Schlüsseln
+        # Einmal berechnet, danach ist jede Suche ein einfacher Durchlauf
+        self.mro: list['DeutschKlasse'] = _c3_linearisieren(self)
 
     def suche_methode(self, name: str):
-        if name in self.methoden:
-            return self.methoden[name]
-        for e in self.eltern:  # links-nach-rechts, Tiefensuche, erster Treffer gewinnt
-            m = e.suche_methode(name)
-            if m is not None:
-                return m
+        for klasse in self.mro:
+            if name in klasse.methoden:
+                return klasse.methoden[name]
         return None
 
     def suche_statische_methode(self, name: str):
-        if name in self.statische_methoden:
-            return self.statische_methoden[name]
-        for e in self.eltern:
-            m = e.suche_statische_methode(name)
-            if m is not None:
-                return m
+        for klasse in self.mro:
+            if name in klasse.statische_methoden:
+                return klasse.statische_methoden[name]
         return None
 
     def _deklarierende_klasse(self, name: str):
-        """Erste Klasse in der Suchreihenfolge, die 'name' als Klassenattribut deklariert."""
-        if name in self.klassenattribute:
-            return self
-        for e in self.eltern:
-            treffer = e._deklarierende_klasse(name)
-            if treffer is not None:
-                return treffer
+        """Erste Klasse der Auflösungsreihenfolge, die 'name' als Klassenattribut deklariert."""
+        for klasse in self.mro:
+            if name in klasse.klassenattribute:
+                return klasse
         return None
 
     def konstante_deklaration(self, name: str):
@@ -215,12 +243,9 @@ class DeutschKlasse:
         return None
 
     def suche_klassenattribut(self, name: str):
-        if name in self.klassenattribute:
-            return self.klassenattribute[name]
-        for e in self.eltern:
-            wert = e.suche_klassenattribut(name)
-            if wert is not _NICHT_GEFUNDEN:
-                return wert
+        for klasse in self.mro:
+            if name in klasse.klassenattribute:
+                return klasse.klassenattribute[name]
         return _NICHT_GEFUNDEN
 
     def __repr__(self):
@@ -1413,10 +1438,9 @@ class Interpreter:
         if not ok:
             raise TypeError(f"{kontext_msg}: erwartet Typ '{typhinweis}', bekam {self._typname(wert)}")
 
-    def _ist_instanz_von(self, klasse, ziel):
-        if klasse is ziel:
-            return True
-        return any(self._ist_instanz_von(e, ziel) for e in klasse.eltern)
+    @staticmethod
+    def _ist_instanz_von(klasse, ziel):
+        return ziel in klasse.mro
 
     # Variablen
     def _besuche_VariableDeklaration(self, k, u):
@@ -1823,6 +1847,10 @@ class Interpreter:
             eltern_klasse = u.hole(eltern_name)
             if not isinstance(eltern_klasse, DeutschKlasse):
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
+            if eltern_klasse in eltern:
+                raise TypeError(
+                    f"Klasse '{k.name}' nennt '{eltern_name}' mehrfach als Elternklasse"
+                )
             eltern.append(eltern_klasse)
         methoden = {m.name: DeutschFunktion(m, u) for m in k.methoden}
         statische_methoden = {m.name: DeutschFunktion(m, u) for m in k.statische_methoden}
