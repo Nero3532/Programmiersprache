@@ -630,9 +630,9 @@ class Interpreter:
     def _eb_extremum(self, name, fn, args):
         if not args:
             raise TypeError(f"'{name}' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
         if not werte:
-            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste")
+            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste oder Menge")
         try:
             return fn(werte)
         except TypeError:
@@ -646,7 +646,10 @@ class Interpreter:
         if len(args) not in (1, 2): raise TypeError("'runde' erwartet 1–2 Argumente")
         zahl = self._zahl_pruefen(args[0], 'runde')
         stellen = self._ganzzahl_pruefen(args[1], 'runde') if len(args) == 2 else 0
-        return round(float(zahl), stellen) if stellen > 0 else int(round(zahl))
+        if stellen > 0:
+            return round(float(zahl), stellen)
+        # stellen <= 0 rundet auf ganze Zehner/Hunderter/... – Ergebnis ist eine Ganzzahl
+        return int(round(zahl, stellen))
 
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
@@ -1592,6 +1595,7 @@ class Interpreter:
 
     def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
         kwargs = kwargs or {}
+        fn_name = fn.definition.name or '<anonym>'
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
 
         # Parameterstruktur analysieren
@@ -1601,14 +1605,14 @@ class Interpreter:
 
         unbekannt = set(kwargs) - set(param_namen)
         if unbekannt:
-            raise TypeError(f"'{fn.definition.name}' hat kein Parameter '{next(iter(unbekannt))}'")
+            raise TypeError(f"'{fn_name}' hat keinen Parameter '{next(iter(unbekannt))}'")
         if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
             raise TypeError(
                 f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
             )
         if variadic_idx is None and len(args) > n_gesamt:
             raise TypeError(
-                f"'{fn.definition.name}' erwartet höchstens {n_gesamt} Argument(e), "
+                f"'{fn_name}' erwartet höchstens {n_gesamt} Argument(e), "
                 f"bekam {len(args)}"
             )
 
@@ -1621,7 +1625,7 @@ class Interpreter:
             if i < len(args):
                 if p_name in kwargs:
                     raise TypeError(
-                        f"'{fn.definition.name}' erhielt mehrere Werte für Parameter '{p_name}'"
+                        f"'{fn_name}' erhielt mehrere Werte für Parameter '{p_name}'"
                     )
                 wert = args[i]
             elif p_name in kwargs:
@@ -1635,11 +1639,11 @@ class Interpreter:
             fn_u.setze(p_name, wert)
 
         if fehlende:
-            raise TypeError(f"'{fn.definition.name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+            raise TypeError(f"'{fn_name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
-        self._aufruf_stack.append((fn.definition.name or '<anonym>', self._aktuelle_zeile))
+        self._aufruf_stack.append((fn_name, self._aktuelle_zeile))
         try:
-            kontext = f"Rückgabewert von '{fn.definition.name or '<anonym>'}'"
+            kontext = f"Rückgabewert von '{fn_name}'"
             try:
                 self._besuche(fn.definition.koerper, fn_u)
             except _ZurueckSignal as r:

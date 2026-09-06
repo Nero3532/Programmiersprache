@@ -169,10 +169,8 @@ class Lexer:
                 teile.append(('code', ''.join(code).strip()))
                 continue
 
-            if c == '\n':
-                self.zeile += 1
             aktueller_text.append(c)
-            self._weiter()
+            self._weiter()   # zählt '\n' selbst – hier nicht zusätzlich hochzählen
 
         if aktueller_text:
             teile.append(('text', ''.join(aktueller_text)))

@@ -19,7 +19,17 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   `pop from empty list` bzw. `pop index out of range`.
 - Index-Zuweisung auf eine Zeichenkette meldet jetzt `Zeichenketten sind unveränderlich` statt
   irreführend `Ungültiger Index-Typ`.
-- 19 neue Regressionstests (168 gesamt).
+- Zeilennummern nach mehrzeiligen (`"""`) Zeichenketten: der Lexer zählte jeden Zeilenumbruch
+  im String doppelt, wodurch alle folgenden Fehlermeldungen auf eine zu hohe Zeile zeigten und
+  die Quelltext-Anzeige ausfiel, sobald diese Zeile hinter dem Dateiende lag.
+- `max` und `min` akzeptieren jetzt auch Mengen (wie `summe`, `alle`, `einige`, `ggt`, `kgv`).
+  Vorher gab `max({3, 1, 2})` die Menge selbst zurück statt `3`.
+- `runde` mit negativer Stellenzahl rundet auf Zehner/Hunderter/…: `runde(1234, -2)` ergibt
+  `1200` statt bisher `1234`. Positive Stellen und der Standardfall bleiben unverändert.
+- Anonyme Funktionen heißen in Argument-Fehlermeldungen `<anonym>` statt `'None'`
+  (`'<anonym>': Pflichtargument(e) fehlen: x`), benannte behalten ihren Namen.
+- Grammatik in der Fehlermeldung `hat kein Parameter` → `hat keinen Parameter`.
+- 34 neue Regressionstests (183 gesamt).
 
 ### Geändert
 - `datum_formatieren` mit einem Zeitstempel falschen Typs wirft `TypeError` statt `ValueError`

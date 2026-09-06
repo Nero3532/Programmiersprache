@@ -345,6 +345,104 @@ class TestKeineRohenPythonMeldungen(unittest.TestCase):
         self._pruefe('sei s = "abc"; s[0] = "x"', 'unveränderlich')
 
 
+class TestZeilennummernBeiMehrzeiligenStrings(unittest.TestCase):
+    """Zeilenumbrüche in dreifach gequoteten Zeichenketten wurden doppelt gezählt,
+    wodurch alle folgenden Fehlermeldungen auf eine zu hohe Zeile zeigten."""
+
+    def test_fehlerzeile_nach_mehrzeiligem_string(self):
+        code = '''sei t = """Zeile A
+Zeile B
+Zeile C"""
+sei x = nicht_existent'''
+        with self.assertRaises(NameError) as ctx:
+            lauf(code)
+        self.assertIn('Zeile 4', str(ctx.exception))
+
+    def test_mehrere_strings_verschieben_sich_nicht_kumulativ(self):
+        code = '''sei a = """1
+2"""
+sei b = """3
+4"""
+sei c = nicht_existent'''
+        with self.assertRaises(NameError) as ctx:
+            lauf(code)
+        self.assertIn('Zeile 5', str(ctx.exception))
+
+    def test_fehlerzeile_nach_mehrzeiliger_interpolation(self):
+        code = '''sei n = 1
+sei t = """Wert: {n}
+zweite Zeile"""
+sei x = nicht_existent'''
+        with self.assertRaises(NameError) as ctx:
+            lauf(code)
+        self.assertIn('Zeile 4', str(ctx.exception))
+
+    def test_stringinhalt_bleibt_unveraendert(self):
+        code = '''sei t = """A
+B"""
+laenge(t)'''
+        ergebnis, _ = lauf(code)
+        self.assertEqual(ergebnis, 3)   # 'A' + Zeilenumbruch + 'B'
+
+
+class TestMaxMinMitMengen(unittest.TestCase):
+    def test_max_und_min_auf_menge(self):
+        self.assertEqual(lauf('max({3, 1, 2})')[0], 3)
+        self.assertEqual(lauf('min({3, 1, 2})')[0], 1)
+
+    def test_liste_und_variadische_form_unveraendert(self):
+        self.assertEqual(lauf('max([3, 1, 2])')[0], 3)
+        self.assertEqual(lauf('min(3, 1, 2)')[0], 1)
+
+    def test_leere_menge_wirft_wertfehler(self):
+        with self.assertRaises(ValueError):
+            lauf('max(menge())')
+
+
+class TestRundenMitNegativenStellen(unittest.TestCase):
+    def test_negative_stellen_runden_auf_zehner_und_hunderter(self):
+        self.assertEqual(lauf('runde(1234, -2)')[0], 1200)
+        self.assertEqual(lauf('runde(1678, -3)')[0], 2000)
+        self.assertEqual(lauf('runde(1234.5, -2)')[0], 1200)
+
+    def test_ergebnis_ist_ganzzahl_bei_stellen_kleiner_gleich_null(self):
+        self.assertEqual(lauf('typ(runde(1234.5, -2))')[0], 'Ganzzahl')
+        self.assertEqual(lauf('typ(runde(3.7))')[0], 'Ganzzahl')
+
+    def test_positive_und_null_stellen_unveraendert(self):
+        self.assertEqual(lauf('runde(3.7)')[0], 4)
+        self.assertEqual(lauf('runde(3.14159, 2)')[0], 3.14)
+        self.assertEqual(lauf('runde(3.7, 0)')[0], 4)
+
+
+class TestAnonymeFunktionenInFehlermeldungen(unittest.TestCase):
+    """Anonyme Funktionen erschienen in Argument-Fehlern als 'None'."""
+
+    ANON = 'sei f = funktion(x) { zurück x }; '
+
+    def _meldung(self, code: str) -> str:
+        with self.assertRaises(TypeError) as ctx:
+            lauf(code)
+        text = str(ctx.exception)
+        self.assertNotIn("'None'", text)
+        return text
+
+    def test_fehlendes_pflichtargument(self):
+        self.assertIn('<anonym>', self._meldung(self.ANON + 'f()'))
+
+    def test_unbekanntes_keyword_argument(self):
+        self.assertIn('<anonym>', self._meldung(self.ANON + 'f(a=1)'))
+
+    def test_mehrfacher_wert_fuer_parameter(self):
+        self.assertIn('<anonym>', self._meldung(self.ANON + 'f(1, x=2)'))
+
+    def test_zu_viele_argumente(self):
+        self.assertIn('<anonym>', self._meldung(self.ANON + 'f(1, 2)'))
+
+    def test_benannte_funktion_behaelt_ihren_namen(self):
+        self.assertIn("'g'", self._meldung('funktion g(a) { zurück a }; g()'))
+
+
 class TestStacktrace(unittest.TestCase):
     def test_aufruf_stack_wird_gefuellt_bei_unbehandeltem_fehler(self):
         interpreter = Interpreter()
