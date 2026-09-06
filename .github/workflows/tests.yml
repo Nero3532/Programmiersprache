@@ -17,3 +17,33 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Tests ausführen
         run: python -m unittest discover -s tests -v
+
+  grammatik:
+    name: tree-sitter-Grammatik
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor/tree-sitter-deutsch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: tree-sitter-CLI installieren
+        run: npm install --no-audit --no-fund
+
+      - name: Parser erzeugen
+        run: npx tree-sitter generate
+
+      - name: Eingecheckter Parser ist aktuell
+        run: |
+          if ! git diff --exit-code -- src/; then
+            echo "src/ weicht von grammar.js ab – 'npx tree-sitter generate' ausfuehren und einchecken"
+            exit 1
+          fi
+
+      - name: Korpus-Tests
+        run: npx tree-sitter test
+
+      - name: Alle Beispielskripte parsen
+        run: npx tree-sitter parse --quiet --stat ../../beispiele/*.deu
