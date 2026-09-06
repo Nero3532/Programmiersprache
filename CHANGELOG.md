@@ -14,6 +14,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Faltung und Navigation, samt Abfragen (`highlights`, `locals`, `folds`) und Korpus-Tests.
   Ein CI-Job erzeugt den Parser, prüft das eingecheckte `src/` auf Aktualität, fährt die
   Korpus-Tests und parst alle Beispielskripte.
+- **VS-Code-Erweiterung** unter `editor/vscode-deutsch/`: TextMate-Grammatik für die
+  Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
+  startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
+  ein CI-Job testet sie und baut das Paket.
 - `deutsch --version` / `-V`.
 - `neu modul.Klasse(...)` — Klassen aus einem per `lade "..." als modul` geladenen Namensraum
   lassen sich direkt instanziieren (bisher ein Syntaxfehler, der nur über den Umweg

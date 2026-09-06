@@ -47,3 +47,33 @@ jobs:
 
       - name: Alle Beispielskripte parsen
         run: npx tree-sitter parse --quiet --stat ../../beispiele/*.deu
+
+  erweiterung:
+    name: VS-Code-Erweiterung
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editor/vscode-deutsch
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Abhaengigkeiten installieren
+        run: npm install --no-audit --no-fund
+
+      - name: JSON-Dateien pruefen
+        run: |
+          for datei in package.json language-configuration.json syntaxes/deutsch.tmLanguage.json; do
+            node -e "JSON.parse(require('fs').readFileSync('$datei','utf8'))" || exit 1
+            echo "ok  $datei"
+          done
+
+      - name: Erweiterung syntaktisch pruefen
+        run: node --check src/extension.js
+
+      - name: Hervorhebung testen
+        run: npm test
+
+      - name: Paket baut
+        run: npx --yes @vscode/vsce package --out /tmp/deutsch.vsix
