@@ -111,6 +111,36 @@ summe(*bereich(4))          # jede Folge geht: Liste, Menge, Bereich, Zeichenket
 `*folge` darf mehrfach und vor Keyword-Argumenten stehen, aber nicht danach. Ein
 `**woerterbuch` für Keyword-Argumente gibt es nicht.
 
+### Generatoren
+
+Eine Funktion mit `ergibt` liefert ihre Werte erst beim Durchlaufen:
+
+```
+funktion zaehle(bis) {
+    sei i = 0
+    solange i < bis {
+        ergibt i
+        i += 1
+    }
+}
+
+für x in zaehle(3) { drucke(x) }     # 0, 1, 2
+liste(zaehle(5))                      # [0, 1, 2, 3, 4]
+```
+
+Der Körper läuft nur so weit, wie Werte abgerufen werden — eine unendliche Folge ist deshalb
+kein Problem:
+
+```
+funktion natuerliche() { sei n = 0; solange wahr { ergibt n; n += 1 } }
+```
+
+`ergibt` ist überall im Funktionskörper erlaubt, auch in `wenn`, Schleifen, `passe` und
+`versuche`/`fange`/`endlich`. `zurück` beendet den Durchlauf und darf dabei keinen Wert tragen.
+Ein Generator lässt sich — wie in Python — nur einmal durchlaufen und hat keine `laenge`;
+mit `liste(...)` wird daraus eine echte Liste. Schleifen, Abstraktionen und die eingebauten
+Funktionen nehmen ihn direkt entgegen.
+
 ### Klassen
 
 ```

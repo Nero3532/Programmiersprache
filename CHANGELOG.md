@@ -18,6 +18,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Generatoren**: eine Funktion mit `ergibt` liefert ihre Werte erst beim Durchlaufen.
+  Der Körper läuft nur so weit, wie Werte abgerufen werden — unendliche Folgen sind damit
+  möglich. `ergibt` ist überall im Körper erlaubt (auch in `wenn`, Schleifen, `passe`,
+  `versuche`), `zurück` beendet den Durchlauf. Neuer Typ `Generator`, auch als Typ-Hinweis;
+  Schleifen, Abstraktionen und die eingebauten Funktionen nehmen ihn direkt entgegen.
 - **C3-Linearisierung** bei Mehrfachvererbung statt links-nach-rechts-Tiefensuche — dieselbe
   Regel wie in Python. Beim Diamant fand die Tiefensuche über den ersten Elternteil die
   gemeinsame Basis und übersprang dabei die Geschwisterklasse; jetzt kommen Geschwister vor

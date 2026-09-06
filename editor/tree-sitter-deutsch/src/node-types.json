@@ -1002,6 +1002,10 @@
           "named": true
         },
         {
+          "type": "ergibt_anweisung",
+          "named": true
+        },
+        {
           "type": "fuer_anweisung",
           "named": true
         },
@@ -1194,6 +1198,102 @@
     "named": true,
     "fields": {
       "ausdruck": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ergibt_anweisung",
+    "named": true,
+    "fields": {
+      "wert": {
         "multiple": false,
         "required": true,
         "types": [
@@ -3416,6 +3516,10 @@
           "named": true
         },
         {
+          "type": "ergibt_anweisung",
+          "named": true
+        },
+        {
           "type": "fuer_anweisung",
           "named": true
         },
@@ -5316,6 +5420,10 @@
   },
   {
     "type": "endlich",
+    "named": false
+  },
+  {
+    "type": "ergibt",
     "named": false
   },
   {

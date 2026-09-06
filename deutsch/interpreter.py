@@ -74,6 +74,28 @@ class DeutschFunktion:
         return f'<Funktion {self.definition.name or "anonym"}>'
 
 
+class DeutschGenerator:
+    """Laufende Auswertung einer Funktion mit 'ergibt'.
+
+    Liefert ihre Werte erst beim Durchlaufen und lässt sich – wie in Python – nur
+    einmal durchlaufen.
+    """
+    __slots__ = ('name', '_werte')
+
+    def __init__(self, name: str, werte):
+        self.name = name
+        self._werte = werte
+
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        return next(self._werte)
+
+    def __repr__(self):
+        return f'<Generator {self.name}>'
+
+
 class GebundeneMethode:
     def __init__(self, instanz, funktion: DeutschFunktion):
         self.instanz = instanz
@@ -97,7 +119,7 @@ _NICHT_GEFUNDEN = object()
 
 # Typen, die eine Folge von Werten liefern. 'Bereich' ist Pythons range und damit
 # faul: bereich(1000000) belegt keinen Speicher fuer eine Million Elemente.
-_SEQUENZ_TYPEN = (list, set, range)
+_SEQUENZ_TYPEN = (list, set, range, DeutschGenerator)
 
 # Markiert ein nicht übergebenes optionales Argument einer eingebauten Instanzmethode.
 _OHNE_WERT = object()
@@ -753,10 +775,15 @@ class Interpreter:
 
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
-        try:
-            return list(args[0])
-        except TypeError:
-            raise TypeError(f"'{self._typname(args[0])}' kann nicht in Liste umgewandelt werden")
+        # Erst den Typ prüfen: ein try/except um list(...) würde Fehler aus dem
+        # Durchlauf (etwa in einem Generator) als Umwandlungsfehler ausgeben
+        obj = self._pruefe_umwandelbar(args[0], 'liste', 'Liste')
+        return list(obj)
+
+    def _pruefe_umwandelbar(self, wert, funktion: str, ziel: str):
+        if not isinstance(wert, (list, str, dict, set, range, DeutschGenerator)):
+            raise TypeError(f"'{self._typname(wert)}' kann nicht in {ziel} umgewandelt werden")
+        return wert
 
     def _eb_wurzel(self, *args):
         self._pruefe_args('mathe.wurzel', args, 1)
@@ -946,8 +973,9 @@ class Interpreter:
         if len(args) < 1:
             raise TypeError("'zippe' erwartet mindestens 1 Argument")
         for a in args:
-            if not isinstance(a, (list, str, range)):
-                raise TypeError("'zippe' erwartet Listen, Zeichenketten oder Bereiche")
+            if not isinstance(a, (list, str, range, DeutschGenerator)):
+                raise TypeError(
+                    "'zippe' erwartet Listen, Zeichenketten, Bereiche oder Generatoren")
         return [list(t) for t in zip(*args)]
 
     def _eb_json_lesen(self, *args):
@@ -1140,10 +1168,11 @@ class Interpreter:
         if len(args) == 0:
             return set()
         self._pruefe_args('menge', args, 1)
+        obj = self._pruefe_umwandelbar(args[0], 'menge', 'Menge')
         try:
-            return set(args[0])
+            return set(obj)
         except TypeError:
-            raise TypeError(f"'{self._typname(args[0])}' kann nicht in Menge umgewandelt werden")
+            raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
     @staticmethod
     def _menge_hinzufuegen(obj, x):
@@ -1196,6 +1225,7 @@ class Interpreter:
         if isinstance(wert, dict):    return 'Woerterbuch'
         if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, range):   return 'Bereich'
+        if isinstance(wert, DeutschGenerator): return 'Generator'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
@@ -1390,10 +1420,10 @@ class Interpreter:
         return ergebnis
 
     def _pruefe_iterierbar(self, wert, kontext: str):
-        if not isinstance(wert, (list, str, dict, set, range)):
+        if not isinstance(wert, (list, str, dict, set, range, DeutschGenerator)):
             raise TypeError(
                 f'{kontext} erwartet etwas Iterierbares (Liste, Zeichenkette, Wörterbuch, '
-                f'Menge oder Bereich), bekam {self._typname(wert)}'
+                f'Menge, Bereich oder Generator), bekam {self._typname(wert)}'
             )
         return wert
 
@@ -1425,6 +1455,7 @@ class Interpreter:
             'Wörterbuch':    lambda w: isinstance(w, dict),
             'Menge':         lambda w: isinstance(w, set),
             'Bereich':       lambda w: isinstance(w, range),
+            'Generator':     lambda w: isinstance(w, DeutschGenerator),
             'Nichts':        lambda w: w is None,
             'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
         }
@@ -1827,6 +1858,10 @@ class Interpreter:
         if fehlende:
             raise TypeError(f"'{fn_name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
+        if fn.definition.ist_generator:
+            # Der Körper läuft erst beim Durchlaufen; deshalb hier kein Aufruf-Stack
+            return DeutschGenerator(fn_name, self._generator_koerper(fn.definition.koerper, fn_u))
+
         self._aufruf_stack.append((fn_name, self._aktuelle_zeile))
         try:
             kontext = f"Rückgabewert von '{fn_name}'"
@@ -1839,6 +1874,108 @@ class Interpreter:
             return None
         finally:
             self._aufruf_stack.pop()
+
+    def _besuche_ErgibtAnweisung(self, k, u):
+        raise SyntaxError("'ergibt' ist nur innerhalb einer Funktion erlaubt")
+
+    def _generator_koerper(self, koerper, u):
+        """Körper einer Funktion mit 'ergibt'; 'zurück' beendet den Durchlauf."""
+        try:
+            yield from self._erzeuge(koerper, u)
+        except _ZurueckSignal:
+            return
+
+    def _erzeuge(self, knoten, u):
+        """Führt eine Anweisung aus und reicht dabei die Werte von 'ergibt' weiter.
+
+        Nur Anweisungen, die ein 'ergibt' enthalten können, werden hier behandelt;
+        alles andere geht den normalen Weg über _besuche_anweisung.
+        """
+        zeile = getattr(knoten, 'zeile', None)
+        if zeile is not None:
+            self._aktuelle_zeile = zeile
+        typ = type(knoten)
+
+        if typ is ast.ErgibtAnweisung:
+            yield self._besuche(knoten.wert, u)
+
+        elif typ is ast.Block:
+            block_u = Umgebung(u)
+            for anweisung in knoten.anweisungen:
+                yield from self._erzeuge(anweisung, block_u)
+
+        elif typ is ast.WennAnweisung:
+            if self._ist_wahr(self._besuche(knoten.bedingung, u)):
+                yield from self._erzeuge(knoten.dann, u)
+                return
+            for bedingung, block in knoten.sonst_wenn:
+                if self._ist_wahr(self._besuche(bedingung, u)):
+                    yield from self._erzeuge(block, u)
+                    return
+            if knoten.sonst:
+                yield from self._erzeuge(knoten.sonst, u)
+
+        elif typ is ast.SolangeAnweisung:
+            while self._ist_wahr(self._besuche(knoten.bedingung, u)):
+                try:
+                    yield from self._erzeuge(knoten.koerper, u)
+                except _AbbrechenSignal:
+                    break
+                except _WeiterSignal:
+                    continue
+
+        elif typ is ast.FuerAnweisung:
+            iterable = self._pruefe_iterierbar(self._besuche(knoten.iterable, u), "'für'")
+            schleifen_u = Umgebung(u)
+            for element in iterable:
+                self._schleifenvariable_binden(knoten.variable, element, schleifen_u)
+                try:
+                    yield from self._erzeuge(knoten.koerper, schleifen_u)
+                except _AbbrechenSignal:
+                    break
+                except _WeiterSignal:
+                    continue
+
+        elif typ is ast.PasseAnweisung:
+            subjekt = self._besuche(knoten.ausdruck, u)
+            for werte, block in knoten.faelle:
+                if any(self._werte_gleich(subjekt, self._besuche(w, u)) for w in werte):
+                    yield from self._erzeuge(block, u)
+                    return
+            if knoten.sonst is not None:
+                yield from self._erzeuge(knoten.sonst, u)
+
+        elif typ is ast.VersucheAnweisung:
+            try:
+                yield from self._erzeuge(knoten.koerper, u)
+            except _KONTROLLSIGNALE:
+                raise
+            except Exception as fehler:
+                if (knoten.fange_koerper is not None
+                        and self._fehlertyp_passt(fehler, knoten.fange_typen)):
+                    fange_u = Umgebung(u)
+                    if knoten.fange_name:
+                        wert = (fehler.wert if isinstance(fehler, AusnahmeFehler)
+                                else str(fehler))
+                        fange_u.setze(knoten.fange_name, wert)
+                    yield from self._erzeuge(knoten.fange_koerper, fange_u)
+                else:
+                    raise
+            finally:
+                if knoten.endlich_koerper is not None:
+                    yield from self._erzeuge(knoten.endlich_koerper, u)
+
+        elif typ is ast.ZurueckAnweisung:
+            if not isinstance(knoten.wert, ast.Nichts):
+                raise TypeError(
+                    "In einer Funktion mit 'ergibt' beendet 'zurück' nur den Durchlauf "
+                    'und darf keinen Wert haben'
+                )
+            # Signal statt 'return': sonst liefe der umgebende Block einfach weiter
+            raise _ZurueckSignal(None)
+
+        else:
+            self._besuche_anweisung(knoten, u)
 
     # Klassen
     def _besuche_KlassenDefinition(self, k, u):

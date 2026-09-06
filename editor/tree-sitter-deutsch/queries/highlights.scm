@@ -37,6 +37,7 @@
   "fall"
   "zurück"
   "zurueck"
+  "ergibt"
 ] @keyword.control
 
 ; 'abbrechen' und 'weiter' sind Regeln aus einem einzigen String – tree-sitter

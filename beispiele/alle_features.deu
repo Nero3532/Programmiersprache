@@ -296,3 +296,39 @@ drucke("Quadrate der Primzahlen < 20: {prim_quadrate}")
 
 drucke("")
 drucke("Fertig! Alle Features demonstriert.")
+
+# ================================================================
+# GENERATOREN: Werte entstehen erst beim Durchlaufen
+# ================================================================
+drucke("")
+drucke("=== Generatoren ===")
+
+funktion fibonacci_folge() {
+    sei a = 0
+    sei b = 1
+    solange wahr {
+        ergibt a
+        sei naechstes = a + b
+        a = b
+        b = naechstes
+    }
+}
+
+# Unendliche Folge – es wird nur berechnet, was abgerufen wird
+sei ersten_zehn = []
+für f in fibonacci_folge() {
+    wenn länge(ersten_zehn) >= 10 { abbrechen }
+    ersten_zehn.anhängen(f)
+}
+drucke("Fibonacci (faul): {ersten_zehn}")
+
+funktion nur_gerade(folge) {
+    für w in folge { wenn w % 2 == 0 { ergibt w } }
+}
+sei gerade_fib = []
+für f in nur_gerade(fibonacci_folge()) {
+    wenn länge(gerade_fib) >= 5 { abbrechen }
+    gerade_fib.anhängen(f)
+}
+drucke("davon gerade:     {gerade_fib}")
+drucke("Typ:              {typ(fibonacci_folge())}")

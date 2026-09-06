@@ -1757,5 +1757,122 @@ nimm(neu Kind())'''
                     self.assertEqual(deutsch, python)
 
 
+class TestGeneratoren(unittest.TestCase):
+    """Funktionen mit 'ergibt' liefern ihre Werte erst beim Durchlaufen."""
+
+    ZAEHLE = '''funktion zaehle(bis) {
+    sei i = 0
+    solange i < bis { ergibt i; i += 1 }
+}
+'''
+
+    def test_aufruf_liefert_einen_generator(self):
+        self.assertEqual(lauf(self.ZAEHLE + 'typ(zaehle(3))')[0], 'Generator')
+
+    def test_werte_durchlaufen(self):
+        self.assertEqual(lauf(self.ZAEHLE + 'liste(zaehle(5))')[0], [0, 1, 2, 3, 4])
+
+    def test_in_schleife_und_abstraktion(self):
+        self.assertEqual(lauf(self.ZAEHLE + 'sei s = 0; für x in zaehle(4) { s += x }; s')[0], 6)
+        self.assertEqual(lauf(self.ZAEHLE + '[x * x für x in zaehle(4)]')[0], [0, 1, 4, 9])
+        self.assertEqual(lauf(self.ZAEHLE + '{x % 2 für x in zaehle(4)}')[0], {0, 1})
+
+    def test_von_den_eingebauten_akzeptiert(self):
+        self.assertEqual(lauf(self.ZAEHLE + 'summe(zaehle(5))')[0], 10)
+        self.assertEqual(lauf(self.ZAEHLE + 'max(zaehle(5))')[0], 4)
+        self.assertEqual(lauf(self.ZAEHLE + 'menge(zaehle(3))')[0], {0, 1, 2})
+        self.assertEqual(lauf(self.ZAEHLE + 'zippe(zaehle(2), ["a", "b"])')[0],
+                         [[0, 'a'], [1, 'b']])
+
+    def test_unendlicher_generator_wird_nur_so_weit_ausgewertet_wie_noetig(self):
+        code = '''funktion natuerliche() { sei n = 0; solange wahr { ergibt n; n += 1 } }
+sei ergebnis = []
+für w in natuerliche() {
+    wenn laenge(ergebnis) >= 5 { abbrechen }
+    ergebnis.anhaengen(w)
+}
+ergebnis'''
+        self.assertEqual(lauf(code)[0], [0, 1, 2, 3, 4])
+
+    def test_ergibt_in_fuer_und_wenn(self):
+        code = '''funktion gerade_bis(n) {
+    für i in bereich(n) { wenn i % 2 == 0 { ergibt i } }
+}
+liste(gerade_bis(10))'''
+        self.assertEqual(lauf(code)[0], [0, 2, 4, 6, 8])
+
+    def test_generator_ueber_generator(self):
+        code = self.ZAEHLE + '''funktion verdopple(folge) { für w in folge { ergibt w * 2 } }
+liste(verdopple(zaehle(4)))'''
+        self.assertEqual(lauf(code)[0], [0, 2, 4, 6])
+
+    def test_zurueck_beendet_den_durchlauf(self):
+        code = 'funktion f() { ergibt 1; ergibt 2; zurück; ergibt 99 }\nliste(f())'
+        self.assertEqual(lauf(code)[0], [1, 2])
+
+    def test_zurueck_mit_wert_ist_ein_fehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('funktion f() { ergibt 1; zurück 5 }\nliste(f())')
+        self.assertIn("'zurück'", str(ctx.exception))
+        self.assertIn('keinen Wert', str(ctx.exception))
+
+    def test_versuche_fange_endlich_im_generator(self):
+        code = '''funktion f() {
+    versuche { ergibt 1; werfe "peng" } fange e { ergibt "gefangen" } endlich { ergibt "endlich" }
+}
+liste(f())'''
+        self.assertEqual(lauf(code)[0], [1, 'gefangen', 'endlich'])
+
+    def test_passe_im_generator(self):
+        code = '''funktion f(n) {
+    passe n {
+        fall 1: { ergibt "eins" }
+        sonst: { ergibt "andere"; ergibt n }
+    }
+}
+[liste(f(1)), liste(f(7))]'''
+        self.assertEqual(lauf(code)[0], [['eins'], ['andere', 7]])
+
+    def test_nur_einmal_durchlaufbar(self):
+        code = self.ZAEHLE + 'sei g = zaehle(3); sei a = liste(g); sei b = liste(g); [a, b]'
+        self.assertEqual(lauf(code)[0], [[0, 1, 2], []])
+
+    def test_ohne_laenge(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.ZAEHLE + 'laenge(zaehle(3))')
+        self.assertIn('Generator', str(ctx.exception))
+
+    def test_ergibt_ausserhalb_einer_funktion_ist_syntaxfehler(self):
+        with self.assertRaises(SyntaxError) as ctx:
+            lauf('ergibt 1')
+        self.assertIn('nur innerhalb einer Funktion', str(ctx.exception))
+
+    def test_gewoehnliche_funktionen_bleiben_unveraendert(self):
+        self.assertEqual(lauf('funktion f() { zurück 5 }\nf()')[0], 5)
+        self.assertEqual(lauf('funktion f() { zurück 5 }\ntyp(f())')[0], 'Ganzzahl')
+
+    def test_anonyme_funktion_kann_generator_sein(self):
+        code = 'sei g = funktion() { ergibt 1; ergibt 2 }\nliste(g())'
+        self.assertEqual(lauf(code)[0], [1, 2])
+
+    def test_methode_kann_generator_sein(self):
+        code = '''klasse Zaehler {
+    funktion __init__(dies, bis) { dies.bis = bis }
+    funktion werte(dies) { für i in bereich(dies.bis) { ergibt i } }
+}
+liste(neu Zaehler(4).werte())'''
+        self.assertEqual(lauf(code)[0], [0, 1, 2, 3])
+
+    def test_typ_hinweis_generator(self):
+        code = self.ZAEHLE + '''funktion nimm(g: Generator) { zurück laenge(liste(g)) }
+nimm(zaehle(3))'''
+        self.assertEqual(lauf(code)[0], 3)
+
+    def test_fehler_im_generator_wird_nicht_verschluckt(self):
+        # liste() darf einen Fehler aus dem Durchlauf nicht als Umwandlungsfehler melden
+        with self.assertRaises(NameError):
+            lauf('funktion f() { ergibt unbekannt_xyz }\nliste(f())')
+
+
 if __name__ == '__main__':
     unittest.main()
