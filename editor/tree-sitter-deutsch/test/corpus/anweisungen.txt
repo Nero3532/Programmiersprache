@@ -1,0 +1,101 @@
+==================
+Deklarationen
+==================
+
+sei x = 5
+sei y: Ganzzahl = 3
+konstante PI = 3.14
+sei [a, b] = [1, 2]
+
+---
+
+(quelldatei
+  (variable_deklaration name: (bezeichner) wert: (ganzzahl))
+  (variable_deklaration name: (bezeichner) typ: (typ_hinweis (bezeichner)) wert: (ganzzahl))
+  (konstanten_deklaration name: (bezeichner) wert: (kommazahl))
+  (destrukturierende_deklaration
+    (namensliste (bezeichner) (bezeichner))
+    wert: (liste (ganzzahl) (ganzzahl))))
+
+==================
+Funktion mit Typen und Standardwerten
+==================
+
+funktion addiere(a: Ganzzahl, b: Ganzzahl = 10) -> Ganzzahl {
+    zurück a + b
+}
+
+---
+
+(quelldatei
+  (funktion_definition
+    name: (bezeichner)
+    parameter: (parameterliste
+      (parameter name: (bezeichner) typ: (typ_hinweis (bezeichner)))
+      (parameter name: (bezeichner) typ: (typ_hinweis (bezeichner)) standard: (ganzzahl)))
+    rueckgabetyp: (typ_hinweis (bezeichner))
+    koerper: (block
+      (zurueck_anweisung
+        (binaere_operation links: (bezeichner) rechts: (bezeichner))))))
+
+==================
+Klasse mit Vererbung und statischen Mitgliedern
+==================
+
+klasse Hund(Tier) {
+    konstante MAX = 10
+    sei anzahl = 0
+    funktion __init__(dies, name) { dies.name = name }
+    statisch funktion zaehlen() { zurück Hund.anzahl }
+}
+
+---
+
+(quelldatei
+  (klassen_definition
+    name: (bezeichner)
+    eltern: (bezeichner)
+    koerper: (klassen_koerper
+      (konstanten_deklaration name: (bezeichner) wert: (ganzzahl))
+      (variable_deklaration name: (bezeichner) wert: (ganzzahl))
+      (funktion_definition
+        name: (bezeichner)
+        parameter: (parameterliste (parameter name: (bezeichner)) (parameter name: (bezeichner)))
+        koerper: (block
+          (zuweisung
+            ziel: (attribut_zugriff objekt: (bezeichner) attribut: (bezeichner))
+            wert: (bezeichner))))
+      (statische_methode
+        (funktion_definition
+          name: (bezeichner)
+          parameter: (parameterliste)
+          koerper: (block
+            (zurueck_anweisung
+              (attribut_zugriff objekt: (bezeichner) attribut: (bezeichner)))))))))
+
+==================
+Kontrollfluss
+==================
+
+wenn x > 3 { drucke(1) } sonst wenn x > 1 { drucke(2) } sonst { drucke(3) }
+solange x < 10 { x += 1 }
+für [i, wert] in aufzaehlen(liste) { drucke(i) }
+
+---
+
+(quelldatei
+  (wenn_anweisung
+    bedingung: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
+    dann: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl))))))
+    (sonst_wenn_zweig
+      bedingung: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
+      dann: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl)))))))
+    (sonst_zweig
+      sonst: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (ganzzahl))))))))
+  (solange_anweisung
+    bedingung: (binaere_operation links: (bezeichner) rechts: (ganzzahl))
+    koerper: (block (verbund_zuweisung ziel: (bezeichner) operator: (ganzzahl))))
+  (fuer_anweisung
+    variable: (namensliste (bezeichner) (bezeichner))
+    iterable: (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner))))
+    koerper: (block (ausdrucks_anweisung (aufruf funktion: (bezeichner) argumente: (argumentliste (argument (bezeichner))))))))

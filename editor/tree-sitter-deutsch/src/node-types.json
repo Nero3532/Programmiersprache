@@ -1,0 +1,4728 @@
+[
+  {
+    "type": "argument",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "argumentliste",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "argument",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "attribut_zugriff",
+    "named": true,
+    "fields": {
+      "attribut": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "objekt": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "aufruf",
+    "named": true,
+    "fields": {
+      "argumente": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "argumentliste",
+            "named": true
+          }
+        ]
+      },
+      "funktion": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "ausdrucks_anweisung",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "binaere_operation",
+    "named": true,
+    "fields": {
+      "links": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": true,
+        "required": true,
+        "types": [
+          {
+            "type": "!=",
+            "named": false
+          },
+          {
+            "type": "%",
+            "named": false
+          },
+          {
+            "type": "*",
+            "named": false
+          },
+          {
+            "type": "**",
+            "named": false
+          },
+          {
+            "type": "+",
+            "named": false
+          },
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "/",
+            "named": false
+          },
+          {
+            "type": "//",
+            "named": false
+          },
+          {
+            "type": "<",
+            "named": false
+          },
+          {
+            "type": "<=",
+            "named": false
+          },
+          {
+            "type": "==",
+            "named": false
+          },
+          {
+            "type": ">",
+            "named": false
+          },
+          {
+            "type": ">=",
+            "named": false
+          },
+          {
+            "type": "in",
+            "named": false
+          },
+          {
+            "type": "nicht_in",
+            "named": true
+          },
+          {
+            "type": "oder",
+            "named": false
+          },
+          {
+            "type": "und",
+            "named": false
+          }
+        ]
+      },
+      "rechts": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "block",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "abbrechen_anweisung",
+          "named": true
+        },
+        {
+          "type": "ausdrucks_anweisung",
+          "named": true
+        },
+        {
+          "type": "destrukturierende_deklaration",
+          "named": true
+        },
+        {
+          "type": "fuer_anweisung",
+          "named": true
+        },
+        {
+          "type": "funktion_definition",
+          "named": true
+        },
+        {
+          "type": "klassen_definition",
+          "named": true
+        },
+        {
+          "type": "konstanten_deklaration",
+          "named": true
+        },
+        {
+          "type": "lade_anweisung",
+          "named": true
+        },
+        {
+          "type": "passe_anweisung",
+          "named": true
+        },
+        {
+          "type": "pruefe_anweisung",
+          "named": true
+        },
+        {
+          "type": "solange_anweisung",
+          "named": true
+        },
+        {
+          "type": "variable_deklaration",
+          "named": true
+        },
+        {
+          "type": "verbund_zuweisung",
+          "named": true
+        },
+        {
+          "type": "versuche_anweisung",
+          "named": true
+        },
+        {
+          "type": "weiter_anweisung",
+          "named": true
+        },
+        {
+          "type": "wenn_anweisung",
+          "named": true
+        },
+        {
+          "type": "werfe_anweisung",
+          "named": true
+        },
+        {
+          "type": "zurueck_anweisung",
+          "named": true
+        },
+        {
+          "type": "zuweisung",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "destrukturierende_deklaration",
+    "named": true,
+    "fields": {
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "namensliste",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "endlich_zweig",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fall_zweig",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "block",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fange_zweig",
+    "named": true,
+    "fields": {
+      "fehlertyp": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "fuer_anweisung",
+    "named": true,
+    "fields": {
+      "iterable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "namensliste",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "funktion_ausdruck",
+    "named": true,
+    "fields": {
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "parameter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parameterliste",
+            "named": true
+          }
+        ]
+      },
+      "rueckgabetyp": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "typ_hinweis",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "funktion_definition",
+    "named": true,
+    "fields": {
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "parameter": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "parameterliste",
+            "named": true
+          }
+        ]
+      },
+      "rueckgabetyp": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "typ_hinweis",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "index_zugriff",
+    "named": true,
+    "fields": {
+      "index": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "schnitt",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "objekt": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "interpolation",
+    "named": true,
+    "fields": {
+      "ausdruck": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "format": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "format_spezifizierer",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "klammer_ausdruck",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "klassen_definition",
+    "named": true,
+    "fields": {
+      "eltern": {
+        "multiple": true,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "klassen_koerper",
+            "named": true
+          }
+        ]
+      },
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "klassen_koerper",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "funktion_definition",
+          "named": true
+        },
+        {
+          "type": "konstanten_deklaration",
+          "named": true
+        },
+        {
+          "type": "statische_methode",
+          "named": true
+        },
+        {
+          "type": "variable_deklaration",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "klassen_pfad",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "bezeichner",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "konstanten_deklaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "typ": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "typ_hinweis",
+            "named": true
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "lade_anweisung",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "pfad": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "liste",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "listen_abstraktion",
+    "named": true,
+    "fields": {
+      "ausdruck": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "bedingung": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "iterable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "namensliste",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "menge",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "namensliste",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "bezeichner",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "neu_ausdruck",
+    "named": true,
+    "fields": {
+      "argumente": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "argumentliste",
+            "named": true
+          }
+        ]
+      },
+      "klasse": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "klassen_pfad",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "paar",
+    "named": true,
+    "fields": {
+      "schluessel": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parameter",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "standard": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "typ": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "typ_hinweis",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "parameterliste",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "parameter",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "passe_anweisung",
+    "named": true,
+    "fields": {
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "fall_zweig",
+          "named": true
+        },
+        {
+          "type": "passe_sonst_zweig",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "passe_sonst_zweig",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "block",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "pruefe_anweisung",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "meldung": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "quelldatei",
+    "named": true,
+    "root": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "abbrechen_anweisung",
+          "named": true
+        },
+        {
+          "type": "ausdrucks_anweisung",
+          "named": true
+        },
+        {
+          "type": "destrukturierende_deklaration",
+          "named": true
+        },
+        {
+          "type": "fuer_anweisung",
+          "named": true
+        },
+        {
+          "type": "funktion_definition",
+          "named": true
+        },
+        {
+          "type": "klassen_definition",
+          "named": true
+        },
+        {
+          "type": "konstanten_deklaration",
+          "named": true
+        },
+        {
+          "type": "lade_anweisung",
+          "named": true
+        },
+        {
+          "type": "passe_anweisung",
+          "named": true
+        },
+        {
+          "type": "pruefe_anweisung",
+          "named": true
+        },
+        {
+          "type": "solange_anweisung",
+          "named": true
+        },
+        {
+          "type": "variable_deklaration",
+          "named": true
+        },
+        {
+          "type": "verbund_zuweisung",
+          "named": true
+        },
+        {
+          "type": "versuche_anweisung",
+          "named": true
+        },
+        {
+          "type": "weiter_anweisung",
+          "named": true
+        },
+        {
+          "type": "wenn_anweisung",
+          "named": true
+        },
+        {
+          "type": "werfe_anweisung",
+          "named": true
+        },
+        {
+          "type": "zurueck_anweisung",
+          "named": true
+        },
+        {
+          "type": "zuweisung",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "schnitt",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "solange_anweisung",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sonst_wenn_zweig",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "dann": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "sonst_zweig",
+    "named": true,
+    "fields": {
+      "sonst": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "statische_methode",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "funktion_definition",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "ternaer_ausdruck",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "dann": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "sonst": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "typ_hinweis",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "bezeichner",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "unaere_operation",
+    "named": true,
+    "fields": {
+      "operand": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "-",
+            "named": false
+          },
+          {
+            "type": "nicht",
+            "named": false
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "variable_deklaration",
+    "named": true,
+    "fields": {
+      "name": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          }
+        ]
+      },
+      "typ": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "typ_hinweis",
+            "named": true
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "verbund_zuweisung",
+    "named": true,
+    "fields": {
+      "operator": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "%=",
+            "named": false
+          },
+          {
+            "type": "**=",
+            "named": false
+          },
+          {
+            "type": "*=",
+            "named": false
+          },
+          {
+            "type": "+=",
+            "named": false
+          },
+          {
+            "type": "-=",
+            "named": false
+          },
+          {
+            "type": "//=",
+            "named": false
+          },
+          {
+            "type": "/=",
+            "named": false
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "ziel": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "versuche_anweisung",
+    "named": true,
+    "fields": {
+      "koerper": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "endlich_zweig",
+          "named": true
+        },
+        {
+          "type": "fange_zweig",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "wahrheitswert",
+    "named": true,
+    "fields": {}
+  },
+  {
+    "type": "wenn_anweisung",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "dann": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "block",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "sonst_wenn_zweig",
+          "named": true
+        },
+        {
+          "type": "sonst_zweig",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "werfe_anweisung",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": true,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "woerterbuch",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "paar",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "zeichenkette",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": true,
+      "required": false,
+      "types": [
+        {
+          "type": "escape",
+          "named": true
+        },
+        {
+          "type": "interpolation",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "zurueck_anweisung",
+    "named": true,
+    "fields": {},
+    "children": {
+      "multiple": false,
+      "required": false,
+      "types": [
+        {
+          "type": "attribut_zugriff",
+          "named": true
+        },
+        {
+          "type": "aufruf",
+          "named": true
+        },
+        {
+          "type": "bezeichner",
+          "named": true
+        },
+        {
+          "type": "binaere_operation",
+          "named": true
+        },
+        {
+          "type": "funktion_ausdruck",
+          "named": true
+        },
+        {
+          "type": "ganzzahl",
+          "named": true
+        },
+        {
+          "type": "index_zugriff",
+          "named": true
+        },
+        {
+          "type": "klammer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "kommazahl",
+          "named": true
+        },
+        {
+          "type": "liste",
+          "named": true
+        },
+        {
+          "type": "listen_abstraktion",
+          "named": true
+        },
+        {
+          "type": "menge",
+          "named": true
+        },
+        {
+          "type": "neu_ausdruck",
+          "named": true
+        },
+        {
+          "type": "nichts",
+          "named": true
+        },
+        {
+          "type": "ternaer_ausdruck",
+          "named": true
+        },
+        {
+          "type": "unaere_operation",
+          "named": true
+        },
+        {
+          "type": "wahrheitswert",
+          "named": true
+        },
+        {
+          "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "zuweisung",
+    "named": true,
+    "fields": {
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "ziel": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
+    "type": "!=",
+    "named": false
+  },
+  {
+    "type": "\"",
+    "named": false
+  },
+  {
+    "type": "%",
+    "named": false
+  },
+  {
+    "type": "%=",
+    "named": false
+  },
+  {
+    "type": "'",
+    "named": false
+  },
+  {
+    "type": "(",
+    "named": false
+  },
+  {
+    "type": ")",
+    "named": false
+  },
+  {
+    "type": "*",
+    "named": false
+  },
+  {
+    "type": "**",
+    "named": false
+  },
+  {
+    "type": "**=",
+    "named": false
+  },
+  {
+    "type": "*=",
+    "named": false
+  },
+  {
+    "type": "+",
+    "named": false
+  },
+  {
+    "type": "+=",
+    "named": false
+  },
+  {
+    "type": ",",
+    "named": false
+  },
+  {
+    "type": "-",
+    "named": false
+  },
+  {
+    "type": "-=",
+    "named": false
+  },
+  {
+    "type": "->",
+    "named": false
+  },
+  {
+    "type": ".",
+    "named": false
+  },
+  {
+    "type": "/",
+    "named": false
+  },
+  {
+    "type": "//",
+    "named": false
+  },
+  {
+    "type": "//=",
+    "named": false
+  },
+  {
+    "type": "/=",
+    "named": false
+  },
+  {
+    "type": ":",
+    "named": false
+  },
+  {
+    "type": ";",
+    "named": false
+  },
+  {
+    "type": "<",
+    "named": false
+  },
+  {
+    "type": "<=",
+    "named": false
+  },
+  {
+    "type": "=",
+    "named": false
+  },
+  {
+    "type": "==",
+    "named": false
+  },
+  {
+    "type": ">",
+    "named": false
+  },
+  {
+    "type": ">=",
+    "named": false
+  },
+  {
+    "type": "[",
+    "named": false
+  },
+  {
+    "type": "]",
+    "named": false
+  },
+  {
+    "type": "abbrechen_anweisung",
+    "named": true
+  },
+  {
+    "type": "als",
+    "named": false
+  },
+  {
+    "type": "bezeichner",
+    "named": true
+  },
+  {
+    "type": "endlich",
+    "named": false
+  },
+  {
+    "type": "escape",
+    "named": true
+  },
+  {
+    "type": "fall",
+    "named": false
+  },
+  {
+    "type": "falsch",
+    "named": false
+  },
+  {
+    "type": "fange",
+    "named": false
+  },
+  {
+    "type": "format_spezifizierer",
+    "named": true
+  },
+  {
+    "type": "fuer",
+    "named": false
+  },
+  {
+    "type": "funktion",
+    "named": false
+  },
+  {
+    "type": "für",
+    "named": false
+  },
+  {
+    "type": "ganzzahl",
+    "named": true
+  },
+  {
+    "type": "in",
+    "named": false
+  },
+  {
+    "type": "klasse",
+    "named": false
+  },
+  {
+    "type": "kommazahl",
+    "named": true
+  },
+  {
+    "type": "kommentar",
+    "named": true,
+    "extra": true
+  },
+  {
+    "type": "konstante",
+    "named": false
+  },
+  {
+    "type": "lade",
+    "named": false
+  },
+  {
+    "type": "neu",
+    "named": false
+  },
+  {
+    "type": "nicht",
+    "named": false
+  },
+  {
+    "type": "nicht_in",
+    "named": true
+  },
+  {
+    "type": "nichts",
+    "named": true
+  },
+  {
+    "type": "oder",
+    "named": false
+  },
+  {
+    "type": "passe",
+    "named": false
+  },
+  {
+    "type": "pruefe",
+    "named": false
+  },
+  {
+    "type": "sei",
+    "named": false
+  },
+  {
+    "type": "solange",
+    "named": false
+  },
+  {
+    "type": "sonst",
+    "named": false
+  },
+  {
+    "type": "statisch",
+    "named": false
+  },
+  {
+    "type": "und",
+    "named": false
+  },
+  {
+    "type": "versuche",
+    "named": false
+  },
+  {
+    "type": "wahr",
+    "named": false
+  },
+  {
+    "type": "weiter_anweisung",
+    "named": true
+  },
+  {
+    "type": "wenn",
+    "named": false
+  },
+  {
+    "type": "werfe",
+    "named": false
+  },
+  {
+    "type": "zurueck",
+    "named": false
+  },
+  {
+    "type": "zurück",
+    "named": false
+  },
+  {
+    "type": "{",
+    "named": false
+  },
+  {
+    "type": "}",
+    "named": false
+  }
+]

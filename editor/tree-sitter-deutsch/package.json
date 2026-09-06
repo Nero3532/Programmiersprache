@@ -1,0 +1,24 @@
+{
+  "name": "tree-sitter-deutsch",
+  "version": "0.1.0",
+  "description": "tree-sitter-Grammatik für die Programmiersprache Deutsch",
+  "license": "GPL-3.0-or-later",
+  "main": "bindings/node",
+  "keywords": ["parser", "tree-sitter", "deutsch"],
+  "scripts": {
+    "generate": "tree-sitter generate",
+    "test": "tree-sitter test"
+  },
+  "devDependencies": {
+    "tree-sitter-cli": "0.27.0"
+  },
+  "tree-sitter": [
+    {
+      "scope": "source.deutsch",
+      "file-types": ["deu"],
+      "highlights": "queries/highlights.scm",
+      "locals": "queries/locals.scm",
+      "folds": "queries/folds.scm"
+    }
+  ]
+}
