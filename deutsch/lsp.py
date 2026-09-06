@@ -168,7 +168,8 @@ class Wissen:
         self.methoden = sorted(methoden)
         self.schluesselwoerter = sorted(SCHLUESSELWOERTER)
         self.typnamen = ['Ganzzahl', 'Kommazahl', 'Zeichenkette', 'Wahrheitswert',
-                         'Liste', 'Woerterbuch', 'Wörterbuch', 'Menge', 'Nichts', 'Funktion']
+                         'Liste', 'Woerterbuch', 'Wörterbuch', 'Menge', 'Bereich',
+                         'Nichts', 'Funktion']
         self._methoden_besitzer = {}
         for typ, tabelle in (('Liste', interpreter._listen_methoden),
                              ('Zeichenkette', interpreter._string_methoden),

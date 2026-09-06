@@ -127,6 +127,12 @@ drucke("Reste modulo 3: {reste}")
 sei laengen = {w: länge(w) für w in woerter}
 drucke("Wortlängen: {laengen}")
 
+# 'bereich' ist faul – die Elemente entstehen erst beim Durchlaufen
+sei riesig = bereich(10000000)
+drucke("Riesiger Bereich: {riesig}, Länge {länge(riesig)}, Typ {typ(riesig)}")
+drucke("Zugriff ohne Erzeugen: {riesig[9999999]}, enthält 5000000: {5000000 in riesig}")
+drucke("Als Liste: {liste(bereich(0, 10, 3))}")
+
 # ================================================================
 # 7. IN-OPERATOR
 # ================================================================

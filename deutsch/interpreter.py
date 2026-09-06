@@ -95,6 +95,10 @@ class DeutschNamensraum:
 
 _NICHT_GEFUNDEN = object()
 
+# Typen, die eine Folge von Werten liefern. 'Bereich' ist Pythons range und damit
+# faul: bereich(1000000) belegt keinen Speicher fuer eine Million Elemente.
+_SEQUENZ_TYPEN = (list, set, range)
+
 # Markiert ein nicht übergebenes optionales Argument einer eingebauten Instanzmethode.
 _OHNE_WERT = object()
 
@@ -265,6 +269,7 @@ class Interpreter:
         self._string_methoden = self._string_methoden_aufbauen()
         self._woerterbuch_methoden = self._woerterbuch_methoden_aufbauen()
         self._menge_methoden = self._menge_methoden_aufbauen()
+        self._bereich_methoden = self._bereich_methoden_aufbauen()
         self._eingebaute_laden()
 
     def _dispatch_aufbauen(self) -> dict:
@@ -350,6 +355,16 @@ class Interpreter:
             'länge':      lambda obj: len(obj),
             'hole':       lambda obj, schluessel, standard=None: self._woerterbuch_hole(obj, schluessel, standard),
             'kopiere':    lambda obj: dict(obj),
+        })
+
+    def _bereich_methoden_aufbauen(self):
+        return self._methoden_registrieren('Bereich', {
+            'laenge':  lambda obj: len(obj),
+            'länge':   lambda obj: len(obj),
+            'enthält': lambda obj, x: self._enthalten_in(x, obj),
+            'liste':   lambda obj: list(obj),
+            'erste':   lambda obj: obj[0] if len(obj) else None,
+            'letzte':  lambda obj: obj[-1] if len(obj) else None,
         })
 
     def _menge_methoden_aufbauen(self):
@@ -456,7 +471,7 @@ class Interpreter:
     def _eb_laenge(self, *args):
         self._pruefe_args('länge', args, 1)
         obj = args[0]
-        if isinstance(obj, (list, dict, str, set)):
+        if isinstance(obj, (list, dict, str, set, range)):
             return len(obj)
         raise TypeError(f"'länge' nicht unterstützt für {self._typname(obj)}")
 
@@ -492,12 +507,14 @@ class Interpreter:
         grenzen = [self._ganzzahl_pruefen(a, 'bereich') for a in args]
         if len(grenzen) == 3 and grenzen[2] == 0:
             raise ValueError("'bereich' erwartet eine Schrittweite ungleich 0")
-        return list(range(*grenzen))
+        # range ist faul: kein Speicher fuer die Elemente, dafuer Laenge, Index,
+        # Schnitt und 'in' in konstanter Zeit. Mit liste(...) wird daraus eine Liste.
+        return range(*grenzen)
 
     def _eb_sortiere(self, *args):
         self._pruefe_args('sortiere', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'sortiere' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'sortiere' erwartet eine Liste, Menge oder Bereich")
         return self._sortiert(list(args[0]))
 
     @staticmethod
@@ -541,8 +558,8 @@ class Interpreter:
         return None
 
     def _liste_erweitere(self, obj, andere):
-        if not isinstance(andere, (list, set)):
-            raise TypeError(f"'erweitere' erwartet eine Liste oder Menge, bekam {self._typname(andere)}")
+        if not isinstance(andere, _SEQUENZ_TYPEN):
+            raise TypeError(f"'erweitere' erwartet eine Liste, Menge oder Bereich, bekam {self._typname(andere)}")
         obj.extend(andere)
         return None
 
@@ -655,9 +672,9 @@ class Interpreter:
     def _eb_extremum(self, name, fn, args):
         if not args:
             raise TypeError(f"'{name}' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         if not werte:
-            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste oder Menge")
+            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste, Menge oder Bereich")
         try:
             return fn(werte)
         except TypeError:
@@ -723,7 +740,7 @@ class Interpreter:
     def _eb_ggt(self, *args):
         if not args:
             raise TypeError("'ggt' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         try:
             return math.gcd(*[int(w) for w in werte])
         except (TypeError, ValueError):
@@ -732,7 +749,7 @@ class Interpreter:
     def _eb_kgv(self, *args):
         if not args:
             raise TypeError("'kgv' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         try:
             return math.lcm(*[int(w) for w in werte])
         except (TypeError, ValueError):
@@ -841,7 +858,7 @@ class Interpreter:
         return None
 
     def _eb_summe(self, *args):
-        werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
+        werte = args[0] if len(args) == 1 and isinstance(args[0], _SEQUENZ_TYPEN) else list(args)
         try:
             return sum(werte)
         except TypeError:
@@ -849,21 +866,21 @@ class Interpreter:
 
     def _eb_alle(self, *args):
         self._pruefe_args('alle', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'alle' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'alle' erwartet eine Liste, Menge oder Bereich")
         return all(self._ist_wahr(e) for e in args[0])
 
     def _eb_einige(self, *args):
         self._pruefe_args('einige', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'einige' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'einige' erwartet eine Liste, Menge oder Bereich")
         return any(self._ist_wahr(e) for e in args[0])
 
     def _eb_aufzaehlen(self, *args):
         if len(args) not in (1, 2):
             raise TypeError("'aufzaehlen' erwartet 1–2 Argumente")
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'aufzaehlen' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'aufzaehlen' erwartet eine Liste, Menge oder Bereich")
         start = self._ganzzahl_pruefen(args[1], 'aufzaehlen') if len(args) == 2 else 0
         return [[i, e] for i, e in enumerate(args[0], start=start)]
 
@@ -871,8 +888,8 @@ class Interpreter:
         if len(args) < 1:
             raise TypeError("'zippe' erwartet mindestens 1 Argument")
         for a in args:
-            if not isinstance(a, (list, str)):
-                raise TypeError("'zippe' erwartet Listen oder Zeichenketten")
+            if not isinstance(a, (list, str, range)):
+                raise TypeError("'zippe' erwartet Listen, Zeichenketten oder Bereiche")
         return [list(t) for t in zip(*args)]
 
     def _eb_json_lesen(self, *args):
@@ -961,8 +978,8 @@ class Interpreter:
 
     def _eb_mittelwert(self, *args):
         self._pruefe_args('mittelwert', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'mittelwert' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'mittelwert' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.mean(args[0])
         except statistics.StatisticsError:
@@ -970,8 +987,8 @@ class Interpreter:
 
     def _eb_median(self, *args):
         self._pruefe_args('median', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'median' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'median' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.median(args[0])
         except statistics.StatisticsError:
@@ -979,8 +996,8 @@ class Interpreter:
 
     def _eb_stdabweichung(self, *args):
         self._pruefe_args('stdabweichung', args, 1)
-        if not isinstance(args[0], (list, set)):
-            raise TypeError("'stdabweichung' erwartet eine Liste oder Menge")
+        if not isinstance(args[0], _SEQUENZ_TYPEN):
+            raise TypeError("'stdabweichung' erwartet eine Liste, Menge oder Bereich")
         try:
             return statistics.pstdev(args[0])
         except statistics.StatisticsError:
@@ -1120,6 +1137,7 @@ class Interpreter:
         if isinstance(wert, list):    return 'Liste'
         if isinstance(wert, dict):    return 'Woerterbuch'
         if isinstance(wert, set):     return 'Menge'
+        if isinstance(wert, range):   return 'Bereich'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
@@ -1140,6 +1158,10 @@ class Interpreter:
         if isinstance(wert, dict):
             teile = ', '.join(f'{self._zu_text(k)}: {self._zu_text(v)}' for k, v in wert.items())
             return '{' + teile + '}'
+        if isinstance(wert, range):
+            if wert.step == 1:
+                return f'bereich({wert.start}, {wert.stop})'
+            return f'bereich({wert.start}, {wert.stop}, {wert.step})'
         if isinstance(wert, set):
             if not wert:
                 return 'menge()'
@@ -1154,7 +1176,7 @@ class Interpreter:
     def _ist_wahr(self, wert) -> bool:
         if wert is None or wert is False: return False
         if isinstance(wert, (int, float)): return wert != 0
-        if isinstance(wert, (str, list, dict, set)): return len(wert) > 0
+        if isinstance(wert, (str, list, dict, set, range)): return len(wert) > 0
         return True
 
     # ------------------------------------------------------------ Ausführen
@@ -1310,10 +1332,10 @@ class Interpreter:
         return ergebnis
 
     def _pruefe_iterierbar(self, wert, kontext: str):
-        if not isinstance(wert, (list, str, dict, set)):
+        if not isinstance(wert, (list, str, dict, set, range)):
             raise TypeError(
-                f'{kontext} erwartet etwas Iterierbares (Liste, Zeichenkette, Wörterbuch '
-                f'oder Menge), bekam {self._typname(wert)}'
+                f'{kontext} erwartet etwas Iterierbares (Liste, Zeichenkette, Wörterbuch, '
+                f'Menge oder Bereich), bekam {self._typname(wert)}'
             )
         return wert
 
@@ -1344,6 +1366,7 @@ class Interpreter:
             'Woerterbuch':   lambda w: isinstance(w, dict),
             'Wörterbuch':    lambda w: isinstance(w, dict),
             'Menge':         lambda w: isinstance(w, set),
+            'Bereich':       lambda w: isinstance(w, range),
             'Nichts':        lambda w: w is None,
             'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
         }
@@ -1431,6 +1454,8 @@ class Interpreter:
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, str):
                 raise TypeError('Zeichenketten sind unveränderlich – Index-Zuweisung nicht möglich')
+            if isinstance(obj, range):
+                raise TypeError('Bereiche sind unveränderlich – Index-Zuweisung nicht möglich')
             idx = self._besuche(ziel.index, u)
             try:
                 obj[idx] = wert
@@ -1826,6 +1851,12 @@ class Interpreter:
             methode = self._menge_methoden.get(k.attribut)
             if methode is None:
                 raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
+            return methode.binden(obj)
+
+        if isinstance(obj, range):
+            methode = self._bereich_methoden.get(k.attribut)
+            if methode is None:
+                raise AttributeError(f"Bereich hat kein Attribut '{k.attribut}'")
             return methode.binden(obj)
 
         raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")

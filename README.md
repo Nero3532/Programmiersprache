@@ -58,8 +58,8 @@ Variable anlegt. Zuweisungen greifen auf die nächste umschließende Deklaration
 Funktion kann also eine äußere Variable beschreiben, ohne sie neu zu deklarieren.
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
-`Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
-selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
+`Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Bereich`, `Nichts`, `Funktion`,
+oder ein selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
 
 ### Operatoren
 
@@ -193,6 +193,28 @@ m1.differenz(m2)       # {1}
 menge([1, 1, 2, 2])    # {1, 2} – Umwandlung/Deduplizierung, menge() ohne Argument = leere Menge
 ```
 `{}` bleibt (wie in Python) ein leeres *Wörterbuch*, nicht eine leere Menge.
+
+### Faule Bereiche
+
+`bereich(...)` liefert keine Liste, sondern eine *faule* Folge: die Elemente werden erst beim
+Durchlaufen erzeugt.
+
+```
+sei b = bereich(0, 10, 2)
+typ(b)                 # Bereich
+laenge(b)              # 5      – ohne die Elemente zu erzeugen
+b[2]                    # 4
+b[1:3]                  # bereich(2, 6, 2) – ein Schnitt bleibt faul
+4 in b                  # wahr   – in konstanter Zeit, nicht durch Suchen
+liste(b)                # [0, 2, 4, 6, 8]
+```
+
+`bereich(10000000)` belegt damit 48 Byte statt mehrerer hundert Megabyte. Schleifen,
+Abstraktionen und die eingebauten Funktionen (`summe`, `max`, `min`, `alle`, `einige`,
+`sortiere`, `aufzaehlen`, `zippe`, `mittelwert`, …) nehmen einen Bereich direkt entgegen.
+
+Ein Bereich ist unveränderlich und hat keine Listenmethoden — mit `liste(b)` bzw. `b.liste()`
+wird daraus eine echte Liste.
 
 ### Abstraktionen (Comprehensions)
 
