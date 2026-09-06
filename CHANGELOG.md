@@ -18,6 +18,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Argument-Entpackung** `f(*folge)`: eine Liste, Menge, ein Bereich oder eine
+  Zeichenkette wird zu einzelnen positionalen Argumenten. Mehrfach und mit festen sowie
+  Keyword-Argumenten kombinierbar, auch bei `neu Klasse(*werte)` und den eingebauten
+  Funktionen. Ein `**woerterbuch` gibt es nicht.
+- **Slice-Zuweisung** `liste[1:3] = folge`: ersetzt den Ausschnitt und darf dabei die Länge
+  ändern (`l[1:1] = [...]` fügt ein, `l[0:2] = []` entfernt). Mit Schrittweite muss die
+  Länge exakt passen — sonst gibt es eine deutsche Meldung mit der erwarteten Anzahl.
+  Nur für Listen.
 - **Standardbibliothek in Namensräumen**: `mathe`, `zufall`, `statistik`, `datei`, `pfad`,
   `json`, `regex`, `zeit`, `kodierung`, `system`. Statt 72 flacher Globaler gibt es jetzt
   23 Kernnamen plus 10 Module; angesprochen werden sie wie ein geladenes Modul

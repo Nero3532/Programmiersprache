@@ -101,7 +101,15 @@ funktion summe(*zahlen) {                     # variadische Parameter
 
 addiere(b=5, a=3)          # Keyword-Argumente, beliebige Reihenfolge
 addiere(3, b=5)             # gemischt — positional muss vor Keyword stehen
+
+sei werte = [3, 5]
+addiere(*werte)             # Entpacken: die Folge wird zu einzelnen Argumenten
+addiere(*[3], b=5)          # mit festen und Keyword-Argumenten kombinierbar
+summe(*bereich(4))          # jede Folge geht: Liste, Menge, Bereich, Zeichenkette
 ```
+
+`*folge` darf mehrfach und vor Keyword-Argumenten stehen, aber nicht danach. Ein
+`**woerterbuch` für Keyword-Argumente gibt es nicht.
 
 ### Klassen
 
@@ -180,7 +188,17 @@ l[1:3]      # [1, 2]
 l[::-1]     # umgekehrt
 l[::2]      # jedes zweite Element
 ```
-Slice-*Zuweisung* (`l[1:3] = [...]`) wird nicht unterstützt.
+Slice-*Zuweisung* ersetzt einen Ausschnitt und darf die Länge ändern:
+
+```
+sei l = [1, 2, 3, 4]
+l[1:3] = [9]        # [1, 9, 4]
+l[1:1] = [7, 8]     # einfügen, ohne etwas zu entfernen
+l[0:2] = []          # entfernen
+l[::2] = [8, 9]      # mit Schrittweite — dann muss die Länge exakt passen
+```
+
+Nur für Listen; Zeichenketten und Bereiche sind unveränderlich.
 
 ### Mengen
 

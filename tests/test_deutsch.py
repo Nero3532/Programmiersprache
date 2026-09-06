@@ -95,9 +95,8 @@ class TestSlicing(unittest.TestCase):
     def test_string_slicing(self):
         self.assertEqual(ausgabe_erfassen('drucke("abcdef"[1:3])'), 'bc\n')
 
-    def test_slice_zuweisung_wirft_fehler(self):
-        with self.assertRaises(TypeError):
-            lauf('sei l = [1,2,3]\nl[0:1] = [9]')
+    def test_slice_zuweisung_ersetzt_den_ausschnitt(self):
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[1:3] = [9]; l')[0], [1, 9, 4])
 
 
 class TestLambda(unittest.TestCase):
@@ -1566,6 +1565,107 @@ class TestFauleBereiche(unittest.TestCase):
         with self.assertRaises(TypeError) as ctx:
             lauf('zufall.mische(bereich(3))')
         self.assertIn("'zufall.mische' erwartet eine Liste", str(ctx.exception))
+
+
+class TestArgumentEntpackung(unittest.TestCase):
+    """f(*folge) verteilt die Werte auf einzelne positionale Argumente."""
+
+    F = 'funktion f(a, b, c) { zurück [a, b, c] }; '
+
+    def test_liste_entpacken(self):
+        self.assertEqual(lauf(self.F + 'f(*[1, 2, 3])')[0], [1, 2, 3])
+
+    def test_mit_festen_argumenten_gemischt(self):
+        self.assertEqual(lauf(self.F + 'f(1, *[2, 3])')[0], [1, 2, 3])
+        self.assertEqual(lauf(self.F + 'f(*[1], *[2, 3])')[0], [1, 2, 3])
+
+    def test_zusammen_mit_keyword_argumenten(self):
+        self.assertEqual(lauf(self.F + 'f(*[1, 2], c=3)')[0], [1, 2, 3])
+
+    def test_bereich_und_menge_entpacken(self):
+        self.assertEqual(lauf(self.F + 'f(*bereich(3))')[0], [0, 1, 2])
+        self.assertEqual(lauf('funktion g(*x) { zurück laenge(x) }; g(*{1, 2, 3})')[0], 3)
+
+    def test_zeichenkette_entpacken(self):
+        self.assertEqual(lauf(self.F + 'f(*"abc")')[0], ['a', 'b', 'c'])
+
+    def test_variadische_funktion(self):
+        code = 'funktion summe_alle(*zahlen) { sei s = 0; für z in zahlen { s += z }; zurück s }; '
+        self.assertEqual(lauf(code + 'summe_alle(*[1, 2, 3, 4])')[0], 10)
+
+    def test_bei_neu(self):
+        code = ('klasse Punkt { funktion __init__(dies, x, y) { dies.x = x; dies.y = y } }; '
+                'sei p = neu Punkt(*[3, 4]); [p.x, p.y]')
+        self.assertEqual(lauf(code)[0], [3, 4])
+
+    def test_bei_eingebauten(self):
+        self.assertEqual(lauf('max(*[3, 1, 2])')[0], 3)
+
+    def test_falsche_anzahl_meldet_weiterhin_deutsch(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.F + 'f(*[1, 2])')
+        self.assertIn('Pflichtargument(e) fehlen', str(ctx.exception))
+
+    def test_nicht_iterierbares_entpacken(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.F + 'f(*5)')
+        self.assertIn("Entpacken mit '*'", str(ctx.exception))
+        self.assertIn('Iterierbares', str(ctx.exception))
+
+    def test_stern_nach_keyword_argument_ist_syntaxfehler(self):
+        with self.assertRaises(SyntaxError):
+            lauf(self.F + 'f(a=1, *[2, 3])')
+
+
+class TestSliceZuweisung(unittest.TestCase):
+    """liste[1:3] = folge ersetzt den Ausschnitt."""
+
+    def test_gleiche_laenge(self):
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[1:3] = [8,9]; l')[0], [1, 8, 9, 4])
+
+    def test_kuerzer_und_laenger(self):
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[1:3] = [9]; l')[0], [1, 9, 4])
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[1:3] = [7,8,9]; l')[0], [1, 7, 8, 9, 4])
+
+    def test_leere_folge_entfernt(self):
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[1:3] = []; l')[0], [1, 4])
+
+    def test_offene_grenzen(self):
+        self.assertEqual(lauf('sei l = [1,2,3]; l[:2] = [9]; l')[0], [9, 3])
+        self.assertEqual(lauf('sei l = [1,2,3]; l[1:] = [9]; l')[0], [1, 9])
+        self.assertEqual(lauf('sei l = [1,2,3]; l[:] = [7,8]; l')[0], [7, 8])
+
+    def test_mit_schrittweite(self):
+        self.assertEqual(lauf('sei l = [1,2,3,4]; l[::2] = [8,9]; l')[0], [8, 2, 9, 4])
+
+    def test_schrittweite_verlangt_passende_laenge(self):
+        with self.assertRaises(ValueError) as ctx:
+            lauf('sei l = [1,2,3,4]; l[::2] = [1,2,3]')
+        self.assertIn('genau 2', str(ctx.exception))
+
+    def test_rechts_darf_menge_oder_bereich_sein(self):
+        self.assertEqual(lauf('sei l = [1,2,3]; l[1:2] = bereich(3); l')[0], [1, 0, 1, 2, 3])
+        self.assertEqual(sorted(lauf('sei l = [1,2,3]; l[0:3] = {9}; l')[0]), [9])
+
+    def test_rechts_muss_eine_folge_sein(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('sei l = [1,2,3]; l[0:1] = 5')
+        self.assertIn('Liste, Menge oder einen Bereich', str(ctx.exception))
+
+    def test_nur_fuer_listen(self):
+        for code, typ in (('sei d = {"a": 1}; d[0:1] = [1]', 'Woerterbuch'),
+                          ('sei s = "abc"; s[0:1] = ["x"]', None)):
+            with self.subTest(code=code):
+                with self.assertRaises(TypeError):
+                    lauf(code)
+
+    def test_bereich_bleibt_unveraenderlich(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('sei b = bereich(5); b[1:3] = [1,2]')
+        self.assertIn('unveränderlich', str(ctx.exception))
+
+    def test_einfacher_index_unveraendert(self):
+        self.assertEqual(lauf('sei l = [1,2,3]; l[0] = 9; l')[0], [9, 2, 3])
 
 
 if __name__ == '__main__':
