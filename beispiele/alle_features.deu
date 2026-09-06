@@ -111,6 +111,22 @@ drucke("Lange Wörter groß: {gross}")
 sei paare = [[x, x * x] für x in bereich(1, 6)]
 drucke("Paare: {paare}")
 
+# Verschachtelt: mehrere Klauseln, von links nach rechts
+sei produkte = [x * y für x in [1, 2, 3] für y in [10, 20]]
+drucke("Produkte: {produkte}")
+
+# Spätere Klauseln sehen die Variablen früherer, jede kann filtern
+sei dreiecke = [[x, y] für x in bereich(1, 5) für y in bereich(1, 5) wenn y > x]
+drucke("Paare mit y > x: {dreiecke}")
+
+# Mengen-Abstraktion (dedupliziert)
+sei reste = {x % 3 für x in bereich(10)}
+drucke("Reste modulo 3: {reste}")
+
+# Wörterbuch-Abstraktion
+sei laengen = {w: länge(w) für w in woerter}
+drucke("Wortlängen: {laengen}")
+
 # ================================================================
 # 7. IN-OPERATOR
 # ================================================================

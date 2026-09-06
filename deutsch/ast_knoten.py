@@ -51,14 +51,30 @@ class Woerterbuch(Knoten):
     __slots__ = ('paare',)
     def __init__(self, paare): self.paare = paare  # [(schlüssel_knoten, wert_knoten), ...]
 
+# Eine Abstraktions-Klausel ist ein Tripel (variable, iterable, bedingung|None).
+# Mehrere Klauseln stehen für verschachtelte Schleifen, von links nach rechts.
+
 class ListenAusdruck(Knoten):
-    """List comprehension: [ausdruck für variable in iterable wenn bedingung]"""
-    __slots__ = ('ausdruck', 'variable', 'iterable', 'bedingung')
-    def __init__(self, ausdruck, variable, iterable, bedingung):
+    """[ausdruck für v in it wenn b für v2 in it2 ...]"""
+    __slots__ = ('ausdruck', 'klauseln')
+    def __init__(self, ausdruck, klauseln):
         self.ausdruck = ausdruck
-        self.variable = variable
-        self.iterable = iterable
-        self.bedingung = bedingung  # None oder Knoten
+        self.klauseln = klauseln
+
+class MengenAusdruck(Knoten):
+    """{ausdruck für v in it ...}"""
+    __slots__ = ('ausdruck', 'klauseln')
+    def __init__(self, ausdruck, klauseln):
+        self.ausdruck = ausdruck
+        self.klauseln = klauseln
+
+class WoerterbuchAusdruck(Knoten):
+    """{schluessel: wert für v in it ...}"""
+    __slots__ = ('schluessel', 'wert', 'klauseln')
+    def __init__(self, schluessel, wert, klauseln):
+        self.schluessel = schluessel
+        self.wert = wert
+        self.klauseln = klauseln
 
 # ---------------------------------------------------------------- Ausdrücke
 

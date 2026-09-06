@@ -1412,5 +1412,74 @@ k.zaehler = 3
         self.assertEqual(lauf(self.KLASSE + 'k.x')[0], 1)
 
 
+class TestAbstraktionen(unittest.TestCase):
+    """Verschachtelte Klauseln sowie Mengen- und Wörterbuch-Abstraktionen."""
+
+    def test_einfache_listen_abstraktion_unveraendert(self):
+        self.assertEqual(lauf('[x * x für x in bereich(1, 6)]')[0], [1, 4, 9, 16, 25])
+        self.assertEqual(lauf('[x für x in bereich(1, 11) wenn x % 2 == 0]')[0],
+                         [2, 4, 6, 8, 10])
+
+    def test_destrukturierung_unveraendert(self):
+        self.assertEqual(lauf('[a + b für [a, b] in [[1,2],[3,4]]]')[0], [3, 7])
+
+    def test_verschachtelte_klauseln(self):
+        self.assertEqual(lauf('[x * y für x in [1,2,3] für y in [10,20]]')[0],
+                         [10, 20, 20, 40, 30, 60])
+
+    def test_spaetere_klausel_sieht_frühere_variable(self):
+        self.assertEqual(lauf('[y für x in [3] für y in bereich(x)]')[0], [0, 1, 2])
+
+    def test_filter_an_jeder_klausel(self):
+        code = '[[x, y] für x in bereich(1,4) wenn x != 2 für y in bereich(1,4) wenn y > x]'
+        self.assertEqual(lauf(code)[0], [[1, 2], [1, 3]])
+
+    def test_mengen_abstraktion(self):
+        self.assertEqual(lauf('{x % 3 für x in bereich(10)}')[0], {0, 1, 2})
+        self.assertEqual(lauf('{x für x in bereich(20) wenn x % 5 == 0}')[0], {0, 5, 10, 15})
+
+    def test_mengen_abstraktion_verschachtelt(self):
+        self.assertEqual(lauf('{x + y für x in [1,2] für y in [10,20]}')[0], {11, 21, 12, 22})
+
+    def test_woerterbuch_abstraktion(self):
+        self.assertEqual(lauf('{x: x * x für x in bereich(1, 5)}')[0],
+                         {1: 1, 2: 4, 3: 9, 4: 16})
+
+    def test_woerterbuch_abstraktion_mit_filter(self):
+        code = '{w: laenge(w) für w in ["a","bb","ccc"] wenn laenge(w) > 1}'
+        self.assertEqual(lauf(code)[0], {'bb': 2, 'ccc': 3})
+
+    def test_literale_bleiben_literale(self):
+        self.assertEqual(lauf('typ({})')[0], 'Woerterbuch')
+        self.assertEqual(lauf('typ({1, 2})')[0], 'Menge')
+        self.assertEqual(lauf('typ({"a": 1})')[0], 'Woerterbuch')
+        self.assertEqual(lauf('{1, 2, 3}')[0], {1, 2, 3})
+        self.assertEqual(lauf('{"a": 1, "b": 2}')[0], {'a': 1, 'b': 2})
+
+    def test_ergebnistypen(self):
+        self.assertEqual(lauf('typ([x für x in [1]])')[0], 'Liste')
+        self.assertEqual(lauf('typ({x für x in [1]})')[0], 'Menge')
+        self.assertEqual(lauf('typ({x: x für x in [1]})')[0], 'Woerterbuch')
+
+    def test_nicht_iterierbare_klausel_meldet_deutsch(self):
+        for code in ('[x für x in 5]', '{x für x in 5}', '{x: x für x in 5}'):
+            with self.subTest(code=code):
+                with self.assertRaises(TypeError) as ctx:
+                    lauf(code)
+                self.assertIn('Iterierbares', str(ctx.exception))
+
+    def test_unhashbare_ergebnisse_melden_deutsch(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('{[x] für x in [1]}')
+        self.assertIn('hashbar', str(ctx.exception))
+        with self.assertRaises(TypeError) as ctx:
+            lauf('{[x]: x für x in [1]}')
+        self.assertIn('hashbar', str(ctx.exception))
+
+    def test_abstraktionsvariable_bleibt_lokal(self):
+        with self.assertRaises(NameError):
+            lauf('[x für x in [1]]\nx')
+
+
 if __name__ == '__main__':
     unittest.main()

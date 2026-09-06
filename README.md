@@ -194,6 +194,23 @@ menge([1, 1, 2, 2])    # {1, 2} – Umwandlung/Deduplizierung, menge() ohne Argu
 ```
 `{}` bleibt (wie in Python) ein leeres *Wörterbuch*, nicht eine leere Menge.
 
+### Abstraktionen (Comprehensions)
+
+```
+[x * x für x in bereich(1, 6)]                    # Liste
+[x für x in bereich(20) wenn x % 2 == 0]          # mit Filter
+[a + b für [a, b] in paare]                        # mit Destrukturierung
+
+[x * y für x in [1,2,3] für y in [10,20]]          # verschachtelt, links nach rechts
+[y für x in [3] für y in bereich(x)]               # spätere Klausel sieht frühere Variable
+
+{x % 3 für x in bereich(10)}                       # Menge
+{wort: länge(wort) für wort in woerter}            # Wörterbuch
+```
+
+Jede Klausel kann ein eigenes `wenn`-Filter tragen. `{}` bleibt ein leeres *Wörterbuch* —
+eine Abstraktion wird daraus erst durch das `für`.
+
 ### String-Interpolation mit Format-Spezifizierer
 
 ```

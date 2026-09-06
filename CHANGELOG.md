@@ -18,6 +18,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Verschachtelte Abstraktionen** sowie **Mengen- und Wörterbuch-Abstraktionen**:
+  `[x * y für x in a für y in b]`, `{x % 3 für x in bereich(10)}`,
+  `{wort: länge(wort) für wort in woerter}`. Jede Klausel kann ein eigenes `wenn`-Filter
+  tragen, spätere Klauseln sehen die Variablen früherer. Literale (`{}`, `{1, 2}`,
+  `{"a": 1}`) bleiben unverändert Literale.
 - `deutsch --version` / `-V`.
 - `neu modul.Klasse(...)` — Klassen aus einem per `lade "..." als modul` geladenen Namensraum
   lassen sich direkt instanziieren (bisher ein Syntaxfehler, der nur über den Umweg

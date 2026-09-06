@@ -1,5 +1,205 @@
 [
   {
+    "type": "abstraktions_klausel",
+    "named": true,
+    "fields": {
+      "bedingung": {
+        "multiple": false,
+        "required": false,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "iterable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "variable": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "namensliste",
+            "named": true
+          }
+        ]
+      }
+    }
+  },
+  {
     "type": "argument",
     "named": true,
     "fields": {
@@ -66,6 +266,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -87,6 +291,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -149,6 +357,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -170,6 +382,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -261,6 +477,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -282,6 +502,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -359,6 +583,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -380,6 +608,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -447,6 +679,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -468,6 +704,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -534,6 +774,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -555,6 +799,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -690,6 +938,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -711,6 +963,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -865,6 +1121,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -886,6 +1146,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -982,6 +1246,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -1003,6 +1271,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -1105,6 +1377,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1126,6 +1402,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1309,6 +1589,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1334,6 +1618,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1395,6 +1683,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1416,6 +1708,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1483,6 +1779,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1504,6 +1804,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1581,6 +1885,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -1602,6 +1910,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -1766,6 +2078,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1787,6 +2103,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1864,6 +2184,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -1885,6 +2209,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -1952,6 +2280,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -1973,6 +2305,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -2039,85 +2375,7 @@
             "named": true
           },
           {
-            "type": "neu_ausdruck",
-            "named": true
-          },
-          {
-            "type": "nichts",
-            "named": true
-          },
-          {
-            "type": "ternaer_ausdruck",
-            "named": true
-          },
-          {
-            "type": "unaere_operation",
-            "named": true
-          },
-          {
-            "type": "wahrheitswert",
-            "named": true
-          },
-          {
-            "type": "woerterbuch",
-            "named": true
-          },
-          {
-            "type": "zeichenkette",
-            "named": true
-          }
-        ]
-      },
-      "bedingung": {
-        "multiple": false,
-        "required": false,
-        "types": [
-          {
-            "type": "attribut_zugriff",
-            "named": true
-          },
-          {
-            "type": "aufruf",
-            "named": true
-          },
-          {
-            "type": "bezeichner",
-            "named": true
-          },
-          {
-            "type": "binaere_operation",
-            "named": true
-          },
-          {
-            "type": "funktion_ausdruck",
-            "named": true
-          },
-          {
-            "type": "ganzzahl",
-            "named": true
-          },
-          {
-            "type": "index_zugriff",
-            "named": true
-          },
-          {
-            "type": "klammer_ausdruck",
-            "named": true
-          },
-          {
-            "type": "kommazahl",
-            "named": true
-          },
-          {
-            "type": "liste",
-            "named": true
-          },
-          {
-            "type": "listen_abstraktion",
-            "named": true
-          },
-          {
-            "type": "menge",
+            "type": "mengen_abstraktion",
             "named": true
           },
           {
@@ -2145,107 +2403,25 @@
             "named": true
           },
           {
-            "type": "zeichenkette",
-            "named": true
-          }
-        ]
-      },
-      "iterable": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "attribut_zugriff",
-            "named": true
-          },
-          {
-            "type": "aufruf",
-            "named": true
-          },
-          {
-            "type": "bezeichner",
-            "named": true
-          },
-          {
-            "type": "binaere_operation",
-            "named": true
-          },
-          {
-            "type": "funktion_ausdruck",
-            "named": true
-          },
-          {
-            "type": "ganzzahl",
-            "named": true
-          },
-          {
-            "type": "index_zugriff",
-            "named": true
-          },
-          {
-            "type": "klammer_ausdruck",
-            "named": true
-          },
-          {
-            "type": "kommazahl",
-            "named": true
-          },
-          {
-            "type": "liste",
-            "named": true
-          },
-          {
-            "type": "listen_abstraktion",
-            "named": true
-          },
-          {
-            "type": "menge",
-            "named": true
-          },
-          {
-            "type": "neu_ausdruck",
-            "named": true
-          },
-          {
-            "type": "nichts",
-            "named": true
-          },
-          {
-            "type": "ternaer_ausdruck",
-            "named": true
-          },
-          {
-            "type": "unaere_operation",
-            "named": true
-          },
-          {
-            "type": "wahrheitswert",
-            "named": true
-          },
-          {
-            "type": "woerterbuch",
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
             "type": "zeichenkette",
-            "named": true
-          }
-        ]
-      },
-      "variable": {
-        "multiple": false,
-        "required": true,
-        "types": [
-          {
-            "type": "bezeichner",
-            "named": true
-          },
-          {
-            "type": "namensliste",
             "named": true
           }
         ]
       }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "abstraktions_klausel",
+          "named": true
+        }
+      ]
     }
   },
   {
@@ -2305,6 +2481,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -2329,7 +2509,117 @@
           "named": true
         },
         {
+          "type": "woerterbuch_abstraktion",
+          "named": true
+        },
+        {
           "type": "zeichenkette",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "mengen_abstraktion",
+    "named": true,
+    "fields": {
+      "ausdruck": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "abstraktions_klausel",
           "named": true
         }
       ]
@@ -2433,6 +2723,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2454,6 +2748,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -2515,6 +2813,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2536,6 +2838,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -2613,6 +2919,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2634,6 +2944,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -2726,6 +3040,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2747,6 +3065,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -2843,6 +3165,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2864,6 +3190,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -2925,6 +3255,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -2946,6 +3280,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3101,6 +3439,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -3122,6 +3464,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -3188,6 +3534,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3209,6 +3559,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3286,6 +3640,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3307,6 +3665,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3415,6 +3777,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3436,6 +3802,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3497,6 +3867,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3518,6 +3892,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3579,6 +3957,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3600,6 +3982,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3682,6 +4068,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3703,6 +4093,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3804,6 +4198,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3825,6 +4223,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -3926,6 +4328,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -3947,6 +4353,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -4067,6 +4477,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -4088,6 +4502,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
@@ -4179,6 +4597,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -4203,6 +4625,10 @@
           "named": true
         },
         {
+          "type": "woerterbuch_abstraktion",
+          "named": true
+        },
+        {
           "type": "zeichenkette",
           "named": true
         }
@@ -4219,6 +4645,202 @@
       "types": [
         {
           "type": "paar",
+          "named": true
+        }
+      ]
+    }
+  },
+  {
+    "type": "woerterbuch_abstraktion",
+    "named": true,
+    "fields": {
+      "schluessel": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      },
+      "wert": {
+        "multiple": false,
+        "required": true,
+        "types": [
+          {
+            "type": "attribut_zugriff",
+            "named": true
+          },
+          {
+            "type": "aufruf",
+            "named": true
+          },
+          {
+            "type": "bezeichner",
+            "named": true
+          },
+          {
+            "type": "binaere_operation",
+            "named": true
+          },
+          {
+            "type": "funktion_ausdruck",
+            "named": true
+          },
+          {
+            "type": "ganzzahl",
+            "named": true
+          },
+          {
+            "type": "index_zugriff",
+            "named": true
+          },
+          {
+            "type": "klammer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "kommazahl",
+            "named": true
+          },
+          {
+            "type": "liste",
+            "named": true
+          },
+          {
+            "type": "listen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "menge",
+            "named": true
+          },
+          {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
+            "type": "neu_ausdruck",
+            "named": true
+          },
+          {
+            "type": "nichts",
+            "named": true
+          },
+          {
+            "type": "ternaer_ausdruck",
+            "named": true
+          },
+          {
+            "type": "unaere_operation",
+            "named": true
+          },
+          {
+            "type": "wahrheitswert",
+            "named": true
+          },
+          {
+            "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
+            "named": true
+          },
+          {
+            "type": "zeichenkette",
+            "named": true
+          }
+        ]
+      }
+    },
+    "children": {
+      "multiple": true,
+      "required": true,
+      "types": [
+        {
+          "type": "abstraktions_klausel",
           "named": true
         }
       ]
@@ -4300,6 +4922,10 @@
           "named": true
         },
         {
+          "type": "mengen_abstraktion",
+          "named": true
+        },
+        {
           "type": "neu_ausdruck",
           "named": true
         },
@@ -4321,6 +4947,10 @@
         },
         {
           "type": "woerterbuch",
+          "named": true
+        },
+        {
+          "type": "woerterbuch_abstraktion",
           "named": true
         },
         {
@@ -4387,6 +5017,10 @@
             "named": true
           },
           {
+            "type": "mengen_abstraktion",
+            "named": true
+          },
+          {
             "type": "neu_ausdruck",
             "named": true
           },
@@ -4408,6 +5042,10 @@
           },
           {
             "type": "woerterbuch",
+            "named": true
+          },
+          {
+            "type": "woerterbuch_abstraktion",
             "named": true
           },
           {
