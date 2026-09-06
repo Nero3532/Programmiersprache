@@ -1304,5 +1304,113 @@ a.y'''
         self.assertIn('Konstante', str(ctx.exception))
 
 
+class TestGleichUeberladungUeberall(unittest.TestCase):
+    """__gleich__ wirkte nur beim '=='-Operator, nicht bei passe/fall, 'in' und
+    den wertbasierten Listenmethoden."""
+
+    KLASSE = '''klasse Geld {
+    funktion __init__(dies, w) { dies.w = w }
+    funktion __gleich__(dies, a) { zurück dies.w == a.w }
+}
+sei a = neu Geld(5)
+sei b = neu Geld(5)
+sei c = neu Geld(9)
+'''
+
+    def test_gleich_operator_unveraendert(self):
+        self.assertIs(lauf(self.KLASSE + 'a == b')[0], True)
+        self.assertIs(lauf(self.KLASSE + 'a == c')[0], False)
+
+    def test_passe_nutzt_ueberladung(self):
+        code = self.KLASSE + '''passe a {
+    fall c: { "falsch" }
+    fall b: { "treffer" }
+    sonst: { "kein Treffer" }
+}'''
+        self.assertEqual(lauf(code)[0], 'treffer')
+
+    def test_in_operator_nutzt_ueberladung(self):
+        self.assertIs(lauf(self.KLASSE + 'a in [c, b]')[0], True)
+        self.assertIs(lauf(self.KLASSE + 'a in [c]')[0], False)
+        self.assertIs(lauf(self.KLASSE + 'a nicht in [c]')[0], True)
+
+    def test_listenmethoden_nutzen_ueberladung(self):
+        self.assertIs(lauf(self.KLASSE + '[c, b].enthält(a)')[0], True)
+        self.assertEqual(lauf(self.KLASSE + '[c, b].index_von(a)')[0], 1)
+        self.assertEqual(lauf(self.KLASSE + '[b, c, b].zaehle(a)')[0], 2)
+
+    def test_index_von_ohne_treffer_wirft_wertfehler(self):
+        with self.assertRaises(ValueError):
+            lauf(self.KLASSE + '[c].index_von(a)')
+
+    def test_mengen_und_woerterbuecher_bleiben_hashbasiert(self):
+        # Ohne __hash__-Überladung kann __gleich__ die Mitgliedschaft nicht beeinflussen
+        self.assertIs(lauf(self.KLASSE + 'a in menge([b])')[0], False)
+        self.assertIs(lauf(self.KLASSE + 'a in menge([a])')[0], True)
+
+    def test_ohne_ueberladung_bleibt_identitaet(self):
+        code = '''klasse Ohne { funktion __init__(dies) { dies.n = 1 } }
+sei o1 = neu Ohne()
+sei o2 = neu Ohne()
+[o1 == o2, o1 in [o2], o1 in [o1]]'''
+        self.assertEqual(lauf(code)[0], [False, False, True])
+
+    def test_normale_werte_unveraendert(self):
+        code = '[2 in [1,2,3], 5 nicht in [1,2], "a" in "abc", 1 in {1,2}, "k" in {"k": 1}]'
+        self.assertEqual(lauf(code)[0], [True, True, True, True, True])
+        self.assertEqual(lauf('passe 2 { fall 1, 2: { "ja" } sonst: { "nein" } }')[0], 'ja')
+
+
+class TestKlassenkonstantenSindGeschuetzt(unittest.TestCase):
+    """Eine Klassenkonstante ließ sich pro Instanz überdecken (dies.MAX = 1)."""
+
+    KLASSE = '''klasse K {
+    konstante MAX = 100
+    sei zaehler = 0
+    funktion __init__(dies) { dies.x = 1 }
+    funktion brich(dies) { dies.MAX = 1 }
+}
+sei k = neu K()
+'''
+    KIND = 'klasse Kind(K) { }\nsei kind = neu Kind()\n'
+
+    def test_konstante_bleibt_lesbar(self):
+        self.assertEqual(lauf(self.KLASSE + 'k.MAX')[0], 100)
+
+    def test_zuweisung_ueber_klasse(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.KLASSE + 'K.MAX = 5')
+        self.assertIn('neu zugewiesen', str(ctx.exception))
+
+    def test_zuweisung_ueber_instanz(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.KLASSE + 'k.MAX = 7')
+        self.assertIn('pro Instanz überdeckt', str(ctx.exception))
+
+    def test_zuweisung_ueber_dies_in_methode(self):
+        with self.assertRaises(TypeError):
+            lauf(self.KLASSE + 'k.brich()')
+
+    def test_geerbte_konstante_ueber_klasse_geschuetzt(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf(self.KLASSE + self.KIND + 'Kind.MAX = 5')
+        # Die Meldung nennt die deklarierende Klasse, nicht die erbende
+        self.assertIn("Klasse 'K'", str(ctx.exception))
+
+    def test_geerbte_konstante_ueber_instanz_geschuetzt(self):
+        with self.assertRaises(TypeError):
+            lauf(self.KLASSE + self.KIND + 'kind.MAX = 5')
+
+    def test_nicht_konstante_klassenattribute_bleiben_schreibbar(self):
+        code = self.KLASSE + '''K.zaehler = 9
+k.zaehler = 3
+[k.zaehler, K.zaehler]'''
+        self.assertEqual(lauf(code)[0], [3, 9])
+
+    def test_neue_instanzattribute_weiterhin_moeglich(self):
+        self.assertEqual(lauf(self.KLASSE + 'k.frisch = 1\nk.frisch')[0], 1)
+        self.assertEqual(lauf(self.KLASSE + 'k.x')[0], 1)
+
+
 if __name__ == '__main__':
     unittest.main()

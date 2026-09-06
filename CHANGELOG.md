@@ -38,7 +38,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Unerwartete Token im Klassenkörper werden gemeldet statt still übersprungen: ein Tippfehler
   wie `klasse A { tippfehler }` verschwand bisher spurlos, jetzt gibt es einen `SyntaxError`
   mit Zeilenangabe.
-- 43 neue Regressionstests (192 gesamt).
+- `__gleich__` wirkt jetzt überall, wo auf Gleichheit geprüft wird: `passe`/`fall`, der
+  `in`-Operator auf Listen und die wertbasierten Listenmethoden `enthält`, `index_von`
+  und `zaehle`. Bisher galt die Überladung nur für den `==`-Operator, sodass `a == b` wahr
+  sein konnte, `passe a { fall b: ... }` aber nicht traf. Der gesuchte Wert ist dabei der
+  linke Operand. Mengen und Wörterbücher bleiben hash-basiert – dafür wäre zusätzlich eine
+  `__hash__`-Überladung nötig.
+- 67 neue Regressionstests (216 gesamt).
 
 ### Geändert
 - `datum_formatieren` mit einem Zeitstempel falschen Typs wirft `TypeError` statt `ValueError`
@@ -46,6 +52,12 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Bereichs wirft weiterhin `ValueError`.
 - `bereich` und `aufzaehlen` akzeptieren keine Zahlen mehr in Zeichenketten-Form
   (`bereich("5")`) – Argumente müssen Zahlen sein.
+- Eine Klassen-`konstante` lässt sich nicht mehr pro Instanz überdecken: `instanz.MAX = 1`
+  und `dies.MAX = 1` werfen jetzt `TypeError` statt still ein Instanzattribut anzulegen, das
+  die Konstante beim Lesen verdeckte. Das gilt auch für geerbte Konstanten – und `Kind.MAX = 1`
+  auf einer geerbten Konstante wird ebenfalls abgewiesen (bisher legte es still ein
+  überdeckendes Klassenattribut an). Die Meldung nennt die deklarierende Klasse. Nicht-konstante
+  Klassenattribute (`sei` im Klassenkörper) bleiben pro Klasse und pro Instanz überschreibbar.
 - Zuweisung an einen nicht deklarierten Namen ist jetzt ein Fehler statt einer stillen
   Neuanlage: `zaehler = 5` ohne vorheriges `sei zaehler = ...` wirft
   `Variable 'zaehler' wurde nicht deklariert (benutze 'sei')`, bei ähnlichem vorhandenem
