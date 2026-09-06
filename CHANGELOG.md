@@ -18,6 +18,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Hervorhebung (VS Code nutzt kein tree-sitter) und ein Client, der den Language Server
   startet. Die Hervorhebung wird über Zusicherungen in `test/hervorhebung.deu` geprüft,
   ein CI-Job testet sie und baut das Paket.
+- **Standardbibliothek in Namensräumen**: `mathe`, `zufall`, `statistik`, `datei`, `pfad`,
+  `json`, `regex`, `zeit`, `kodierung`, `system`. Statt 72 flacher Globaler gibt es jetzt
+  23 Kernnamen plus 10 Module; angesprochen werden sie wie ein geladenes Modul
+  (`mathe.wurzel(2)`, `datei.lesen(pfad)`). Der Language Server vervollständigt nach
+  `modul.` dessen Mitglieder und zeigt sie im Hover.
 - **Faule Bereiche**: `bereich(...)` liefert eine Folge, die ihre Elemente erst beim
   Durchlaufen erzeugt. `bereich(10000000)` belegt 48 Byte statt mehrerer hundert Megabyte,
   `laenge` und `in` arbeiten in konstanter Zeit, ein Schnitt bleibt faul. Neuer Typ `Bereich`
@@ -76,6 +81,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Bereichs wirft weiterhin `ValueError`.
 - `bereich` und `aufzaehlen` akzeptieren keine Zahlen mehr in Zeichenketten-Form
   (`bereich("5")`) – Argumente müssen Zahlen sein.
+- **39 bisher globale Namen gibt es nur noch im Modul.** `wurzel(2)` wird zu
+  `mathe.wurzel(2)`, `datei_lesen(p)` zu `datei.lesen(p)`, `json_lesen(p)` zu `json.lesen(p)`
+  und so weiter; die vollständige Zuordnung steht im README. Umbenannt wurden dabei
+  `zufall()` → `zufall.komma()`, `zufallszahl()` → `zufall.zahl()`,
+  `dateien_auflisten()` → `pfad.dateien()`, `datum_formatieren()` → `zeit.formatieren()`,
+  `hash_sha256()` → `kodierung.sha256()` und `kommandozeilen_argumente()` →
+  `system.argumente()`. Auch `pi` und `e` sind nicht mehr global, sondern `mathe.pi` und
+  `mathe.e` — gerade das einbuchstabige `e` kollidierte leicht mit eigenen Namen.
 - `bereich(...)` gibt keine **Liste** mehr zurück, sondern einen faulen `Bereich`.
   Schleifen, Abstraktionen und die eingebauten Funktionen sind unverändert; wer das
   Ergebnis als Liste braucht (Listenmethoden, Veränderung, Ausgabe als `[…]`), schreibt

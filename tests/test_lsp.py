@@ -132,7 +132,7 @@ class TestDiagnosen(unittest.TestCase):
     def test_diagnose_fuehrt_den_code_nicht_aus(self):
         with tempfile.TemporaryDirectory() as tmp:
             beweis = os.path.join(tmp, 'beweis.txt').replace('\\', '/')
-            diagnosen(f'datei_schreiben("{beweis}", "geschrieben")')
+            diagnosen(f'datei.schreiben("{beweis}", "geschrieben")')
             self.assertFalse(os.path.exists(beweis),
                              'Diagnose darf den Code niemals ausführen')
 
@@ -249,7 +249,8 @@ class TestSprachfunktionen(unittest.TestCase):
         namen = {e['label'] for e in erg[1]}
         self.assertIn('funktion', namen)          # Schlüsselwort
         self.assertIn('drucke', namen)            # eingebaute Funktion
-        self.assertIn('pi', namen)                # eingebaute Konstante
+        self.assertIn('mathe', namen)             # Modul der Standardbibliothek
+        self.assertIn('zeit', namen)              # noch ein Modul
         self.assertIn('Ganzzahl', namen)          # Typ-Hinweis
         self.assertIn('verdopple', namen)         # eigene Funktion
         self.assertIn('Zaehler', namen)           # eigene Klasse
@@ -297,6 +298,61 @@ class TestSprachfunktionen(unittest.TestCase):
     def test_definition_bei_unbekanntem_namen_liefert_nichts(self):
         erg = self._erg(anfrage(1, 'textDocument/definition', bei(0, 0)))  # 'konstante'
         self.assertIsNone(erg[1])
+
+
+class TestStandardbibliothekImLSP(unittest.TestCase):
+    """Die Module der Standardbibliothek müssen im Editor auffindbar sein."""
+
+    MODULE = ('mathe', 'zufall', 'statistik', 'datei', 'pfad',
+              'json', 'regex', 'zeit', 'kodierung', 'system')
+    QUELLE = 'sei w = mathe.wurzel(16)\nmathe.\n'
+
+    def _vervollstaendigung(self, quelle, zeile, spalte):
+        erg = ergebnisse(fahre([oeffnen(quelle),
+                                anfrage(1, 'textDocument/completion', bei(zeile, spalte))]))
+        return erg[1]
+
+    def test_module_werden_angeboten(self):
+        namen = {e['label'] for e in self._vervollstaendigung(self.QUELLE, 0, 0)}
+        for modul in self.MODULE:
+            self.assertIn(modul, namen)
+
+    def test_alte_flache_namen_verschwunden(self):
+        namen = {e['label'] for e in self._vervollstaendigung(self.QUELLE, 0, 0)}
+        for alt in ('wurzel', 'json_lesen', 'datei_lesen', 'passt_zu', 'pi', 'hash_sha256'):
+            self.assertNotIn(alt, namen)
+
+    def test_kernnamen_bleiben_global(self):
+        namen = {e['label'] for e in self._vervollstaendigung(self.QUELLE, 0, 0)}
+        for kern in ('drucke', 'laenge', 'typ', 'bereich', 'summe', 'sortiere'):
+            self.assertIn(kern, namen)
+
+    def test_nach_modulpunkt_nur_dessen_mitglieder(self):
+        eintraege = self._vervollstaendigung(self.QUELLE, 1, 6)      # nach 'mathe.'
+        namen = {e['label'] for e in eintraege}
+        self.assertIn('wurzel', namen)
+        self.assertIn('pi', namen)
+        self.assertNotIn('anhaengen', namen, 'keine Listenmethoden nach einem Modul')
+        self.assertNotIn('lesen', namen, 'keine Mitglieder anderer Module')
+        self.assertEqual({e['detail'] for e in eintraege}, {'aus mathe'})
+
+    def test_nach_anderem_punkt_weiterhin_instanzmethoden(self):
+        quelle = 'sei l = [1]\nl.\n'
+        namen = {e['label'] for e in self._vervollstaendigung(quelle, 1, 2)}
+        self.assertIn('anhaengen', namen)
+        self.assertNotIn('wurzel', namen)
+
+    def test_hover_auf_modul_listet_die_mitglieder(self):
+        erg = ergebnisse(fahre([oeffnen(self.QUELLE),
+                                anfrage(1, 'textDocument/hover', bei(0, 10))]))
+        wert = erg[1]['contents']['value']
+        self.assertIn('Modul der Standardbibliothek', wert)
+        self.assertIn('wurzel', wert)
+
+    def test_hover_auf_mitglied_nennt_das_modul(self):
+        erg = ergebnisse(fahre([oeffnen(self.QUELLE),
+                                anfrage(1, 'textDocument/hover', bei(0, 16))]))
+        self.assertIn('mathe.wurzel', erg[1]['contents']['value'])
 
 
 if __name__ == '__main__':

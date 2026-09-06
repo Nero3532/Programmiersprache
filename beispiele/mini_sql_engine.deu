@@ -330,12 +330,12 @@ funktion db_speichern(db, pfad) {
         sei tab = db.tabellen[name]
         daten[name] = {"spalten": tab.spalten, "zeilen": tab.zeilen}
     }
-    json_schreiben(pfad, daten)
+    json.schreiben(pfad, daten)
     zurück "Datenbank '" + db.name + "' gespeichert nach '" + pfad + "' (" + zeichenkette(länge(namen)) + " Tabelle(n))"
 }
 
 funktion db_laden(pfad) {
-    sei daten = json_lesen(pfad)
+    sei daten = json.lesen(pfad)
     sei db = neu Datenbank(pfad)
     für name in daten.schluessel() {
         sei eintrag = daten[name]
@@ -373,12 +373,12 @@ funktion tabelle_csv_exportieren(tab, pfad) {
         sei zellen = [zu_text(z[s]) für s in tab.spalten]
         anhängen(zeilen_text, verbinde(zellen, ","))
     }
-    datei_schreiben(pfad, verbinde(zeilen_text, "\n"))
+    datei.schreiben(pfad, verbinde(zeilen_text, "\n"))
     zurück "Tabelle '" + tab.name + "' exportiert nach '" + pfad + "' (" + zeichenkette(länge(tab.zeilen)) + " Zeile(n))"
 }
 
 funktion tabelle_csv_importieren(db, name, pfad) {
-    sei inhalt = datei_lesen(pfad)
+    sei inhalt = datei.lesen(pfad)
     sei rohzeilen = inhalt.teile("\n")
     sei zeilen_text = [z für z in rohzeilen wenn länge(z.trimmen()) > 0]
     wenn länge(zeilen_text) == 0 {
@@ -443,7 +443,7 @@ funktion like_zu_regex(muster) {
 
 funktion like_treffer(wert, muster) {
     wenn wert == nichts { zurück falsch }
-    zurück passt_zu(like_zu_regex(muster), zeichenkette(wert))
+    zurück regex.passt_zu(like_zu_regex(muster), zeichenkette(wert))
 }
 
 # eine einzelne Bedingung auswerten - dispatcht nach "art" (siehe parse_eine_bedingung)
@@ -679,11 +679,11 @@ funktion berechne_aggregat(funktion_name, spalte, zeilen) {
     }
     wenn funktion_name == "MEDIAN" {
         wenn länge(werte) == 0 { zurück nichts }
-        zurück median(werte)
+        zurück statistik.median(werte)
     }
     wenn funktion_name == "STDDEV" {
         wenn länge(werte) == 0 { zurück nichts }
-        zurück runde(stdabweichung(werte), 2)
+        zurück runde(statistik.stdabweichung(werte), 2)
     }
     werfe "Unbekannte Aggregatfunktion: " + funktion_name
 }

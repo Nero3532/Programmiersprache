@@ -7,6 +7,7 @@
     { "include": "#zeichenketten" },
     { "include": "#definitionen" },
     { "include": "#schluesselwoerter" },
+    { "include": "#module" },
     { "include": "#konstanten" },
     { "include": "#zahlen" },
     { "include": "#typ-hinweise" },
@@ -168,6 +169,22 @@
       ]
     },
 
+    "module": {
+      "patterns": [
+        {
+          "match": "\\b(mathe)\\.(pi|e)\\b",
+          "captures": {
+            "1": { "name": "support.class.builtin.deutsch" },
+            "2": { "name": "support.constant.builtin.deutsch" }
+          }
+        },
+        {
+          "name": "support.class.builtin.deutsch",
+          "match": "\\b(mathe|zufall|statistik|datei|pfad|json|regex|zeit|kodierung|system)\\b(?=\\s*\\.)"
+        }
+      ]
+    },
+
     "konstanten": {
       "patterns": [
         {
@@ -177,10 +194,6 @@
         {
           "name": "constant.language.null.deutsch",
           "match": "\\bnichts\\b"
-        },
-        {
-          "name": "support.constant.builtin.deutsch",
-          "match": "\\b(pi|e)\\b(?!\\s*\\()"
         }
       ]
     },
@@ -225,7 +238,7 @@
       "patterns": [
         {
           "name": "support.function.builtin.deutsch",
-          "match": "\\b(drucke|eingabe|laenge|länge|typ|ganzzahl|kommazahl|zeichenkette|wahrheitswert|bereich|sortiere|anhaengen|anhängen|entferne|umkehren|verbinde|max|min|abs|runde|liste|woerterbuch|wörterbuch|menge|wurzel|sinus|kosinus|tangens|logarithmus|exponential|boden|decke|ggt|kgv|vorzeichen|zufall|zufallszahl|mische|summe|alle|einige|aufzaehlen|zippe|datei_lesen|datei_schreiben|datei_anhaengen|datei_anhängen|json_lesen|json_schreiben|passt_zu|regex_ersetze|regex_finde_alle|regex_finde|mittelwert|median|stdabweichung|jetzt|datum_formatieren|tiefe_kopie|hash_sha256|base64_kodieren|base64_dekodieren|pfad_existiert|dateien_auflisten|ordner_erstellen|kommandozeilen_argumente|umgebungsvariable)\\b(?=\\s*\\()"
+          "match": "\\b(drucke|eingabe|laenge|länge|typ|ganzzahl|kommazahl|zeichenkette|wahrheitswert|bereich|sortiere|anhaengen|anhängen|entferne|umkehren|verbinde|max|min|abs|runde|liste|woerterbuch|wörterbuch|menge|summe|alle|einige|aufzaehlen|zippe|tiefe_kopie)\\b(?=\\s*\\()"
         },
         {
           "match": "(\\.)([A-Za-zÄÖÜäöüß_][A-Za-zÄÖÜäöüß0-9_]*)(?=\\s*\\()",

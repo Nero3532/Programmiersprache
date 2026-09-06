@@ -90,3 +90,15 @@ lade "modul.deu" als m
 # <- keyword.control.import.deutsch
 #                ^^^ keyword.control.import.deutsch
 #                    ^ entity.name.namespace.deutsch
+
+sei w = mathe.wurzel(16)
+#       ^^^^^ support.class.builtin.deutsch
+#             ^^^^^^ entity.name.function.method.deutsch
+
+drucke(mathe.pi)
+#      ^^^^^ support.class.builtin.deutsch
+#            ^^ support.constant.builtin.deutsch
+
+sei daten = json.lesen("x.json")
+#           ^^^^ support.class.builtin.deutsch
+#                ^^^^^ entity.name.function.method.deutsch

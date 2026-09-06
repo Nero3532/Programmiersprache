@@ -104,19 +104,18 @@
     "drucke" "eingabe" "laenge" "länge" "typ" "ganzzahl" "kommazahl"
     "zeichenkette" "wahrheitswert" "bereich" "sortiere" "anhaengen" "anhängen"
     "entferne" "umkehren" "verbinde" "max" "min" "abs" "runde" "liste"
-    "woerterbuch" "wörterbuch" "menge"
-    "wurzel" "sinus" "kosinus" "tangens" "logarithmus" "exponential"
-    "boden" "decke" "ggt" "kgv" "vorzeichen"
-    "zufall" "zufallszahl" "mische"
-    "summe" "alle" "einige" "aufzaehlen" "zippe"
-    "datei_lesen" "datei_schreiben" "datei_anhaengen" "datei_anhängen"
-    "json_lesen" "json_schreiben"
-    "passt_zu" "regex_ersetze" "regex_finde" "regex_finde_alle"
-    "mittelwert" "median" "stdabweichung"
-    "jetzt" "datum_formatieren" "tiefe_kopie"
-    "hash_sha256" "base64_kodieren" "base64_dekodieren"
-    "pfad_existiert" "dateien_auflisten" "ordner_erstellen"
-    "kommandozeilen_argumente" "umgebungsvariable"))
+    "woerterbuch" "wörterbuch" "menge" "summe" "alle" "einige" "aufzaehlen"
+    "zippe" "tiefe_kopie"))
 
-((bezeichner) @constant.builtin
+; Module der Standardbibliothek
+((bezeichner) @namespace
+  (#any-of? @namespace
+    "mathe" "zufall" "statistik" "datei" "pfad" "json" "regex" "zeit"
+    "kodierung" "system"))
+
+; mathe.pi und mathe.e
+((attribut_zugriff
+   objekt: (bezeichner) @_modul
+   attribut: (bezeichner) @constant.builtin)
+  (#eq? @_modul "mathe")
   (#any-of? @constant.builtin "pi" "e"))
