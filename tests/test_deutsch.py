@@ -14,6 +14,7 @@ import os
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -980,6 +981,918 @@ class TestStatischeKlassenmitglieder(unittest.TestCase):
     def test_unbekanntes_klassenattribut_wirft_fehler(self):
         with self.assertRaises(AttributeError):
             lauf('klasse K { }\nK.unbekannt')
+
+
+class TestSchleifenSignale(unittest.TestCase):
+    """'abbrechen'/'weiter'/'zurück' enden an der Funktions- bzw. Programmgrenze mit einem Fehler."""
+
+    def test_abbrechen_in_schleife_innerhalb_funktion_funktioniert(self):
+        code = '''
+        funktion bis_drei() {
+            für i in bereich(10) {
+                wenn i == 3 { abbrechen }
+                drucke(i)
+            }
+        }
+        bis_drei()
+        '''
+        self.assertEqual(ausgabe_erfassen(code), '0\n1\n2\n')
+
+    def test_weiter_in_schleife_innerhalb_funktion_funktioniert(self):
+        code = '''
+        funktion ohne_eins() {
+            für i in bereich(3) {
+                wenn i == 1 { weiter }
+                drucke(i)
+            }
+        }
+        ohne_eins()
+        '''
+        self.assertEqual(ausgabe_erfassen(code), '0\n2\n')
+
+    def test_zurueck_aus_schleife_in_funktion_funktioniert(self):
+        code = '''
+        funktion erste_gerade(liste) {
+            für x in liste {
+                wenn x % 2 == 0 { zurück x }
+            }
+            zurück nichts
+        }
+        erste_gerade([1, 3, 4, 6])
+        '''
+        self.assertEqual(lauf(code)[0], 4)
+
+    def test_abbrechen_in_funktion_beendet_aufrufer_schleife_nicht_still(self):
+        code = (
+            'funktion f() {\n'
+            '    abbrechen\n'
+            '}\n'
+            'sei i = 0\n'
+            'solange i < 3 {\n'
+            '    f()\n'
+            '    i += 1\n'
+            '}\n'
+        )
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf(code)
+        self.assertIn("'abbrechen' außerhalb einer Schleife", str(ctx.exception))
+        self.assertIn('Zeile 2', str(ctx.exception))
+
+    def test_weiter_in_funktion_wirft_fehler_mit_zeile(self):
+        code = 'funktion f() { weiter }\nfür i in [1, 2] { f() }\n'
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf(code)
+        self.assertIn("'weiter' außerhalb einer Schleife", str(ctx.exception))
+        self.assertIn('Zeile 1', str(ctx.exception))
+
+    def test_abbrechen_in_methode_ohne_schleife_wirft_fehler(self):
+        code = 'klasse K { funktion m(dies) { abbrechen } }\nfür i in [1] { neu K().m() }\n'
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf(code)
+        self.assertIn("'abbrechen' außerhalb einer Schleife", str(ctx.exception))
+
+    def test_abbrechen_auf_oberster_ebene_wirft_deutschen_fehler(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf('sei x = 1\nabbrechen\n')
+        self.assertIn("'abbrechen' außerhalb einer Schleife", str(ctx.exception))
+        self.assertIn('Zeile 2', str(ctx.exception))
+
+    def test_weiter_auf_oberster_ebene_wirft_deutschen_fehler(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf('wenn wahr { weiter }')
+        self.assertIn("'weiter' außerhalb einer Schleife", str(ctx.exception))
+
+    def test_zurueck_auf_oberster_ebene_wirft_deutschen_fehler(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf('sei x = 1\nzurück x\n')
+        self.assertIn("'zurück' außerhalb einer Funktion", str(ctx.exception))
+        self.assertIn('Zeile 2', str(ctx.exception))
+
+    def test_zurueck_in_schleife_auf_oberster_ebene_wirft_fehler(self):
+        with self.assertRaises(RuntimeError) as ctx:
+            lauf('für i in [1, 2] { zurück i }')
+        self.assertIn("'zurück' außerhalb einer Funktion", str(ctx.exception))
+
+    def test_abbrechen_in_geladener_datei_beendet_lade_schleife_nicht(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('abbrechen\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(RuntimeError) as ctx:
+                lauf('für i in [1, 2] { lade "mod.deu" }', interpreter)
+            self.assertIn("'abbrechen' außerhalb einer Schleife", str(ctx.exception))
+
+    def test_interpreter_bleibt_nach_signalfehler_nutzbar(self):
+        interpreter = Interpreter()
+        with self.assertRaises(RuntimeError):
+            lauf('abbrechen', interpreter)
+        ergebnis, _ = lauf('1 + 1', interpreter)
+        self.assertEqual(ergebnis, 2)
+
+
+class TestTypHinweisNeuzuweisung(unittest.TestCase):
+    def test_passende_neuzuweisung_geht_durch(self):
+        ergebnis, _ = lauf('sei x: Ganzzahl = 1\nx = 2\nx')
+        self.assertEqual(ergebnis, 2)
+
+    def test_kommazahl_akzeptiert_ganzzahl_bei_neuzuweisung(self):
+        ergebnis, _ = lauf('sei k: Kommazahl = 1.5\nk = 2\nk')
+        self.assertEqual(ergebnis, 2)
+
+    def test_verbundzuweisung_mit_passendem_typ(self):
+        ergebnis, _ = lauf('sei x: Ganzzahl = 1\nx += 4\nx')
+        self.assertEqual(ergebnis, 5)
+
+    def test_falscher_typ_bei_neuzuweisung_wirft_fehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('sei x: Ganzzahl = 1\nx = "text"')
+        meldung = str(ctx.exception)
+        self.assertIn("Variable 'x': erwartet Typ 'Ganzzahl', bekam Zeichenkette", meldung)
+        self.assertIn('Zeile 2', meldung)
+
+    def test_neuzuweisung_meldung_gleich_wie_bei_deklaration(self):
+        with self.assertRaises(TypeError) as bei_deklaration:
+            lauf('sei x: Ganzzahl = "text"')
+        with self.assertRaises(TypeError) as bei_zuweisung:
+            lauf('sei x: Ganzzahl = 1\nx = "text"')
+        self.assertIn(
+            "Variable 'x': erwartet Typ 'Ganzzahl', bekam Zeichenkette", str(bei_deklaration.exception)
+        )
+        self.assertIn(
+            "Variable 'x': erwartet Typ 'Ganzzahl', bekam Zeichenkette", str(bei_zuweisung.exception)
+        )
+
+    def test_verbundzuweisung_mit_falschem_ergebnistyp_wirft_fehler(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('sei x: Ganzzahl = 1\nx += 0.5')
+        self.assertIn("Variable 'x': erwartet Typ 'Ganzzahl', bekam Kommazahl", str(ctx.exception))
+
+    def test_fehlgeschlagene_zuweisung_aendert_wert_nicht(self):
+        interpreter = Interpreter()
+        lauf('sei x: Ganzzahl = 1', interpreter)
+        with self.assertRaises(TypeError):
+            lauf('x = "text"', interpreter)
+        self.assertEqual(lauf('x', interpreter)[0], 1)
+
+    def test_typ_hinweis_gilt_auch_aus_funktion_heraus(self):
+        code = 'sei x: Ganzzahl = 1\nfunktion f() { x = "text" }\nf()'
+        with self.assertRaises(TypeError) as ctx:
+            lauf(code)
+        self.assertIn("Variable 'x': erwartet Typ 'Ganzzahl'", str(ctx.exception))
+
+    def test_typ_hinweis_klassenname(self):
+        code = 'klasse P { }\nsei p: P = neu P()\n'
+        lauf(code + 'p = neu P()')
+        with self.assertRaises(TypeError) as ctx:
+            lauf(code + 'p = 5')
+        self.assertIn("Variable 'p': erwartet Typ 'P', bekam Ganzzahl", str(ctx.exception))
+
+    def test_konstante_mit_hinweis_meldet_konstante(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('konstante K: Ganzzahl = 1\nK = "text"')
+        self.assertIn('Konstante', str(ctx.exception))
+
+    def test_neue_deklaration_ohne_hinweis_hebt_hinweis_auf(self):
+        ergebnis, _ = lauf('sei x: Ganzzahl = 1\nsei x = "text"\nx = "anders"\nx')
+        self.assertEqual(ergebnis, 'anders')
+
+    def test_innere_deklaration_ohne_hinweis_ueberschattet_hinweis(self):
+        code = 'sei x: Ganzzahl = 1\nwenn wahr { sei x = "text"\nx = "anders" }\nx'
+        self.assertEqual(lauf(code)[0], 1)
+
+    def test_untypisierte_variable_bleibt_frei_zuweisbar(self):
+        ergebnis, _ = lauf('sei x = 1\nx = "text"\nx')
+        self.assertEqual(ergebnis, 'text')
+
+
+class TestZuweisungOhneSei(unittest.TestCase):
+    def test_unbekannter_name_mit_vorschlag(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('sei zaehler = 0\nzaehlr = 2')
+        meldung = str(ctx.exception)
+        self.assertIn("Variable 'zaehlr' ist nicht deklariert", meldung)
+        self.assertIn("meintest du 'zaehler'?", meldung)
+        self.assertIn("Neue Variablen mit 'sei' anlegen.", meldung)
+        self.assertIn('Zeile 2', meldung)
+
+    def test_voellig_unbekannter_name_ohne_vorschlag(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('voelligUnbekannterXyzName123 = 1')
+        meldung = str(ctx.exception)
+        self.assertIn("Variable 'voelligUnbekannterXyzName123' ist nicht deklariert", meldung)
+        self.assertNotIn('meintest du', meldung)
+        self.assertIn("'sei'", meldung)
+
+    def test_verbundzuweisung_an_unbekannten_namen_wirft_namenfehler(self):
+        with self.assertRaises(NameError) as ctx:
+            lauf('sei zaehler = 0\nzaehlr += 1')
+        self.assertIn("Variable 'zaehlr' ist nicht deklariert", str(ctx.exception))
+        self.assertIn("meintest du 'zaehler'?", str(ctx.exception))
+
+    def test_unbekannter_name_legt_keine_variable_an(self):
+        interpreter = Interpreter()
+        with self.assertRaises(NameError):
+            lauf('neu_var = 1', interpreter)
+        with self.assertRaises(NameError):
+            lauf('neu_var', interpreter)
+
+    def test_zuweisung_in_funktion_an_unbekannten_namen_wirft_fehler(self):
+        with self.assertRaises(NameError):
+            lauf('funktion f() { lokal = 1 }\nf()')
+
+    def test_mit_sei_deklarierte_variable_ist_zuweisbar(self):
+        self.assertEqual(lauf('sei x = 1\nx = 2\nx')[0], 2)
+
+    def test_zuweisung_an_variable_aeusseren_scopes_bleibt_erlaubt(self):
+        code = '''
+        sei z = 0
+        funktion f() { z = z + 1 }
+        f(); f()
+        wenn wahr { z = z + 10 }
+        z
+        '''
+        self.assertEqual(lauf(code)[0], 12)
+
+    def test_parameter_ist_zuweisbar(self):
+        ergebnis, _ = lauf('funktion f(a) { a = a + 1\nzurück a }\nf(1)')
+        self.assertEqual(ergebnis, 2)
+
+    def test_fuer_variable_ist_zuweisbar(self):
+        ergebnis, _ = lauf('sei s = 0\nfür i in [1, 2] { i = i * 2\ns += i }\ns')
+        self.assertEqual(ergebnis, 6)
+
+    def test_fange_name_ist_zuweisbar(self):
+        code = 'sei r = nichts\nversuche { werfe "x" } fange e { e = "neu"\nr = e }\nr'
+        self.assertEqual(lauf(code)[0], 'neu')
+
+    def test_destrukturierte_namen_sind_zuweisbar(self):
+        ergebnis, _ = lauf('sei [a, b] = [1, 2]\na = 5\nb += 1\n[a, b]')
+        self.assertEqual(ergebnis, [5, 3])
+
+    def test_schleifendestrukturierung_namen_sind_zuweisbar(self):
+        ergebnis, _ = lauf('sei s = 0\nfür [a, b] in [[1, 2], [3, 4]] { a = a * 10\ns += a + b }\ns')
+        self.assertEqual(ergebnis, 46)
+
+    def test_funktionsname_ist_zuweisbar(self):
+        ergebnis, _ = lauf('funktion f() { zurück 1 }\nf = 3\nf')
+        self.assertEqual(ergebnis, 3)
+
+    def test_klassenname_ist_zuweisbar(self):
+        ergebnis, _ = lauf('klasse K { }\nK = 3\nK')
+        self.assertEqual(ergebnis, 3)
+
+    def test_lade_als_name_ist_zuweisbar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'mod.deu'), 'w', encoding='utf-8') as f:
+                f.write('sei x = 1\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "mod.deu" als m\nm = 7\nm', interpreter)
+            self.assertEqual(ergebnis, 7)
+
+    def test_attribut_und_index_zuweisung_unveraendert(self):
+        code = '''
+        klasse P { funktion __init__(dies) { dies.x = 1 } }
+        sei p = neu P()
+        p.x = 5
+        sei l = [1, 2]
+        l[0] = 9
+        [p.x, l]
+        '''
+        self.assertEqual(lauf(code)[0], [5, [9, 2]])
+
+
+# ------------------------------------------------------------ Modulsystem 'lade'
+
+def _datei_schreiben(ordner: str, name: str, inhalt: str) -> str:
+    """Legt ordner/name (name darf '/' enthalten) samt Unterordnern an und gibt den Pfad zurück."""
+    pfad = os.path.join(ordner, *name.split('/'))
+    os.makedirs(os.path.dirname(pfad), exist_ok=True)
+    with open(pfad, 'w', encoding='utf-8') as f:
+        f.write(inhalt)
+    return pfad
+
+
+class TestLadeRelativZurLadendenDatei(unittest.TestCase):
+    def test_geladene_datei_laedt_aus_eigenem_ordner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'hilfe.deu', 'funktion wer() { zurück "oben" }\n')   # Köder im Hauptordner
+            _datei_schreiben(tmp, 'unter/hilfe.deu', 'funktion wer() { zurück "unten" }\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu', 'lade "hilfe.deu" als h\nfunktion frage() { zurück h.wer() }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "unter/mitte.deu" als m\nm.frage()', interpreter)
+            self.assertEqual(ergebnis, 'unten')
+
+    def test_ohne_als_global_und_relativ_zur_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'unter/hilfe.deu', 'funktion f() { zurück 5 }\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu', 'lade "hilfe.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "unter/mitte.deu"\nf()', interpreter)
+            self.assertEqual(ergebnis, 5)
+
+    def test_hauptskript_bleibt_relativ_zum_ladepfad(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'a.deu', 'funktion f() { zurück 1 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "a.deu"\nf()', interpreter)
+            self.assertEqual(ergebnis, 1)
+
+    def test_oberordner_und_absoluter_pfad(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            absolut = _datei_schreiben(tmp, 'oben.deu', 'konstante O = 7\n').replace('\\', '/')
+            _datei_schreiben(tmp, 'unter/mitte.deu',
+                             f'lade "../oben.deu" als o\nlade "{absolut}" als a\n'
+                             'konstante SUMME = o.O + a.O\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "unter/mitte.deu" als m\nm.SUMME', interpreter)
+            self.assertEqual(ergebnis, 14)
+
+    def test_funktion_laedt_relativ_zur_definierenden_datei(self):
+        # lade im Körper einer Funktion gilt ab dem Ordner der Datei, in der die Funktion steht,
+        # auch wenn sie vom Hauptskript aus aufgerufen wird
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'unter/tief.deu', 'konstante T = "tief"\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu',
+                             'funktion hole() { lade "tief.deu" als t\nzurück t.T }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "unter/mitte.deu" als m\nm.hole()', interpreter)
+            self.assertEqual(ergebnis, 'tief')
+
+    def test_ohne_ladepfad_gilt_arbeitsordner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'repl.deu', 'funktion f() { zurück 3 }\n')
+            alt = os.getcwd()
+            os.chdir(tmp)
+            try:
+                interpreter = Interpreter()
+                ergebnis, _ = lauf('lade "repl.deu"\nf()', interpreter)
+            finally:
+                os.chdir(alt)
+            self.assertEqual(ergebnis, 3)
+
+    def test_nur_im_hauptordner_liegende_datei_wird_aus_unterordner_nicht_gefunden(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'nur_oben.deu', 'sei x = 1\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu', 'lade "nur_oben.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                lauf('lade "unter/mitte.deu"', interpreter)
+            self.assertIn('nur_oben.deu', str(ctx.exception))
+            self.assertIn('unter/mitte.deu, Zeile 1', str(ctx.exception))
+
+    def test_zyklus_ueber_ordner_hinweg_wird_erkannt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'a.deu', 'lade "unter/b.deu"\n')
+            _datei_schreiben(tmp, 'unter/b.deu', 'lade "../a.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ImportError) as ctx:
+                lauf('lade "a.deu"', interpreter)
+            self.assertIn('a.deu -> b.deu -> a.deu', str(ctx.exception))
+
+    def test_zyklus_bei_unterschiedlicher_pfadschreibweise_wird_erkannt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'unter/a.deu', 'lade "../unter/./a.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ImportError):
+                lauf('lade "unter/a.deu"', interpreter)
+
+    def test_mehrfaches_laden_nach_fehler_ist_wieder_moeglich(self):
+        # der Lade-Stack und die aktuelle Datei werden auch bei Fehlern sauber zurückgesetzt
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'unter/kaputt.deu', 'lade "gibt_es_nicht.deu"\n')
+            _datei_schreiben(tmp, 'a.deu', 'funktion f() { zurück 1 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(FileNotFoundError):
+                lauf('lade "unter/kaputt.deu"', interpreter)
+            with self.assertRaises(FileNotFoundError):
+                lauf('lade "unter/kaputt.deu"', interpreter)   # kein "Zyklus" durch Reste im Stack
+            ergebnis, _ = lauf('lade "a.deu"\nf()', interpreter)
+            self.assertEqual(ergebnis, 1)
+
+
+class TestLadeDateiFehlt(unittest.TestCase):
+    def test_fehlende_datei_meldet_pfad_und_zeile_auf_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                lauf('sei x = 1\nlade "fehlt.deu"', interpreter)
+            meldung = str(ctx.exception)
+            self.assertIn('Datei nicht gefunden', meldung)
+            self.assertIn(os.path.join(tmp, 'fehlt.deu'), meldung)
+            self.assertIn('Zeile 2', meldung)
+            self.assertNotIn('Errno', meldung)
+            self.assertNotIn('No such file', meldung)
+
+    def test_fehlende_datei_mit_als_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(FileNotFoundError) as ctx:
+                lauf('lade "fehlt.deu" als m', interpreter)
+            self.assertIn('Datei nicht gefunden', str(ctx.exception))
+            self.assertIn('Zeile 1', str(ctx.exception))
+
+    def test_fehlende_datei_ist_mit_versuche_fangbar(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            code = 'sei r = ""\nversuche { lade "fehlt.deu" } fange (FileNotFoundError) e { r = e }\nr'
+            ergebnis, _ = lauf(code, interpreter)
+            self.assertIn('Datei nicht gefunden', ergebnis)
+
+    def test_ordner_statt_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.makedirs(os.path.join(tmp, 'ordner'))
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(IsADirectoryError) as ctx:
+                lauf('lade "ordner"', interpreter)
+            self.assertIn('ist ein Ordner', str(ctx.exception))
+            self.assertNotIn('Errno', str(ctx.exception))
+
+    def test_keine_utf8_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'binaer.deu'), 'wb') as f:
+                f.write(b'\xff\xfe\x00\x80')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ValueError) as ctx:
+                lauf('lade "binaer.deu"', interpreter)
+            self.assertIn('keine gültige UTF-8-Textdatei', str(ctx.exception))
+            self.assertIn('Zeile 1', str(ctx.exception))
+
+    def test_pfad_ist_keine_zeichenkette(self):
+        with self.assertRaises(TypeError) as ctx:
+            lauf('lade 5')
+        self.assertIn("'lade' erwartet einen Pfad als Zeichenkette, bekam Ganzzahl", str(ctx.exception))
+
+
+class TestNeuMitPunktpfad(unittest.TestCase):
+    MODUL = (
+        'klasse Box {\n'
+        '    funktion __init__(dies, w, faktor=1) { dies.w = w * faktor }\n'
+        '    funktion wert(dies) { zurück dies.w }\n'
+        '}\n'
+        'funktion kein_typ() { zurück 1 }\n'
+    )
+
+    def _interpreter(self, tmp):
+        _datei_schreiben(tmp, 'm.deu', self.MODUL)
+        interpreter = Interpreter(ladepfad=tmp)
+        lauf('lade "m.deu" als m', interpreter)
+        return interpreter
+
+    def test_positionale_argumente(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            ergebnis, _ = lauf('sei b = neu m.Box(4)\nb.wert()', interpreter)
+            self.assertEqual(ergebnis, 4)
+
+    def test_keyword_argumente_gemischt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            ergebnis, _ = lauf('(neu m.Box(4, faktor=3)).wert()', interpreter)
+            self.assertEqual(ergebnis, 12)
+            ergebnis, _ = lauf('neu m.Box(faktor=5, w=2).wert()', interpreter)
+            self.assertEqual(ergebnis, 10)
+
+    def test_mehrstufiger_pfad(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'innen.deu', self.MODUL)
+            _datei_schreiben(tmp, 'aussen.deu', 'lade "innen.deu" als i\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            ergebnis, _ = lauf('lade "aussen.deu" als a\nneu a.i.Box(6, faktor=2).wert()', interpreter)
+            self.assertEqual(ergebnis, 12)
+
+    def test_instanz_traegt_klasse_aus_dem_modul(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            ergebnis, _ = lauf('sei b = neu m.Box(1)\n[b, m.Box]', interpreter)
+            self.assertIs(ergebnis[0].klasse, ergebnis[1])
+
+    def test_einfaches_neu_unveraendert(self):
+        ergebnis, _ = lauf('klasse K { funktion __init__(dies, x) { dies.x = x } }\n(neu K(3)).x')
+        self.assertEqual(ergebnis, 3)
+
+    def test_parser_baut_punktpfad(self):
+        baum = Parser(Lexer('neu a.b.K(1, z=2)').tokenisieren()).parse()
+        knoten = baum.anweisungen[0]
+        self.assertEqual(knoten.name, 'a.b.K')
+        self.assertEqual(len(knoten.argumente), 1)
+        self.assertEqual([n for n, _ in knoten.keyword_argumente], ['z'])
+
+    def test_unbekannte_klasse_im_modul(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            with self.assertRaises(AttributeError) as ctx:
+                lauf('neu m.Fehlt()', interpreter)
+            self.assertIn("Namensraum 'm' hat kein Attribut 'Fehlt'", str(ctx.exception))
+
+    def test_kein_klassenname_im_modul(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            with self.assertRaises(TypeError) as ctx:
+                lauf('neu m.kein_typ()', interpreter)
+            self.assertIn("'m.kein_typ' ist keine Klasse", str(ctx.exception))
+
+    def test_unbekanntes_modul(self):
+        with self.assertRaises(NameError):
+            lauf('neu nirgends.Box()')
+
+    def test_falsche_argumente_der_modulklasse(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = self._interpreter(tmp)
+            with self.assertRaises(TypeError) as ctx:
+                lauf('neu m.Box()', interpreter)
+            self.assertIn('Pflichtargument', str(ctx.exception))
+
+    def test_syntaxfehler_bei_unvollstaendigem_pfad(self):
+        with self.assertRaises(SyntaxError):
+            lauf('neu m.()')
+        with self.assertRaises(SyntaxError):
+            lauf('neu m.Box')   # Klammern fehlen
+        with self.assertRaises(SyntaxError):
+            lauf('neu m.Box(a=1, 2)')   # positional nach keyword
+
+
+class TestFehlerInGeladenenDateien(unittest.TestCase):
+    def test_laufzeitfehler_nennt_datei_und_zeile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'hilfe.deu', 'sei a = 1\nsei b = 2\nsei c = 1 / 0\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('sei x = 1\nlade "hilfe.deu"', interpreter)
+            self.assertIn('hilfe.deu, Zeile 3: Division durch Null', str(ctx.exception))
+            self.assertNotIn('Zeile 2', str(ctx.exception))   # nicht die Zeile des lade im Hauptskript
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 3)
+
+    def test_fehler_in_funktion_der_geladenen_datei_beim_aufruf_aus_dem_hauptskript(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'hilfe.deu', 'funktion teile(a) {\n  zurück a / 0\n}\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "hilfe.deu" als h', interpreter)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('sei x = 1\n\nh.teile(4)', interpreter)
+            self.assertIn('hilfe.deu, Zeile 2:', str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 2)
+
+    def test_fehler_in_methode_einer_klasse_aus_geladener_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'k.deu', 'klasse K {\n  funktion boese(dies) {\n    zurück nirgends\n  }\n}\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "k.deu" als k', interpreter)
+            with self.assertRaises(NameError) as ctx:
+                lauf('sei o = neu k.K()\no.boese()', interpreter)
+            self.assertIn('k.deu, Zeile 3:', str(ctx.exception))
+
+    def test_dateiname_relativ_zum_hauptordner_mit_schraegstrich(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'unter/hilfe.deu', 'sei c = 1 / 0\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('lade "unter/hilfe.deu"', interpreter)
+            self.assertIn('unter/hilfe.deu, Zeile 1:', str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+
+    def test_fehler_in_verschachtelt_geladener_datei_nennt_die_innerste(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'unter/innen.deu', '\nsei c = 1 / 0\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu', 'sei v = 1\nlade "innen.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('lade "unter/mitte.deu"', interpreter)
+            self.assertIn('unter/innen.deu, Zeile 2:', str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 2)
+
+    def test_syntaxfehler_nennt_datei_und_zeile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'hilfe.deu', 'sei a = 1\nsei = 3\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(SyntaxError) as ctx:
+                lauf('lade "hilfe.deu"', interpreter)
+            meldung = str(ctx.exception)
+            self.assertTrue(meldung.startswith('hilfe.deu, Zeile 2: '), meldung)
+            self.assertNotIn('(hilfe', meldung)   # SyntaxError.__str__ darf keinen eigenen Ort anhängen
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 2)
+
+    def test_lexerfehler_nennt_datei_und_zeile(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'hilfe.deu', 'sei a = 1\n\nsei s = "offen\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(SyntaxError) as ctx:
+                lauf('lade "hilfe.deu" als h', interpreter)
+            self.assertIn('hilfe.deu, Zeile 3: Nicht abgeschlossene Zeichenkette', str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 3)
+
+    def test_syntaxfehler_in_verschachtelt_geladener_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'unter/innen.deu', 'sei = 3\n')
+            _datei_schreiben(tmp, 'unter/mitte.deu', 'lade "innen.deu"\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(SyntaxError) as ctx:
+                lauf('lade "unter/mitte.deu"', interpreter)
+            self.assertTrue(str(ctx.exception).startswith('unter/innen.deu, Zeile 1: '), str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+
+    def test_kontrollsignal_in_geladener_datei_nennt_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'mod.deu', 'sei a = 1\nabbrechen\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(RuntimeError) as ctx:
+                lauf('lade "mod.deu"', interpreter)
+            self.assertIn("mod.deu, Zeile 2: 'abbrechen' außerhalb einer Schleife", str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+            self.assertEqual(ctx.exception.zeile, 2)
+
+    def test_werfe_in_geladener_datei_behaelt_wert_und_nennt_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pfad = _datei_schreiben(tmp, 'mod.deu', 'funktion los() {\n  werfe "kaputt"\n}\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "mod.deu" als m', interpreter)
+            with self.assertRaises(Exception) as ctx:
+                lauf('m.los()', interpreter)
+            self.assertEqual(ctx.exception.wert, 'kaputt')
+            self.assertIn('mod.deu, Zeile 2: kaputt', str(ctx.exception))
+            self.assertEqual(ctx.exception.datei, pfad)
+
+    def test_hauptskript_fehler_bleibt_ohne_dateiname(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'ok.deu', 'sei a = 1\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('lade "ok.deu"\nsei x = 1 / 0', interpreter)
+            self.assertTrue(str(ctx.exception).startswith('Zeile 2: '), str(ctx.exception))
+            self.assertIsNone(ctx.exception.datei)
+            self.assertEqual(ctx.exception.zeile, 2)
+
+    def test_fehler_im_hauptskript_nach_aufruf_geladener_funktion_hat_keinen_dateinamen(self):
+        # Aufruf einer Funktion aus einer geladenen Datei darf die "aktuelle Datei" nicht verstellen
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'mod.deu', 'funktion f() { zurück 1 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            lauf('lade "mod.deu" als m', interpreter)
+            with self.assertRaises(ZeroDivisionError) as ctx:
+                lauf('sei a = m.f()\nsei b = 1 / 0', interpreter)
+            self.assertTrue(str(ctx.exception).startswith('Zeile 2: '), str(ctx.exception))
+            self.assertIsNone(ctx.exception.datei)
+
+    def test_aktuelle_datei_wird_nach_fehler_zurueckgesetzt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'kaputt.deu', 'sei c = 1 / 0\n')
+            _datei_schreiben(tmp, 'mod.deu', 'funktion f() { zurück 1 / 0 }\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            with self.assertRaises(ZeroDivisionError):
+                lauf('lade "kaputt.deu"', interpreter)
+            self.assertIsNone(interpreter._aktuelle_datei)
+            lauf('lade "mod.deu" als m', interpreter)
+            with self.assertRaises(ZeroDivisionError):
+                lauf('m.f()', interpreter)
+            self.assertIsNone(interpreter._aktuelle_datei)
+
+    def test_gefangener_fehler_aus_geladener_datei_enthaelt_dateinamen(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'mod.deu', 'sei c = 1 / 0\n')
+            interpreter = Interpreter(ladepfad=tmp)
+            code = 'sei r = ""\nversuche { lade "mod.deu" } fange e { r = e }\nr'
+            ergebnis, _ = lauf(code, interpreter)
+            self.assertIn('mod.deu, Zeile 1: Division durch Null', ergebnis)
+
+
+class TestFehlertexteDeutsch(unittest.TestCase):
+    """Rohe englische Python-Meldungen dürfen bei Skript-Fehlern nicht mehr ankommen."""
+
+    def _meldung(self, code: str, fehlertyp, interpreter: Interpreter = None) -> str:
+        with self.assertRaises(fehlertyp) as ctx:
+            lauf(code, interpreter)
+        return str(ctx.exception)
+
+    def test_modulo_durch_null_deutsch(self):
+        meldung = self._meldung('5 % 0', ZeroDivisionError)
+        self.assertIn('Division durch Null', meldung)
+        self.assertNotIn('modulo', meldung)
+
+    def test_verbund_modulo_durch_null_deutsch(self):
+        meldung = self._meldung('sei x = 5\nx %= 0', ZeroDivisionError)
+        self.assertIn('Division durch Null', meldung)
+        self.assertNotIn('modulo', meldung)
+
+    def test_unaeres_minus_auf_zeichenkette_deutsch(self):
+        meldung = self._meldung('-"a"', TypeError)
+        self.assertIn("Operator '-' nicht unterstützt für Zeichenkette", meldung)
+        self.assertNotIn('unary', meldung)
+
+    def test_unaeres_minus_auf_liste_deutsch(self):
+        meldung = self._meldung('-[1, 2]', TypeError)
+        self.assertIn("Operator '-' nicht unterstützt für Liste", meldung)
+        self.assertNotIn('bad operand', meldung)
+
+    def test_zahl_auf_nicht_zahl_deutsch(self):
+        meldung = self._meldung('"abc".zahl()', ValueError)
+        self.assertIn("Kann 'abc' nicht in Zahl umwandeln", meldung)
+        self.assertNotIn('could not convert', meldung)
+        self.assertEqual(lauf('"12".zahl()')[0], 12)
+
+    def test_max_nicht_vergleichbare_typen_deutsch(self):
+        meldung = self._meldung('max(1, "a")', TypeError)
+        self.assertIn("'max' kann Werte dieser Typen nicht vergleichen", meldung)
+        self.assertIn('Ganzzahl', meldung)
+        self.assertIn('Zeichenkette', meldung)
+        self.assertNotIn('not supported', meldung)
+
+    def test_min_nicht_vergleichbare_typen_deutsch(self):
+        meldung = self._meldung('min([1, "a"])', TypeError)
+        self.assertIn("'min' kann Werte dieser Typen nicht vergleichen", meldung)
+        self.assertNotIn('not supported', meldung)
+
+    def test_entferne_leere_liste_methode_deutsch(self):
+        meldung = self._meldung('sei l = []\nl.entferne()', IndexError)
+        self.assertIn('aus einer leeren Liste entfernen', meldung)
+        self.assertNotIn('pop', meldung)
+
+    def test_entferne_leere_liste_funktion_deutsch(self):
+        meldung = self._meldung('sei l = []\nentferne(l)', IndexError)
+        self.assertIn('aus einer leeren Liste entfernen', meldung)
+        self.assertNotIn('pop', meldung)
+
+    def test_entferne_index_ausserhalb_deutsch(self):
+        meldung = self._meldung('sei l = [1]\nentferne(l, 5)', IndexError)
+        self.assertIn('Index 5 ist außerhalb des Bereichs', meldung)
+        self.assertNotIn('pop index', meldung)
+
+    def test_entferne_kein_ganzzahl_index_deutsch(self):
+        meldung = self._meldung('sei l = [1]\nl.entferne("a")', TypeError)
+        self.assertIn('Ganzzahl-Index', meldung)
+        self.assertNotIn('invalid literal', meldung)
+
+    def test_eingabe_bei_geschlossener_eingabe_deutsch(self):
+        with mock.patch('builtins.input', side_effect=EOFError):
+            meldung = self._meldung('eingabe("Name: ")', EOFError)
+        self.assertIn('Dateiende erreicht', meldung)
+        self.assertNotIn('EOF', meldung)
+
+    def test_fuer_schleife_ueber_instanz_deutsch(self):
+        meldung = self._meldung('klasse Hund { }\nfür x in neu Hund() { drucke(x) }', TypeError)
+        self.assertIn("'Hund' ist nicht iterierbar", meldung)
+        self.assertNotIn('iterable', meldung)
+
+    def test_listenausdruck_ueber_instanz_deutsch(self):
+        meldung = self._meldung('klasse Hund { }\n[x für x in neu Hund()]', TypeError)
+        self.assertIn("'Hund' ist nicht iterierbar", meldung)
+        self.assertNotIn('iterable', meldung)
+
+    def test_fuer_schleife_ueber_zahl_deutsch(self):
+        meldung = self._meldung('für x in 5 { drucke(x) }', TypeError)
+        self.assertIn("'Ganzzahl' ist nicht iterierbar", meldung)
+        self.assertNotIn('iterable', meldung)
+
+    def test_json_ungueltig_ohne_englischen_parserfehler(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'kaputt.json', '{\n  "a": tru\n}')
+            meldung = self._meldung('json_lesen("kaputt.json")', ValueError, Interpreter(ladepfad=tmp))
+        self.assertIn("Ungültiges JSON in 'kaputt.json'", meldung)
+        self.assertNotIn('Expecting', meldung)
+        self.assertNotIn('line', meldung)
+
+    def test_json_ordner_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, 'ordner'))
+            meldung = self._meldung('json_lesen("ordner")', IsADirectoryError, Interpreter(ladepfad=tmp))
+        self.assertIn('ist ein Ordner, keine Datei', meldung)
+        self.assertNotIn('Permission denied', meldung)
+        self.assertNotIn('Errno', meldung)
+
+    def test_json_nicht_utf8_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, 'bin.json'), 'wb') as f:
+                f.write(b'\xff\xfe\x00bad')
+            meldung = self._meldung('json_lesen("bin.json")', ValueError, Interpreter(ladepfad=tmp))
+        self.assertIn('keine gültige UTF-8-Textdatei', meldung)
+        self.assertNotIn('decode', meldung)
+
+    def test_json_zu_tief_verschachtelt_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            _datei_schreiben(tmp, 'tief.json', '[' * 200000)
+            meldung = self._meldung('json_lesen("tief.json")', RecursionError, Interpreter(ladepfad=tmp))
+        self.assertIn('zu tief verschachtelt', meldung)
+        self.assertNotIn('Stack overflow', meldung)
+        self.assertNotIn('recursion', meldung)
+
+    def test_json_nullzeichen_im_pfad_deutsch(self):
+        meldung = self._meldung('json_lesen("a\x00b.json")', ValueError)  # echtes Nullzeichen im Pfad
+        self.assertIn('ist kein gültiger Dateipfad', meldung)
+        self.assertNotIn('null', meldung)
+
+    def test_json_keine_berechtigung_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=PermissionError(13, 'Permission denied'), create=True):
+                meldung = self._meldung('json_lesen("x.json")', PermissionError, Interpreter(ladepfad=tmp))
+        self.assertIn('Keine Berechtigung zum Lesen', meldung)
+        self.assertNotIn('Permission denied', meldung)
+
+    def test_json_sonstiger_os_fehler_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=OSError(22, 'Invalid argument'), create=True):
+                meldung = self._meldung('json_lesen("x.json")', OSError, Interpreter(ladepfad=tmp))
+        self.assertIn("'x.json' konnte nicht gelesen werden", meldung)
+        self.assertNotIn('Invalid argument', meldung)
+
+    def test_fallback_bei_mehrargumentfehler_bleibt_fangbar(self):
+        interpreter = Interpreter()
+
+        def werfe_unicode():
+            raise UnicodeDecodeError('utf-8', b'\xff', 0, 1, 'invalid start byte')
+
+        interpreter.global_umgebung.setze('werfe_unicode', werfe_unicode)
+        meldung = self._meldung('werfe_unicode()', ValueError, interpreter)
+        self.assertIn('Zeile 1: ', meldung)
+        self.assertNotIn('arguments', meldung)
+        ergebnis, _ = lauf('sei m = ""\nversuche { werfe_unicode() } fange (ValueError) f { m = f }\nm', interpreter)
+        self.assertIn('Zeile 2: ', ergebnis)
+
+    def test_datei_lesen_ordner_meldet_ordner_statt_berechtigung(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, 'ordner'))
+            meldung = self._meldung('datei_lesen("ordner")', IsADirectoryError, Interpreter(ladepfad=tmp))
+        self.assertIn('ist ein Ordner, keine Datei', meldung)
+        self.assertNotIn('Berechtigung', meldung)
+
+    def test_datei_lesen_sonstiger_os_fehler_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=OSError(22, 'Invalid argument'), create=True):
+                meldung = self._meldung('datei_lesen("a.txt")', OSError, Interpreter(ladepfad=tmp))
+        self.assertIn("'a.txt' konnte nicht gelesen werden", meldung)
+        self.assertNotIn('Invalid argument', meldung)
+
+    def test_datei_lesen_nullzeichen_im_pfad_deutsch(self):
+        meldung = self._meldung('datei_lesen("a\x00b.txt")', ValueError)  # echtes Nullzeichen im Pfad
+        self.assertIn('ist kein gültiger Dateipfad', meldung)
+        self.assertNotIn('null', meldung)
+
+    def test_datei_schreiben_ordner_meldet_ordner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, 'ordner'))
+            meldung = self._meldung('datei_schreiben("ordner", "x")', IsADirectoryError, Interpreter(ladepfad=tmp))
+        self.assertIn('ist ein Ordner, keine Datei', meldung)
+        self.assertNotIn('Berechtigung', meldung)
+
+    def test_datei_schreiben_sonstiger_os_fehler_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=OSError(22, 'Invalid argument'), create=True):
+                meldung = self._meldung('datei_schreiben("a.txt", "x")', OSError, Interpreter(ladepfad=tmp))
+        self.assertIn("'a.txt' konnte nicht geschrieben werden", meldung)
+        self.assertNotIn('Invalid argument', meldung)
+
+    def test_datei_schreiben_nicht_utf8_speicherbar_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            interpreter = Interpreter(ladepfad=tmp)
+            interpreter.global_umgebung.setze('kaputter_text', lambda: '\ud800')  # Ersatzzeichen, nicht kodierbar
+            meldung = self._meldung('datei_schreiben("a.txt", kaputter_text())', ValueError, interpreter)
+        self.assertIn('als UTF-8 speichern', meldung)
+        self.assertNotIn('codec', meldung)
+
+    def test_datei_anhaengen_sonstiger_os_fehler_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=OSError(22, 'Invalid argument'), create=True):
+                meldung = self._meldung('datei_anhängen("a.txt", "x")', OSError, Interpreter(ladepfad=tmp))
+        self.assertIn("'a.txt' konnte nicht geschrieben werden", meldung)
+        self.assertNotIn('Invalid argument', meldung)
+
+    def test_json_schreiben_zirkulaer_deutsch_ohne_halbe_datei(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meldung = self._meldung('sei l = [1]\nl.anhaengen(l)\njson_schreiben("c.json", l)',
+                                    ValueError, Interpreter(ladepfad=tmp))
+            self.assertFalse(os.path.exists(os.path.join(tmp, 'c.json')))
+        self.assertIn('Zirkulärer Verweis', meldung)
+        self.assertNotIn('Circular', meldung)
+
+    def test_json_schreiben_schluesseltyp_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            meldung = self._meldung('klasse Hund { }\nsei h = neu Hund()\njson_schreiben("k.json", {h: 1})',
+                                    TypeError, Interpreter(ladepfad=tmp))
+        self.assertIn("Schlüssel vom Typ 'Hund'", meldung)
+        self.assertNotIn('keys must be', meldung)
+
+    def test_json_schreiben_zu_tief_verschachtelt_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            code = 'sei l = []\nfür i in bereich(3000) { l = [l] }\njson_schreiben("d.json", l)'
+            meldung = self._meldung(code, RecursionError, Interpreter(ladepfad=tmp))
+        self.assertIn('zu tief verschachtelt', meldung)
+        self.assertNotIn('recursion', meldung)
+
+    def test_json_schreiben_ordner_meldet_ordner(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            os.mkdir(os.path.join(tmp, 'ordner'))
+            meldung = self._meldung('json_schreiben("ordner", 1)', IsADirectoryError, Interpreter(ladepfad=tmp))
+        self.assertIn('ist ein Ordner, keine Datei', meldung)
+        self.assertNotIn('Permission denied', meldung)
+
+    def test_json_schreiben_sonstiger_os_fehler_deutsch(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with mock.patch('deutsch.interpreter.open', side_effect=OSError(22, 'Invalid argument'), create=True):
+                meldung = self._meldung('json_schreiben("x.json", 1)', OSError, Interpreter(ladepfad=tmp))
+        self.assertIn("'x.json' konnte nicht geschrieben werden", meldung)
+        self.assertNotIn('Invalid argument', meldung)
 
 
 if __name__ == '__main__':

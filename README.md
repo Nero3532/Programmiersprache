@@ -52,6 +52,9 @@ sei [a, b, c] = [1, 2, 3]     # Destrukturierung
 konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
 ```
 
+Neue Variablen entstehen nur durch `sei`; eine Zuweisung an einen nicht deklarierten Namen wirft `NameError`.
+Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der Deklaration.
+
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
 `Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
 selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
@@ -63,6 +66,9 @@ Vergleich: `== != < > <= >=` — auch verkettet: `1 < x < 10` (jeder Operand nur
 Logisch: `und oder nicht`
 Mitgliedschaft: `in`, `nicht in`
 Ternär: `dann_wert wenn bedingung sonst sonst_wert`
+
+`nicht` bindet schwächer als Vergleiche (wie in Python): `nicht a == b` ist `nicht (a == b)`. Steht `nicht`
+als Operand, etwa in `a == nicht b`, ist das ein Syntaxfehler; dann Klammern setzen: `a == (nicht b)`.
 
 ### Kontrollfluss
 
@@ -78,6 +84,7 @@ passe wert {
 }
 ```
 `abbrechen` (break) und `weiter` (continue) funktionieren in Schleifen, auch aus einem `fall`-Block heraus.
+Außerhalb einer Schleife ist beides ein Fehler, auch innerhalb einer Funktion, die aus einer Schleife aufgerufen wird.
 
 ### Funktionen
 
@@ -198,10 +205,12 @@ lade "andere_datei.deu"
 lade "andere_datei.deu" als modul   # Namensraum statt globaler Vermischung
 modul.funktion()
 modul.KONSTANTE
+neu modul.Klasse(1, 2)                  # Klasse aus dem Modul
 ```
 Ohne `als` landen alle Top-Level-Definitionen der geladenen Datei im globalen Scope (wie bisher).
 Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindungen werden stattdessen
 unter `name.attribut` erreichbar, ohne den aufrufenden Scope zu verändern.
+Relative Pfade in `lade` gelten ab dem Ordner der ladenden Datei.
 
 Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportError`
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
@@ -259,8 +268,8 @@ für eine vollständige Demonstration.
 - Mehrfachvererbung nutzt einfache links-nach-rechts-Tiefensuche, keine echte C3-Linearisierung.
 - Variadische Parameter (`*args`) werden nicht einzeln typgeprüft.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
-- Rekursionslimit ist auf 10000 gesetzt (`sys.setrecursionlimit`), tief rekursive Deutsch-Programme
-  können trotzdem an das Python-Stacklimit stoßen.
+- Rekursionstiefe: ca. 5900 Deutsch-Aufrufe (Ausführung in einem Thread mit 128-MB-Stack; fällt der Stack
+  kleiner aus, sinkt die Grenze entsprechend). Darüber bricht das Programm mit einem Rekursionsfehler ab.
 - Die Version in `pyproject.toml` wird manuell parallel zu `deutsch/__init__.py`s `__version__`
   gepflegt (kein dynamisches Versioning-Setup).
 

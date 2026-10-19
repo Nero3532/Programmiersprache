@@ -17,15 +17,38 @@ from .umgebung import Umgebung
 # ---------------------------------------------------------------- Signale
 
 class _ZurueckSignal(Exception):
-    def __init__(self, wert): self.wert = wert
+    def __init__(self, wert, zeile=None):
+        self.wert = wert
+        self.zeile = zeile
 
 class _AbbrechenSignal(Exception):
-    pass
+    def __init__(self, zeile=None):
+        self.zeile = zeile
 
 class _WeiterSignal(Exception):
-    pass
+    def __init__(self, zeile=None):
+        self.zeile = zeile
 
 _KONTROLLSIGNALE = (_ZurueckSignal, _AbbrechenSignal, _WeiterSignal)
+
+
+def _signal_fehler(signal, datei: str | None = None, dateiname: str | None = None) -> RuntimeError:
+    """Übersetzt ein Kontrollfluss-Signal, das seinen gültigen Bereich verlassen hat
+    ('abbrechen'/'weiter' ohne Schleife in der Funktion, 'zurück' ohne Funktion), in einen Fehler.
+    datei/dateiname: Pfad bzw. Anzeigename der geladenen Datei, in der das Signal ausgelöst wurde."""
+    if isinstance(signal, _ZurueckSignal):
+        text = "'zurück' außerhalb einer Funktion"
+    elif isinstance(signal, _AbbrechenSignal):
+        text = "'abbrechen' außerhalb einer Schleife"
+    else:
+        text = "'weiter' außerhalb einer Schleife"
+    if signal.zeile is not None:
+        ort = f'{dateiname}, Zeile {signal.zeile}' if dateiname else f'Zeile {signal.zeile}'
+        text = f'{ort}: {text}'
+    fehler = RuntimeError(text)
+    fehler.datei = datei
+    fehler.zeile = signal.zeile
+    return fehler
 
 # Operator-Überladung: Klassen können diese Methoden definieren, um +/-/*/... selbst
 # zu implementieren. Nur der linke Operand wird geprüft (keine __radd__-artige Umkehrung),
@@ -66,9 +89,10 @@ class AusnahmeFehler(Exception):
 # ---------------------------------------------------------- Laufzeit-Typen
 
 class DeutschFunktion:
-    def __init__(self, definition: ast.FunktionDefinition, umgebung: Umgebung):
+    def __init__(self, definition: ast.FunktionDefinition, umgebung: Umgebung, datei: str | None = None):
         self.definition = definition
         self.umgebung = umgebung
+        self.datei = datei  # absoluter Pfad der Datei, in der die Funktion steht (None = Hauptskript/REPL)
 
     def __repr__(self):
         return f'<Funktion {self.definition.name or "anonym"}>'
@@ -173,6 +197,9 @@ class Interpreter:
         self._aufruf_stack: list[tuple[str, int]] = []
         self._letzter_aufruf_stack: list = []
         self._lade_stack: list[str] = []
+        # Datei, deren Code gerade läuft (absoluter Pfad); None = Hauptskript bzw. REPL.
+        # Wechselt bei 'lade' und beim Aufruf einer Funktion aus einer geladenen Datei.
+        self._aktuelle_datei: str | None = None
         self._dispatch = self._dispatch_aufbauen()
         self._listen_methoden = self._listen_methoden_aufbauen()
         self._string_methoden = self._string_methoden_aufbauen()
@@ -202,7 +229,7 @@ class Interpreter:
             'anhängen':  lambda obj, *a: (obj.append(a[0]), None)[1],
             'laenge':    lambda obj: len(obj),
             'länge':     lambda obj: len(obj),
-            'entferne':  lambda obj, *a: obj.pop(int(a[0])) if a else obj.pop(),
+            'entferne':  lambda obj, *a: self._liste_entferne(obj, *a),
             'enthält':   lambda obj, x: x in obj,
             'umkehren':  lambda obj: (obj.reverse(), None)[1],
             'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
@@ -235,7 +262,7 @@ class Interpreter:
             'großschreibe':  lambda obj: obj.capitalize(),
             'zeichen':       lambda obj: list(obj),
             'wiederhole':    lambda obj, n: obj * int(n),
-            'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
+            'zahl':          lambda obj: self._zeichenkette_zu_zahl(obj),
             'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
             'zaehle':        lambda obj, x: self._zaehle(obj, x, 'Zeichenkette'),
             'ist_ziffer':    lambda obj: obj.isdigit(),
@@ -356,7 +383,10 @@ class Interpreter:
         return None
 
     def _eb_eingabe(self, *args):
-        return input(self._zu_text(args[0]) if args else '')
+        try:
+            return input(self._zu_text(args[0]) if args else '')
+        except EOFError:
+            raise EOFError('Eingabe nicht möglich: Dateiende erreicht, die Eingabe ist geschlossen') from None
 
     def _eb_laenge(self, *args):
         self._pruefe_args('länge', args, 1)
@@ -429,6 +459,42 @@ class Interpreter:
         except TypeError:
             raise TypeError(f"'zaehle' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
 
+    def _zeichenkette_zu_zahl(self, text):
+        try:
+            return int(text) if text.lstrip('-').isdigit() else float(text)
+        except ValueError:
+            raise ValueError(f"Kann '{text}' nicht in Zahl umwandeln")
+
+    def _liste_entferne(self, liste, *index):
+        """Gemeinsame Logik für entferne(liste[, index]) und liste.entferne([index])."""
+        if not index:
+            if not liste:
+                raise IndexError("'entferne' kann nicht aus einer leeren Liste entfernen")
+            return liste.pop()
+        try:
+            position = int(index[0])
+        except (ValueError, TypeError):
+            raise TypeError(f"'entferne' erwartet einen Ganzzahl-Index, bekam {self._typname(index[0])}")
+        try:
+            return liste.pop(position)
+        except IndexError:
+            raise IndexError(f'Index {position} ist außerhalb des Bereichs')
+
+    def _vergleichs_extremum(self, fn, werte, name):
+        """max/min über werte. Nicht vergleichbare Typen (z. B. Ganzzahl und Zeichenkette) → deutsche Meldung."""
+        try:
+            return fn(werte)
+        except TypeError:
+            typen = list(dict.fromkeys(self._typname(w) for w in werte))
+            raise TypeError(f"'{name}' kann Werte dieser Typen nicht vergleichen: {', '.join(typen)}")
+
+    def _iteriere(self, wert):
+        """Wie iter(), aber mit deutscher Meldung für nicht iterierbare Werte (z. B. Klasseninstanzen)."""
+        try:
+            return iter(wert)
+        except TypeError:
+            raise TypeError(f"'{self._typname(wert)}' ist nicht iterierbar") from None
+
     def _liste_einfuegen(self, obj, index, wert):
         try:
             obj.insert(int(index), wert)
@@ -456,7 +522,7 @@ class Interpreter:
         liste = args[0]
         if not isinstance(liste, list):
             raise TypeError("Erstes Argument von 'entferne' muss eine Liste sein")
-        return liste.pop(int(args[1]) if len(args) == 2 else -1)
+        return self._liste_entferne(liste, *args[1:])
 
     def _eb_umkehren(self, *args):
         self._pruefe_args('umkehren', args, 1)
@@ -478,13 +544,13 @@ class Interpreter:
         if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
         if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
-        return max(werte)
+        return self._vergleichs_extremum(max, werte, 'max')
 
     def _eb_min(self, *args):
         if not args: raise TypeError("'min' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
         if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
-        return min(werte)
+        return self._vergleichs_extremum(min, werte, 'min')
 
     def _eb_abs(self, *args):
         self._pruefe_args('abs', args, 1); return abs(args[0])
@@ -577,8 +643,9 @@ class Interpreter:
     def _eb_datei_lesen(self, *args):
         self._pruefe_args('datei_lesen', args, 1)
         pfad = self._zu_text(args[0])
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding='utf-8') as f:
                 return f.read()
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -588,33 +655,37 @@ class Interpreter:
             raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
         except UnicodeDecodeError:
             raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
-    def _eb_datei_schreiben(self, *args):
-        self._pruefe_args('datei_schreiben', args, 2)
-        pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
+    def _schreibe_datei(self, pfad: str, modus: str, schreibe):
+        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen und json_schreiben.
+        schreibe(f) schreibt in die bereits geöffnete Datei."""
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
-                f.write(inhalt)
+            with open(voller_pfad, modus, encoding='utf-8') as f:
+                schreibe(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
         except IsADirectoryError:
             raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
         except PermissionError:
             raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht geschrieben werden")
+        except UnicodeEncodeError:
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als UTF-8 speichern lassen")
+
+    def _eb_datei_schreiben(self, *args):
+        self._pruefe_args('datei_schreiben', args, 2)
+        pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt))
         return None
 
     def _eb_datei_anhaengen(self, *args):
         self._pruefe_args('datei_anhängen', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        try:
-            with open(self._pfad_aufloesen(pfad), 'a', encoding='utf-8') as f:
-                f.write(inhalt)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
-        except IsADirectoryError:
-            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
-        except PermissionError:
-            raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
+        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt))
         return None
 
     def _eb_boden(self, *args):
@@ -690,28 +761,34 @@ class Interpreter:
     def _eb_json_lesen(self, *args):
         self._pruefe_args('json_lesen', args, 1)
         pfad = self._zu_text(args[0])
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
+        except UnicodeDecodeError:
+            raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
         except json.JSONDecodeError as e:
-            raise ValueError(f"Ungültiges JSON in '{pfad}': {e}")
+            # Keine Zeilenangabe im Text: 'Zeile' würde die Zeilennummer des Skripts unterdrücken
+            raise ValueError(f"Ungültiges JSON in '{pfad}' (Zeichen {e.pos})")
+        except RecursionError:
+            raise RecursionError(f"JSON in '{pfad}' ist zu tief verschachtelt")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
     def _eb_json_schreiben(self, *args):
         self._pruefe_args('json_schreiben', args, 2)
         pfad, wert = self._zu_text(args[0]), args[1]
-
-        def _konvertiere(o):
-            if isinstance(o, set):
-                return self._sortiert(list(o))
-            raise TypeError(f"'{self._typname(o)}' kann nicht als JSON gespeichert werden")
-
+        # Erst prüfen und umwandeln, dann die Datei anlegen: ein Fehler mitten im Schreiben
+        # ließe sonst eine halbe JSON-Datei zurück
         try:
-            with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
-                json.dump(wert, f, default=_konvertiere, ensure_ascii=False, indent=2)
-        except IsADirectoryError:
-            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+            bereit = self._json_bereit(wert)
+        except RecursionError:
+            raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden')
+        self._schreibe_datei(pfad, 'w', lambda f: json.dump(bereit, f, ensure_ascii=False, indent=2))
         return None
 
     def _eb_kommandozeilen_argumente(self, *args):
@@ -967,8 +1044,12 @@ class Interpreter:
 
     def _besuche_Programm(self, k, u):
         ergebnis = None
-        for anw in k.anweisungen:
-            ergebnis = self._besuche_anweisung(anw, u)
+        try:
+            for anw in k.anweisungen:
+                ergebnis = self._besuche_anweisung(anw, u)
+        except _KONTROLLSIGNALE as signal:
+            # Oberste Ebene (auch eine per 'lade' geladene Datei): kein Schleifen-/Funktionskontext
+            raise self._signal_fehler_hier(signal) from None
         return ergebnis
 
     def _besuche_Block(self, k, u):
@@ -990,15 +1071,54 @@ class Interpreter:
         except SyntaxError:
             raise
         except Exception as e:
-            if isinstance(e, AusnahmeFehler):
-                if zeile is not None and 'Zeile' not in str(e):
-                    self._letzter_aufruf_stack = list(self._aufruf_stack)
-                    raise AusnahmeFehler(e.wert, nachricht=f'Zeile {zeile}: {e}') from e
-                raise
             if zeile is not None and 'Zeile' not in str(e):
                 self._letzter_aufruf_stack = list(self._aufruf_stack)
-                raise type(e)(f'Zeile {zeile}: {e}') from e
+                nachricht = f'{self._ort(zeile)}: {e}'
+                if isinstance(e, AusnahmeFehler):
+                    neu = AusnahmeFehler(e.wert, nachricht=nachricht)
+                else:
+                    neu = self._fehler_neu_mit_meldung(e, nachricht)
+                # Fundort als Attribute: Datei (absoluter Pfad, None = Hauptskript/REPL) und Zeile
+                neu.datei = self._aktuelle_datei
+                neu.zeile = zeile
+                raise neu from e
             raise
+
+    @staticmethod
+    def _fehler_neu_mit_meldung(e: Exception, nachricht: str) -> Exception:
+        """Baut e mit neuer Meldung neu. Typen mit mehreren Pflichtargumenten (z. B. UnicodeDecodeError)
+        fallen auf den nächsten Basistyp zurück, der eine einzelne Meldung annimmt; so greift
+        'fange (ValueError)' weiterhin. Notfalls RuntimeError."""
+        for klasse in type(e).__mro__:
+            if not issubclass(klasse, Exception):
+                continue
+            try:
+                return klasse(nachricht)
+            except TypeError:
+                continue
+        return RuntimeError(nachricht)
+
+    def _ort(self, zeile: int) -> str:
+        """'Zeile 3' im Hauptskript, 'hilfe.deu, Zeile 3' in einer per 'lade' geladenen Datei."""
+        if self._aktuelle_datei is None:
+            return f'Zeile {zeile}'
+        return f'{self._datei_anzeigename(self._aktuelle_datei)}, Zeile {zeile}'
+
+    def _datei_anzeigename(self, pfad: str) -> str:
+        """Pfad relativ zum Ordner des Hauptskripts (mit '/'), außerhalb davon der volle Pfad."""
+        try:
+            relativ = os.path.relpath(pfad, self._ladepfad)
+        except ValueError:  # z. B. anderes Laufwerk unter Windows
+            return pfad
+        if relativ == os.pardir or relativ.startswith(os.pardir + os.sep):
+            return pfad
+        return relativ.replace(os.sep, '/')
+
+    def _signal_fehler_hier(self, signal) -> RuntimeError:
+        """Wie _signal_fehler, nennt aber die Datei, in der gerade Code läuft."""
+        if self._aktuelle_datei is None:
+            return _signal_fehler(signal)
+        return _signal_fehler(signal, self._aktuelle_datei, self._datei_anzeigename(self._aktuelle_datei))
 
     # Literale
     def _besuche_Ganzzahl(self,     k, u): return k.wert
@@ -1041,7 +1161,7 @@ class Interpreter:
     def _besuche_ListenAusdruck(self, k, u):
         iterable = self._besuche(k.iterable, u)
         ergebnis = []
-        for elem in iterable:
+        for elem in self._iteriere(iterable):
             iter_u = Umgebung(u)
             self._schleifenvariable_binden(k.variable, elem, iter_u)
             if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
@@ -1100,9 +1220,9 @@ class Interpreter:
         if k.name in u.konstanten:
             raise TypeError(f"'{k.name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
         if k.ist_konstante:
-            u.setze_konstante(k.name, wert)
+            u.setze_konstante(k.name, wert, k.typhinweis)
         else:
-            u.setze(k.name, wert)
+            u.setze(k.name, wert, k.typhinweis)
         return wert
 
     def _besuche_DestrukturierendeDeklaration(self, k, u):
@@ -1123,6 +1243,8 @@ class Interpreter:
         return wert
 
     def _besuche_VerbundZuweisung(self, k, u):
+        if isinstance(k.ziel, ast.Bezeichner) and not u.existiert(k.ziel.name):
+            raise NameError(u.nicht_deklariert_meldung(k.ziel.name))
         alter_wert = self._besuche(k.ziel, u)
         delta = self._besuche(k.wert, u)
         neuer_wert = self._binaerer_operator(k.operator, alter_wert, delta)
@@ -1131,10 +1253,11 @@ class Interpreter:
 
     def _ziel_setzen(self, ziel, wert, u):
         if isinstance(ziel, ast.Bezeichner):
-            if u.existiert(ziel.name):
-                u.weise_zu(ziel.name, wert)
-            else:
-                u.setze(ziel.name, wert)
+            # Existiert der Name in keinem Scope, wirft weise_zu einen NameError (neue Variablen: 'sei')
+            u.weise_zu(
+                ziel.name, wert,
+                lambda w, hinweis, scope: self._pruefe_typ(w, hinweis, f"Variable '{ziel.name}'", scope),
+            )
         elif isinstance(ziel, ast.AttributZugriff):
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
@@ -1195,7 +1318,9 @@ class Interpreter:
                 if r == 0: raise ZeroDivisionError('Ganzzahldivision durch Null')
                 return l // r
             if op == '**':  return l ** r
-            if op == '%':   return l % r
+            if op == '%':
+                if r == 0: raise ZeroDivisionError('Division durch Null')
+                return l % r
             if op == '==':  return l == r
             if op == '!=':  return l != r
             if op == '<':   return l < r
@@ -1212,7 +1337,11 @@ class Interpreter:
 
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
-        if k.operator == '-':    return -val
+        if k.operator == '-':
+            try:
+                return -val
+            except TypeError:
+                raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
 
@@ -1252,7 +1381,7 @@ class Interpreter:
     def _besuche_FuerAnweisung(self, k, u):
         iterable = self._besuche(k.iterable, u)
         schleifen_u = Umgebung(u)
-        for elem in iterable:
+        for elem in self._iteriere(iterable):
             self._schleifenvariable_binden(k.variable, elem, schleifen_u)
             try:
                 self._besuche(k.koerper, schleifen_u)
@@ -1261,7 +1390,8 @@ class Interpreter:
         return None
 
     def _besuche_ZurueckAnweisung(self, k, u):
-        raise _ZurueckSignal(self._besuche(k.wert, u))
+        wert = self._besuche(k.wert, u)
+        raise _ZurueckSignal(wert, getattr(k, 'zeile', None))
 
     def _besuche_WerfeAnweisung(self, k, u):
         raise AusnahmeFehler(self._besuche(k.wert, u))
@@ -1273,8 +1403,8 @@ class Interpreter:
             raise AssertionError('Prüfung fehlgeschlagen')
         return None
 
-    def _besuche_AbbrechenAnweisung(self, k, u): raise _AbbrechenSignal()
-    def _besuche_WeiterAnweisung(self, k, u):    raise _WeiterSignal()
+    def _besuche_AbbrechenAnweisung(self, k, u): raise _AbbrechenSignal(getattr(k, 'zeile', None))
+    def _besuche_WeiterAnweisung(self, k, u):    raise _WeiterSignal(getattr(k, 'zeile', None))
 
     def _besuche_VersucheAnweisung(self, k, u):
         try:
@@ -1309,6 +1439,41 @@ class Interpreter:
             pfad = os.path.join(self._ladepfad, pfad)
         return os.path.normpath(pfad)
 
+    def _pfad_vorpruefen(self, pfad: str) -> str:
+        """Voller Pfad für open(). Nullzeichen und Ordner meldet es vorab auf Deutsch,
+        bevor open() es unverständlich meldet."""
+        if '\x00' in pfad:
+            sichtbar = pfad.replace('\x00', '\\0')
+            raise ValueError(f"'{sichtbar}' ist kein gültiger Dateipfad")
+        voller_pfad = self._pfad_aufloesen(pfad)
+        if os.path.isdir(voller_pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
+            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+        return voller_pfad
+
+    def _json_bereit(self, wert, aktiv: frozenset = frozenset()):
+        """Prüft wert auf JSON-Tauglichkeit und liefert eine reine Python-Kopie (Mengen werden sortierte Listen).
+        Die Fehler kommen dabei auf Deutsch; json.dump wirft danach nur noch Ein-/Ausgabefehler."""
+        if wert is None or isinstance(wert, (str, int, float)):  # bool ist ein int
+            return wert
+        if isinstance(wert, set):
+            wert = self._sortiert(list(wert))
+        if isinstance(wert, list):
+            if id(wert) in aktiv:
+                raise ValueError(f"Zirkulärer Verweis: '{self._typname(wert)}' enthält sich selbst und kann nicht als JSON gespeichert werden")
+            innen = aktiv | {id(wert)}
+            return [self._json_bereit(e, innen) for e in wert]
+        if isinstance(wert, dict):
+            if id(wert) in aktiv:
+                raise ValueError(f"Zirkulärer Verweis: '{self._typname(wert)}' enthält sich selbst und kann nicht als JSON gespeichert werden")
+            innen = aktiv | {id(wert)}
+            ergebnis = {}
+            for schluessel, eintrag in wert.items():
+                if schluessel is not None and not isinstance(schluessel, (str, int, float)):
+                    raise TypeError(f"Schlüssel vom Typ '{self._typname(schluessel)}' kann nicht als JSON gespeichert werden")
+                ergebnis[schluessel] = self._json_bereit(eintrag, innen)
+            return ergebnis
+        raise TypeError(f"'{self._typname(wert)}' kann nicht als JSON gespeichert werden")
+
     def _besuche_PasseAnweisung(self, k, u):
         subjekt = self._besuche(k.ausdruck, u)
         for werte, block in k.faelle:
@@ -1318,19 +1483,70 @@ class Interpreter:
             return self._besuche(k.sonst, u)
         return None
 
+    def _lade_pfad_aufloesen(self, pfad: str) -> str:
+        """Relative 'lade'-Pfade gelten ab dem Ordner der ladenden Datei; im Hauptskript
+        (bzw. in der REPL) ab dem Ladepfad des Interpreters. Ergebnis: absolut und normalisiert."""
+        if not os.path.isabs(pfad):
+            basis = os.path.dirname(self._aktuelle_datei) if self._aktuelle_datei else self._ladepfad
+            pfad = os.path.join(basis, pfad)
+        return os.path.abspath(pfad)
+
+    @staticmethod
+    def _pfad_schluessel(pfad: str) -> str:
+        """Vergleichsschlüssel für die Zyklus-Erkennung (Symlinks aufgelöst, unter Windows ohne Groß-/Kleinschreibung)."""
+        return os.path.normcase(os.path.realpath(pfad))
+
+    @staticmethod
+    def _lade_quelltext(pfad: str) -> str:
+        if os.path.isdir(pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
+            raise IsADirectoryError(f"'lade': '{pfad}' ist ein Ordner, keine Datei")
+        try:
+            with open(pfad, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"'lade': Datei nicht gefunden: '{pfad}'") from None
+        except PermissionError:
+            raise PermissionError(f"'lade': Keine Berechtigung zum Lesen von '{pfad}'") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"'lade': '{pfad}' ist keine gültige UTF-8-Textdatei") from None
+        except OSError:
+            raise OSError(f"'lade': '{pfad}' konnte nicht gelesen werden") from None
+
+    def _syntax_fehler_in_datei(self, fehler: SyntaxError, pfad: str) -> SyntaxError:
+        """Ergänzt einen Lexer-/Parser-Fehler der geladenen Datei um ihren Namen: 'hilfe.deu, Zeile 3: ...'."""
+        treffer = re.match(r'Zeile (\d+): ?(.*)', str(fehler), re.DOTALL)
+        name = self._datei_anzeigename(pfad)
+        if treffer:
+            zeile = int(treffer.group(1))
+            neu = SyntaxError(f'{name}, Zeile {zeile}: {treffer.group(2)}')
+        else:
+            zeile = None
+            neu = SyntaxError(f'{name}: {fehler}')
+        neu.datei = pfad  # nicht .filename/.lineno setzen: SyntaxError.__str__ hängt sie sonst an die Meldung
+        neu.zeile = zeile
+        return neu
+
     def _besuche_LadeAnweisung(self, k, u):
         from .lexer import Lexer
         from .parser import Parser
-        pfad = self._pfad_aufloesen(self._besuche(k.pfad, u))
-        if pfad in self._lade_stack:
+        roh = self._besuche(k.pfad, u)
+        if not isinstance(roh, str):
+            raise TypeError(f"'lade' erwartet einen Pfad als Zeichenkette, bekam {self._typname(roh)}")
+        pfad = self._lade_pfad_aufloesen(roh)
+        schluessel = self._pfad_schluessel(pfad)
+        if any(self._pfad_schluessel(p) == schluessel for p in self._lade_stack):
             kette = ' -> '.join(os.path.basename(p) for p in self._lade_stack + [pfad])
             raise ImportError(f"Zyklischer 'lade'-Import erkannt: {kette}")
+        quelltext = self._lade_quelltext(pfad)
         self._lade_stack.append(pfad)
+        vorherige_datei = self._aktuelle_datei
+        self._aktuelle_datei = pfad  # Fehler der Datei nennen ab hier ihren Namen, 'lade' darin gilt ab ihrem Ordner
         try:
-            with open(pfad, 'r', encoding='utf-8') as f:
-                quelltext = f.read()
-            tokens = Lexer(quelltext).tokenisieren()
-            baum = Parser(tokens).parse()
+            try:
+                tokens = Lexer(quelltext).tokenisieren()
+                baum = Parser(tokens).parse()
+            except SyntaxError as e:
+                raise self._syntax_fehler_in_datei(e, pfad) from None
             if k.als_name is not None:
                 # Isolierter Scope: Top-Level-Bindungen landen im Namensraum, nicht im globalen Scope
                 namensraum_u = Umgebung(self.global_umgebung)
@@ -1341,11 +1557,12 @@ class Interpreter:
             # Ohne 'als': im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
             return self.ausfuehren(baum, self.global_umgebung)
         finally:
+            self._aktuelle_datei = vorherige_datei
             self._lade_stack.pop()
 
     # Funktionen
     def _besuche_FunktionDefinition(self, k, u):
-        fn = DeutschFunktion(k, u)
+        fn = DeutschFunktion(k, u, self._aktuelle_datei)
         if k.name is not None:
             u.setze(k.name, fn)
         return fn
@@ -1416,6 +1633,8 @@ class Interpreter:
             raise TypeError(f"'{fn.definition.name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
         self._aufruf_stack.append((fn.definition.name or '<anonym>', self._aktuelle_zeile))
+        vorherige_datei = self._aktuelle_datei
+        self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
         try:
             kontext = f"Rückgabewert von '{fn.definition.name or '<anonym>'}'"
             try:
@@ -1423,9 +1642,14 @@ class Interpreter:
             except _ZurueckSignal as r:
                 self._pruefe_typ(r.wert, fn.definition.typhinweis, kontext, fn.umgebung)
                 return r.wert
+            except (_AbbrechenSignal, _WeiterSignal) as signal:
+                # Schleifen-Signale enden an der Funktionsgrenze und erreichen nie die Schleife des Aufrufers
+                self._letzter_aufruf_stack = list(self._aufruf_stack)
+                raise self._signal_fehler_hier(signal) from None
             self._pruefe_typ(None, fn.definition.typhinweis, kontext, fn.umgebung)
             return None
         finally:
+            self._aktuelle_datei = vorherige_datei
             self._aufruf_stack.pop()
 
     # Klassen
@@ -1436,8 +1660,9 @@ class Interpreter:
             if not isinstance(eltern_klasse, DeutschKlasse):
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
-        methoden = {m.name: DeutschFunktion(m, u) for m in k.methoden}
-        statische_methoden = {m.name: DeutschFunktion(m, u) for m in k.statische_methoden}
+        datei = self._aktuelle_datei
+        methoden = {m.name: DeutschFunktion(m, u, datei) for m in k.methoden}
+        statische_methoden = {m.name: DeutschFunktion(m, u, datei) for m in k.statische_methoden}
         klasse = DeutschKlasse(k.name, eltern, methoden, statische_methoden)
         u.setze(k.name, klasse)
         # Klassenattribute (sei/konstante im Klassenkörper) in einem eigenen Scope auswerten,
@@ -1450,7 +1675,7 @@ class Interpreter:
         return klasse
 
     def _besuche_NeuInstanz(self, k, u):
-        klasse = u.hole(k.name)
+        klasse = self._besuche(k.klasse, u)  # Bezeichner oder Punktpfad (modul.Klasse)
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
         instanz = DeutschInstanz(klasse)
