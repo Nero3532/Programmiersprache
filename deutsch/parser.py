@@ -15,6 +15,11 @@ _VERBUND_OPS = {
     TokenTyp.PROZENT_GLEICH:       '%',
     TokenTyp.STERN_STERN_GLEICH:   '**',
     TokenTyp.SCHRAEGSTRICH_SCHRAEGSTRICH_GLEICH: '//',
+    TokenTyp.KAUFMANNSUND_GLEICH:  '&',
+    TokenTyp.SENKRECHT_GLEICH:     '|',
+    TokenTyp.HUT_GLEICH:           '^',
+    TokenTyp.KLEINER_KLEINER_GLEICH:   '<<',
+    TokenTyp.GROESSER_GROESSER_GLEICH: '>>',
 }
 
 
@@ -46,6 +51,9 @@ class Parser:
     def __init__(self, tokens):
         self.tokens = tokens
         self.pos = 0
+        # Oberstes Element True: Zeilenumbrüche werden ignoriert (innerhalb von '( … )').
+        # Ein '{ … }'-Block darin schaltet auf False zurück: dort trennen Zeilenumbrüche Anweisungen.
+        self._umbrueche_ignorieren = [False]
 
     # ---------------------------------------------------------------- Hilfsm.
 
@@ -53,12 +61,35 @@ class Parser:
         t = self._aktuell()
         raise SyntaxError(f'Zeile {t.zeile}: {msg} (gefunden: {t.typ.name!r})')
 
+    def _ueberspringe_umbrueche(self, p: int) -> int:
+        while self.tokens[p].typ == TokenTyp.ZEILENENDE:  # letztes Token ist DATEIENDE
+            p += 1
+        return p
+
     def _aktuell(self):
+        if self._umbrueche_ignorieren[-1]:
+            self.pos = self._ueberspringe_umbrueche(self.pos)
         return self.tokens[self.pos]
 
     def _vorschau(self, offset: int = 1):
+        if self._umbrueche_ignorieren[-1]:
+            p = self._ueberspringe_umbrueche(self.pos)
+            for _ in range(offset):
+                if self.tokens[p].typ == TokenTyp.DATEIENDE:
+                    break
+                p = self._ueberspringe_umbrueche(p + 1)
+            return self.tokens[p]
         p = self.pos + offset
         return self.tokens[min(p, len(self.tokens) - 1)]
+
+    def _in_klammern(self, lesen):
+        """Das '(' ist schon verbraucht: ruft lesen() auf und verbraucht danach ')'.
+        Zeilenumbrüche dazwischen (auch nach ',' und vor ')') werden ignoriert."""
+        self._umbrueche_ignorieren.append(True)
+        ergebnis = lesen()
+        self._verbrauche(TokenTyp.RPAREN)
+        self._umbrueche_ignorieren.pop()
+        return ergebnis
 
     def _verbrauche(self, typ: TokenTyp):
         t = self._aktuell()
@@ -89,6 +120,8 @@ class Parser:
 
     def _block(self) -> ast.Block:
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
+        # Im Block (auch in einer Klammer wie 'f(funktion() { … })') trennen Zeilenumbrüche Anweisungen
+        self._umbrueche_ignorieren.append(False)
         self._ueberspringen_leerzeilen()
         anweisungen = []
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
@@ -97,6 +130,7 @@ class Parser:
                 anweisungen.append(anw)
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
+        self._umbrueche_ignorieren.pop()
         return ast.Block(anweisungen)
 
     def _anweisung(self):
@@ -223,8 +257,7 @@ class Parser:
 
     def _funktion_rumpf(self, name):
         self._verbrauche(TokenTyp.LPAREN)
-        parameter = self._parameter_lesen()
-        self._verbrauche(TokenTyp.RPAREN)
+        parameter = self._in_klammern(self._parameter_lesen)
 
         # Optionaler Rückgabetyp: -> Typ
         typhinweis = None
@@ -453,15 +486,24 @@ class Parser:
     # ---------------------------------------------------------------- Ausdr.
 
     def _ausdruck(self):
-        ausdruck = self._oder()
+        ausdruck = self._koaleszenz()
         # Ternär: dann_wert wenn bedingung sonst sonst_wert
         if self._aktuell().typ == TokenTyp.WENN:
             self.pos += 1
-            bedingung = self._oder()
+            bedingung = self._koaleszenz()
             self._verbrauche(TokenTyp.SONST)
             sonst_wert = self._ausdruck()  # rechtsassoziativ, erlaubt Verkettung
             return ast.TernaerAusdruck(ausdruck, bedingung, sonst_wert)
         return ausdruck
+
+    def _koaleszenz(self):
+        # a ?? b: schwächer als 'oder', stärker als der Ternär-Ausdruck
+        links = self._oder()
+        while self._aktuell().typ == TokenTyp.FRAGE_FRAGE:
+            self.pos += 1
+            rechts = self._oder()
+            links = ast.BinaereOperation(links, '??', rechts)
+        return links
 
     def _oder(self):
         links = self._und()
@@ -488,7 +530,7 @@ class Parser:
         return self._vergleich()
 
     def _vergleich(self):
-        operanden = [self._addition()]
+        operanden = [self._bit_oder()]
         operatoren = []
         ops = {
             TokenTyp.DOPPELGLEICH:   '==',
@@ -502,14 +544,15 @@ class Parser:
         while True:
             # 'x nicht in y' – infix, unterscheidet sich vom Präfix 'nicht (x in y)'
             if self._aktuell().typ == TokenTyp.NICHT and self._vorschau().typ == TokenTyp.IN:
-                self.pos += 2
+                self.pos += 1
+                self._verbrauche(TokenTyp.IN)  # (in Klammern kann ein Zeilenumbruch dazwischen stehen)
                 operatoren.append('nicht in')
-                operanden.append(self._addition())
+                operanden.append(self._bit_oder())
                 continue
             if self._aktuell().typ in ops:
                 operatoren.append(ops[self._aktuell().typ])
                 self.pos += 1
-                operanden.append(self._addition())
+                operanden.append(self._bit_oder())
                 continue
             break
         if not operatoren:
@@ -518,6 +561,40 @@ class Parser:
             return ast.BinaereOperation(operanden[0], operatoren[0], operanden[1])
         # Verkettung: a < b < c  ==  (a<b) und (b<c), jeder Operand nur einmal ausgewertet
         return ast.VergleichsKette(operanden, operatoren)
+
+    # Vorrang wie in Python: '|' < '^' < '&' < '<<' '>>' < '+' '-'
+    def _bit_oder(self):
+        links = self._bit_xoder()
+        while self._aktuell().typ == TokenTyp.SENKRECHT:
+            self.pos += 1
+            rechts = self._bit_xoder()
+            links = ast.BinaereOperation(links, '|', rechts)
+        return links
+
+    def _bit_xoder(self):
+        links = self._bit_und()
+        while self._aktuell().typ == TokenTyp.HUT:
+            self.pos += 1
+            rechts = self._bit_und()
+            links = ast.BinaereOperation(links, '^', rechts)
+        return links
+
+    def _bit_und(self):
+        links = self._schiebung()
+        while self._aktuell().typ == TokenTyp.KAUFMANNSUND:
+            self.pos += 1
+            rechts = self._schiebung()
+            links = ast.BinaereOperation(links, '&', rechts)
+        return links
+
+    def _schiebung(self):
+        links = self._addition()
+        while self._aktuell().typ in (TokenTyp.KLEINER_KLEINER, TokenTyp.GROESSER_GROESSER):
+            op = self._aktuell().wert
+            self.pos += 1
+            rechts = self._addition()
+            links = ast.BinaereOperation(links, op, rechts)
+        return links
 
     def _addition(self):
         links = self._multiplikation()
@@ -539,9 +616,10 @@ class Parser:
         return links
 
     def _unaer(self):
-        if self._aktuell().typ == TokenTyp.MINUS:
+        if self._aktuell().typ in (TokenTyp.MINUS, TokenTyp.TILDE):
+            op = self._aktuell().wert
             self.pos += 1
-            return ast.UnaereOperation('-', self._unaer())
+            return ast.UnaereOperation(op, self._unaer())
         return self._potenz()
 
     def _potenz(self):
@@ -564,7 +642,8 @@ class Parser:
                 name = self._aktuell().wert
                 if any(n == name for n, _ in kwargs):
                     self._fehler(f"Keyword-Argument '{name}' mehrfach angegeben")
-                self.pos += 2
+                self.pos += 1
+                self._verbrauche(TokenTyp.GLEICH)  # (in Klammern kann ein Zeilenumbruch dazwischen stehen)
                 kwargs.append((name, self._ausdruck()))
             else:
                 if kwargs:
@@ -580,8 +659,7 @@ class Parser:
         while True:
             if self._aktuell().typ == TokenTyp.LPAREN:
                 self.pos += 1
-                args, kwargs = self._argumente_lesen()
-                self._verbrauche(TokenTyp.RPAREN)
+                args, kwargs = self._in_klammern(self._argumente_lesen)
                 knoten = ast.FunktionAufruf(knoten, args, kwargs)
             elif self._aktuell().typ == TokenTyp.PUNKT:
                 self.pos += 1
@@ -634,9 +712,7 @@ class Parser:
             self.pos += 1; return ast.Bezeichner(t.wert)
         if t.typ == TokenTyp.LPAREN:
             self.pos += 1
-            ausdruck = self._ausdruck()
-            self._verbrauche(TokenTyp.RPAREN)
-            return ausdruck
+            return self._in_klammern(self._ausdruck)
         if t.typ == TokenTyp.LECKIG:
             return self._listen_literal()
         if t.typ == TokenTyp.LGESCHWEIFTE:
@@ -659,13 +735,15 @@ class Parser:
         from .lexer import Lexer  # lokaler Import – kein zirkulärer Import
         self.pos += 1
         teile = []
-        for art, inhalt in token.wert:
+        for teil in token.wert:
+            art, inhalt = teil[0], teil[1]
             if art == 'text':
                 if inhalt:
                     teile.append(ast.Zeichenkette(inhalt))
             else:
                 ausdruck_text, format_spec = _format_spec_trennen(inhalt)
-                sub_tokens = Lexer(ausdruck_text).tokenisieren()
+                # Teilausdruck mit absoluter Zeilennummer lexen (Fehler nennen die echte Zeile)
+                sub_tokens = Lexer(ausdruck_text, start_zeile=teil[2]).tokenisieren()
                 sub_parser = Parser(sub_tokens)
                 ausdruck = sub_parser._ausdruck()
                 if format_spec is not None:
@@ -692,9 +770,9 @@ class Parser:
             self.pos += 1
             variable = self._schleifenvariable_lesen()
             self._verbrauche(TokenTyp.IN)
-            # _oder() statt _ausdruck(): verhindert, dass das nachfolgende
+            # _koaleszenz() statt _ausdruck(): verhindert, dass das nachfolgende
             # 'wenn'-Filter der Comprehension als Ternär-Beginn gelesen wird
-            iterable = self._oder()
+            iterable = self._koaleszenz()
             bedingung = None
             if self._aktuell().typ == TokenTyp.WENN:
                 self.pos += 1
@@ -765,6 +843,5 @@ class Parser:
             name += '.' + teil
             klasse = ast.AttributZugriff(klasse, teil)
         self._verbrauche(TokenTyp.LPAREN)
-        args, kwargs = self._argumente_lesen()
-        self._verbrauche(TokenTyp.RPAREN)
+        args, kwargs = self._in_klammern(self._argumente_lesen)
         return ast.NeuInstanz(name, args, kwargs, klasse)

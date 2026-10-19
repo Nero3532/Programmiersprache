@@ -38,16 +38,47 @@ except ImportError:
     except ImportError:
         _READLINE = False
 
+from deutsch import __version__
 from deutsch.lexer import Lexer
 from deutsch.parser import Parser
 from deutsch.interpreter import Interpreter
 
-BANNER = """\
-╔══════════════════════════════════════════════════════════╗
-║  Deutsch 2.0  –  Eine Programmiersprache auf Deutsch     ║
-╠══════════════════════════════════════════════════════════╣
-║  'beenden' zum Verlassen | '{' öffnet mehrzeilige Blöcke ║
-╚══════════════════════════════════════════════════════════╝"""
+_BANNER_INNEN = 58  # Breite zwischen den Rahmenzeichen
+
+
+def _banner_zeile(text: str) -> str:
+    return '║' + f'  {text}'.ljust(_BANNER_INNEN) + '║'
+
+
+BANNER = '\n'.join([
+    '╔' + '═' * _BANNER_INNEN + '╗',
+    _banner_zeile(f'Deutsch {__version__}  –  Eine Programmiersprache auf Deutsch'),
+    '╠' + '═' * _BANNER_INNEN + '╣',
+    _banner_zeile("'beenden' zum Verlassen | '{' öffnet mehrzeilige Blöcke"),
+    '╚' + '═' * _BANNER_INNEN + '╝',
+])
+
+REPL_HILFE = """\
+Befehle in der REPL:
+  hilfe              diese Übersicht
+  beenden            REPL verlassen (auch: exit, quit, Strg+C)
+
+Mehrzeilige Eingabe:
+  Eine Zeile mit '{' öffnet einen Block; weitere Zeilen folgen, bis die
+  Klammern ausgeglichen sind. Mehrzeilige Zeichenketten stehen zwischen \"\"\" ... \"\"\"."""
+
+CLI_HILFE = f"""\
+Deutsch {__version__} – Eine Programmiersprache auf Deutsch
+
+Verwendung:
+  python main.py                       interaktive REPL starten
+  python main.py datei.deu [args...]   Datei ausführen; args stehen in kommandozeilen_argumente()
+  python main.py -c "code" [args...]   Code direkt ausführen
+  python main.py --pruefen datei.deu   nur auf Syntaxfehler prüfen, nichts ausführen
+  python main.py -V, --version         Version anzeigen
+  python main.py -h, --hilfe, --help   diese Hilfe anzeigen
+
+Als Modul mit denselben Optionen: py -m deutsch [Optionen]"""
 
 # --------------------------------------------------------------------------
 # Großer Stack für tiefe Rekursion
@@ -288,13 +319,18 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
                                       getattr(interpreter, '_letzter_aufruf_stack', None), ladepfad)
 
 
-def datei_starten(pfad: str, argumente: list = None):
+def _datei_lesen(pfad: str) -> str:
+    """Quelltext der Datei; beendet das Programm, wenn sie fehlt."""
     if not os.path.exists(pfad):
         print(f'Fehler: Datei nicht gefunden: {pfad!r}', file=sys.stderr)
         sys.exit(1)
 
     with open(pfad, 'r', encoding='utf-8') as f:
-        quelltext = f.read()
+        return f.read()
+
+
+def datei_starten(pfad: str, argumente: list = None):
+    quelltext = _datei_lesen(pfad)
 
     ladepfad = os.path.dirname(os.path.abspath(pfad))
     interpreter = Interpreter(ladepfad=ladepfad, argumente=argumente or [])
@@ -303,6 +339,37 @@ def datei_starten(pfad: str, argumente: list = None):
     if fehler:
         print(fehler, file=sys.stderr)
         sys.exit(1)
+
+
+def code_starten(quelltext: str, argumente: list = None):
+    """Führt Quelltext aus der Kommandozeile (-c) aus, Ladepfad ist der aktuelle Ordner."""
+    interpreter = Interpreter(argumente=argumente or [])
+
+    _, fehler = im_grossen_stack(_ausfuehren, quelltext, interpreter, '<kommandozeile>')
+    if fehler:
+        print(fehler, file=sys.stderr)
+        sys.exit(1)
+
+
+def _pruefen(quelltext: str, dateiname: str):
+    """Nur Lexer und Parser, nichts wird ausgeführt. Gibt den Fehlertext zurück oder None."""
+    try:
+        Parser(Lexer(quelltext).tokenisieren()).parse()
+        return None
+    except RecursionError:
+        return '[Fehler] Maximale Rekursionstiefe überschritten'
+    except Exception as e:
+        return _fehler_anzeigen(e, quelltext, dateiname)
+
+
+def datei_pruefen(pfad: str):
+    quelltext = _datei_lesen(pfad)
+
+    fehler = im_grossen_stack(_pruefen, quelltext, pfad)
+    if fehler:
+        print(fehler, file=sys.stderr)
+        sys.exit(1)
+    print(f'{pfad}: keine Syntaxfehler')
 
 
 def repl():
@@ -323,6 +390,11 @@ def repl():
         if zeile.strip() in ('beenden', 'exit', 'quit'):
             print('Auf Wiedersehen!')
             break
+
+        # 'hilfe' zeigt die Übersicht – außer der Nutzer hat selbst eine Variable hilfe angelegt
+        if zeile.strip() == 'hilfe' and not interpreter.global_umgebung.existiert('hilfe'):
+            print(REPL_HILFE)
+            continue
 
         if not zeile.strip():
             continue
@@ -355,10 +427,32 @@ def repl():
 
 def main():
     _konsole_auf_utf8()
-    if len(sys.argv) > 1:
-        datei_starten(sys.argv[1], sys.argv[2:])
-    else:
+    argv = sys.argv[1:]
+    if not argv:
         repl()
+        return
+
+    erste = argv[0]
+    if erste in ('-V', '--version'):
+        print(f'Deutsch {__version__}')
+    elif erste in ('-h', '--hilfe', '--help'):
+        print(CLI_HILFE)
+    elif erste == '-c':
+        if len(argv) < 2:
+            print('Fehler: -c braucht den Quelltext, z. B. -c "drucke(1 + 2)"', file=sys.stderr)
+            sys.exit(2)
+        code_starten(argv[1], argv[2:])
+    elif erste == '--pruefen':
+        if len(argv) < 2:
+            print('Fehler: --pruefen braucht eine Datei, z. B. --pruefen programm.deu', file=sys.stderr)
+            sys.exit(2)
+        datei_pruefen(argv[1])
+    elif erste.startswith('-'):
+        print(f'Fehler: unbekannte Option {erste!r}', file=sys.stderr)
+        print("Hinweis: 'python main.py --hilfe' zeigt alle Optionen.", file=sys.stderr)
+        sys.exit(2)
+    else:
+        datei_starten(erste, argv[1:])
 
 
 if __name__ == '__main__':
