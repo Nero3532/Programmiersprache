@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 """
-Tests für main.py: REPL-Klammerzählung, großer Stack / Rekursionstiefe, REPL-Ablauf.
+Tests für main.py: REPL-Klammerzählung, großer Stack / Rekursionstiefe, REPL-Ablauf,
+Kommandozeilen-Optionen, REPL-Hilfe und 'python -m deutsch'.
 
 Ausführen mit:
     python -m unittest discover -s tests -v
@@ -18,6 +19,7 @@ import unittest
 PROJEKT_WURZEL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJEKT_WURZEL)
 
+from deutsch import __version__
 from main import (BANNER, _fehler_anzeigen, eingabe_unvollstaendig, im_grossen_stack,
                   klammer_saldo)
 
@@ -37,10 +39,10 @@ drucke(e(0))
 '''
 
 
-def starte(*argumente, eingabe: str = None):
-    """Startet main.py als Unterprozess. Gibt (exitcode, stdout, stderr) zurück."""
+def _laufe(befehl: list, eingabe: str = None):
+    """Startet befehl als Unterprozess. Gibt (exitcode, stdout, stderr) zurück."""
     ergebnis = subprocess.run(
-        [sys.executable, MAIN_PY, *argumente],
+        befehl,
         input=eingabe.encode('utf-8') if eingabe is not None else None,
         stdin=None if eingabe is not None else subprocess.DEVNULL,
         capture_output=True,
@@ -51,6 +53,25 @@ def starte(*argumente, eingabe: str = None):
         return daten.decode('utf-8', errors='replace').replace('\r\n', '\n')
 
     return ergebnis.returncode, text(ergebnis.stdout), text(ergebnis.stderr)
+
+
+def starte(*argumente, eingabe: str = None):
+    """Startet main.py als Unterprozess. Gibt (exitcode, stdout, stderr) zurück."""
+    return _laufe([sys.executable, MAIN_PY, *argumente], eingabe)
+
+
+def starte_modul(*argumente, eingabe: str = None):
+    """Startet 'python -m deutsch' im Projektordner. Gibt (exitcode, stdout, stderr) zurück."""
+    return _laufe([sys.executable, '-m', 'deutsch', *argumente], eingabe)
+
+
+def starte_pruefen(code: str):
+    """Führt 'main.py --pruefen' auf einer temporären Datei mit code aus."""
+    with tempfile.TemporaryDirectory() as ordner:
+        pfad = os.path.join(ordner, 'test.deu')
+        with open(pfad, 'w', encoding='utf-8') as f:
+            f.write(code)
+        return starte('--pruefen', pfad)
 
 
 def starte_datei(code: str):
@@ -358,6 +379,181 @@ class TestBanner(unittest.TestCase):
     def test_alle_zeilen_gleich_breit(self):
         breiten = {len(zeile) for zeile in BANNER.split('\n')}
         self.assertEqual(len(breiten), 1, f'unterschiedliche Zeilenbreiten: {sorted(breiten)}')
+
+    def test_zeigt_version_aus_paket(self):
+        self.assertIn(f'Deutsch {__version__}', BANNER)
+        self.assertNotIn('Deutsch 2.0', BANNER)
+
+
+class TestOptionen(unittest.TestCase):
+    def test_version(self):
+        for option in ('--version', '-V'):
+            with self.subTest(option=option):
+                code, ausgabe, fehler = starte(option)
+                self.assertEqual(code, 0)
+                self.assertEqual(ausgabe.strip(), f'Deutsch {__version__}')
+                self.assertEqual(fehler, '')
+
+    def test_hilfe(self):
+        for option in ('--hilfe', '-h', '--help'):
+            with self.subTest(option=option):
+                code, ausgabe, fehler = starte(option)
+                self.assertEqual(code, 0)
+                self.assertEqual(fehler, '')
+                for erwartet in ('-c', '--pruefen', '--version', '--hilfe', '-h'):
+                    self.assertIn(erwartet, ausgabe)
+
+    def test_datei_bekommt_argumente(self):
+        with tempfile.TemporaryDirectory() as ordner:
+            pfad = os.path.join(ordner, 'args.deu')
+            with open(pfad, 'w', encoding='utf-8') as f:
+                f.write('drucke(kommandozeilen_argumente()[1])\n')
+            code, ausgabe, _ = starte(pfad, 'eins', '--zwei')
+        self.assertEqual(code, 0)
+        self.assertEqual(ausgabe.strip(), '--zwei')
+
+    def test_c_fuehrt_code_aus(self):
+        code, ausgabe, fehler = starte('-c', 'drucke(1 + 2)')
+        self.assertEqual((code, ausgabe.strip(), fehler), (0, '3', ''))
+
+    def test_c_argumente(self):
+        code, ausgabe, _ = starte('-c', 'drucke(kommandozeilen_argumente()[1])', 'eins', '--zwei')
+        self.assertEqual(code, 0)
+        self.assertEqual(ausgabe.strip(), '--zwei')
+
+    def test_c_laufzeitfehler_exitcode_eins(self):
+        code, ausgabe, fehler = starte('-c', 'drucke(1 / 0)')
+        self.assertEqual(code, 1)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('<kommandozeile>, Zeile 1:', fehler)
+        self.assertIn('Division durch Null', fehler)
+
+    def test_c_syntaxfehler_exitcode_eins(self):
+        code, ausgabe, fehler = starte('-c', 'sei = 2')
+        self.assertEqual(code, 1)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('Zeile 1', fehler)
+
+    def test_c_ohne_code_exitcode_zwei(self):
+        code, ausgabe, fehler = starte('-c')
+        self.assertEqual(code, 2)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('Quelltext', fehler)
+
+
+class TestPruefen(unittest.TestCase):
+    def test_gueltige_datei_wird_nicht_ausgefuehrt(self):
+        code, ausgabe, fehler = starte_pruefen(
+            'drucke("laeuft")\ndrucke(1 / 0)\nlade "gibt_es_nicht.deu"\n')
+        self.assertEqual(code, 0)
+        self.assertEqual(fehler, '')
+        self.assertTrue(ausgabe.strip().endswith(': keine Syntaxfehler'))
+        self.assertNotIn('laeuft', ausgabe)
+
+    def test_syntaxfehler_exitcode_eins(self):
+        code, ausgabe, fehler = starte_pruefen('sei a = 1\nsei = 2\n')
+        self.assertEqual(code, 1)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('Zeile 2', fehler)
+        self.assertIn('    sei = 2', fehler.splitlines())
+
+    def test_fehlende_datei_exitcode_eins(self):
+        code, _, fehler = starte('--pruefen', os.path.join(PROJEKT_WURZEL, 'gibt_es_nicht.deu'))
+        self.assertEqual(code, 1)
+        self.assertIn('Datei nicht gefunden', fehler)
+
+    def test_ohne_datei_exitcode_zwei(self):
+        code, ausgabe, fehler = starte('--pruefen')
+        self.assertEqual(code, 2)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('Datei', fehler)
+
+
+class TestUnbekannteOption(unittest.TestCase):
+    def test_lange_option_exitcode_zwei(self):
+        code, ausgabe, fehler = starte('--xyz')
+        self.assertEqual(code, 2)
+        self.assertEqual(ausgabe, '')
+        self.assertIn("unbekannte Option '--xyz'", fehler)
+        self.assertIn('--hilfe', fehler)
+        self.assertNotIn('Traceback', fehler)
+
+    def test_kurze_option_exitcode_zwei(self):
+        code, _, fehler = starte('-x')
+        self.assertEqual(code, 2)
+        self.assertIn("unbekannte Option '-x'", fehler)
+
+
+class TestReplHilfe(unittest.TestCase):
+    def test_hilfe_zeigt_uebersicht(self):
+        code, ausgabe, _ = starte(eingabe='hilfe\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn('Befehle in der REPL', ausgabe)
+        self.assertIn('Mehrzeilige Eingabe', ausgabe)
+        self.assertNotIn('Fehler', ausgabe)
+
+    def test_variable_hilfe_hat_vorrang(self):
+        code, ausgabe, _ = starte(eingabe='sei hilfe = 5\nhilfe\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn('>>> 5', ausgabe)
+        self.assertNotIn('Befehle in der REPL', ausgabe)
+
+    def test_funktion_hilfe_hat_vorrang(self):
+        code, ausgabe, _ = starte(eingabe='funktion hilfe() { zurueck 42 }\nhilfe()\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn('>>> 42', ausgabe)
+        self.assertNotIn('Befehle in der REPL', ausgabe)
+
+    def test_banner_zeigt_version(self):
+        code, ausgabe, _ = starte(eingabe='beenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn(f'Deutsch {__version__}', ausgabe)
+
+
+class TestModulAufruf(unittest.TestCase):
+    """'python -m deutsch' verhält sich wie main.py."""
+
+    def test_version(self):
+        code, ausgabe, fehler = starte_modul('--version')
+        self.assertEqual(code, 0)
+        self.assertEqual(ausgabe.strip(), f'Deutsch {__version__}')
+        self.assertEqual(fehler, '')
+
+    def test_hilfe(self):
+        code, ausgabe, _ = starte_modul('--hilfe')
+        self.assertEqual(code, 0)
+        self.assertIn('--pruefen', ausgabe)
+
+    def test_datei_ausfuehren(self):
+        with tempfile.TemporaryDirectory() as ordner:
+            pfad = os.path.join(ordner, 'modul.deu')
+            with open(pfad, 'w', encoding='utf-8') as f:
+                f.write('drucke("aus dem Modul")\n')
+            code, ausgabe, fehler = starte_modul(pfad)
+        self.assertEqual(code, 0)
+        self.assertEqual(ausgabe.strip(), 'aus dem Modul')
+        self.assertEqual(fehler, '')
+
+    def test_laufzeitfehler_exitcode_eins(self):
+        code, ausgabe, fehler = starte_modul('-c', 'drucke(1 / 0)')
+        self.assertEqual(code, 1)
+        self.assertEqual(ausgabe, '')
+        self.assertIn('Division durch Null', fehler)
+
+    def test_pruefen_fehlende_datei_exitcode_eins(self):
+        code, _, fehler = starte_modul('--pruefen', 'gibt_es_nicht.deu')
+        self.assertEqual(code, 1)
+        self.assertIn('Datei nicht gefunden', fehler)
+
+    def test_unbekannte_option_exitcode_zwei(self):
+        code, _, fehler = starte_modul('--xyz')
+        self.assertEqual(code, 2)
+        self.assertIn("unbekannte Option '--xyz'", fehler)
+
+    def test_repl_hilfe(self):
+        code, ausgabe, _ = starte_modul(eingabe='hilfe\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn('Befehle in der REPL', ausgabe)
 
 
 if __name__ == '__main__':

@@ -69,6 +69,9 @@ _OPERATOR_METHODEN = {
     '>=': '__groessergleich__',
 }
 
+# Bit-Operatoren (nur Ganzzahlen bzw. Mengen, keine Überladung durch Klassen)
+_BIT_OPERATOREN = ('&', '|', '^', '<<', '>>')
+
 
 class SchluesselFehler(KeyError):
     """KeyError zeigt seine Nachricht normalerweise in repr()-Anführungszeichen – hier nicht."""
@@ -1292,6 +1295,10 @@ class Interpreter:
         if k.operator == 'oder':
             l = self._besuche(k.links, u)
             return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
+        if k.operator == '??':
+            # Null-Koaleszenz: rechts wird nur ausgewertet, wenn links 'nichts' ist
+            l = self._besuche(k.links, u)
+            return l if l is not None else self._besuche(k.rechts, u)
 
         l = self._besuche(k.links, u)
         r = self._besuche(k.rechts, u)
@@ -1321,6 +1328,7 @@ class Interpreter:
             if op == '%':
                 if r == 0: raise ZeroDivisionError('Division durch Null')
                 return l % r
+            if op in _BIT_OPERATOREN: return self._bit_operator(op, l, r)
             if op == '==':  return l == r
             if op == '!=':  return l != r
             if op == '<':   return l < r
@@ -1335,6 +1343,28 @@ class Interpreter:
             )
         raise RuntimeError(f'Unbekannter Operator: {op!r}')
 
+    def _bit_operator(self, op, l, r):
+        """& | ^ << >> für Ganzzahlen; & | ^ zusätzlich für Mengen (Schnitt, Vereinigung, symm. Differenz).
+        Alles andere (auch Wörterbücher und Kommazahlen) ist ein Typfehler."""
+        if isinstance(l, int) and isinstance(r, int):
+            if op == '&': return l & r
+            if op == '|': return l | r
+            if op == '^': return l ^ r
+            if r < 0:
+                raise ValueError('Negative Schiebezahl')
+            if op == '>>': return l >> r
+            try:
+                return l << r
+            except (OverflowError, MemoryError):
+                raise OverflowError('Ergebnis der Linksschiebung ist zu groß')
+        if isinstance(l, set) and isinstance(r, set):
+            if op == '&': return l & r
+            if op == '|': return l | r
+            if op == '^': return l ^ r
+        raise TypeError(
+            f"Operator '{op}' nicht unterstützt für {self._typname(l)} und {self._typname(r)}"
+        )
+
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
         if k.operator == '-':
@@ -1342,6 +1372,10 @@ class Interpreter:
                 return -val
             except TypeError:
                 raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
+        if k.operator == '~':
+            if isinstance(val, int):
+                return ~val
+            raise TypeError(f"Operator '~' nicht unterstützt für {self._typname(val)}")
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
 

@@ -6,10 +6,13 @@ on:
 
 jobs:
   test:
-    runs-on: ubuntu-latest
+    name: "Tests (${{ matrix.os }}, Python ${{ matrix.python-version }})"
+    runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
-        python-version: ["3.10", "3.11", "3.12", "3.13"]
+        os: [ubuntu-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.14"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -17,3 +20,17 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - name: Tests ausführen
         run: python -m unittest discover -s tests -v
+      - name: Beispiele ausführen
+        shell: bash
+        run: |
+          set -e
+          for datei in beispiele/*.deu; do
+            echo "::group::$datei"
+            python main.py "$datei" < /dev/null
+            echo "::endgroup::"
+          done
+      - name: Paket installieren und prüfen
+        run: |
+          pip install .
+          deutsch --version
+          python -m deutsch --version
