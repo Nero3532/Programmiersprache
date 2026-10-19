@@ -64,8 +64,8 @@ Befehle in der REPL:
   beenden            REPL verlassen (auch: exit, quit, Strg+C)
 
 Mehrzeilige Eingabe:
-  Eine Zeile mit '{' öffnet einen Block; weitere Zeilen folgen, bis die
-  Klammern ausgeglichen sind. Mehrzeilige Zeichenketten stehen zwischen \"\"\" ... \"\"\"."""
+  Eine Zeile mit offener Klammer '(', '[' oder '{' bekommt Folgezeilen, bis
+  alle Klammern geschlossen sind. Mehrzeilige Zeichenketten stehen zwischen \"\"\" ... \"\"\"."""
 
 CLI_HILFE = f"""\
 Deutsch {__version__} – Eine Programmiersprache auf Deutsch
@@ -186,15 +186,23 @@ def im_grossen_stack(funktion, *args):
 # REPL: Erkennen unvollständiger Eingabe
 # --------------------------------------------------------------------------
 
-def _eingabe_abtasten(text: str):
-    """Tastet Quelltext ab und gibt (saldo, in_dreifach_string) zurück.
+_PAARE = {')': '(', ']': '[', '}': '{'}
 
-    saldo = Anzahl '{' minus Anzahl '}' außerhalb von Zeichenketten und
-    '#'-Kommentaren. Zeichenketten sind "...", '...', \"\"\"...\"\"\" und '''...''';
+
+def _eingabe_abtasten(text: str):
+    """Tastet Quelltext ab und gibt (saldo, in_dreifach_string, ungueltig) zurück.
+
+    saldo = Anzahl '(', '[' und '{' minus Anzahl ')', ']' und '}' außerhalb von
+    Zeichenketten und '#'-Kommentaren. Zeichenketten sind "...", '...', \"\"\"...\"\"\" und '''...''';
     eine einfache Zeichenkette endet spätestens am Zeilenende (wie im Lexer),
     damit eine vergessene Anführungszeichen-Paarung die REPL nicht festhält.
+    ungueltig ist True, wenn der Quelltext schon fehlerhaft ist: eine schließende Klammer
+    passt nicht zur zuletzt geöffneten (überzählig oder falsch verschachtelt), oder eine
+    einfache Zeichenkette ist in ihrer Zeile nicht geschlossen (der Lexer lehnt sie ab).
     """
     saldo = 0
+    offen = []        # Stapel der offenen Klammern
+    ungueltig = False
     quote = None      # aktuelles Begrenzer-Zeichen oder None
     dreifach = False
     i = 0
@@ -211,10 +219,15 @@ def _eingabe_abtasten(text: str):
                 dreifach = text.startswith(c * 3, i)
                 i += 3 if dreifach else 1
                 continue
-            if c == '{':
+            if c in ('(', '[', '{'):
                 saldo += 1
-            elif c == '}':
+                offen.append(c)
+            elif c in (')', ']', '}'):
                 saldo -= 1
+                if offen and offen[-1] == _PAARE[c]:
+                    offen.pop()
+                else:
+                    ungueltig = True
             i += 1
             continue
 
@@ -227,21 +240,31 @@ def _eingabe_abtasten(text: str):
                 quote = None
                 i += 3
                 continue
-        elif c == quote or c == '\n':
+        elif c == quote:
             quote = None
+        elif c == '\n':
+            quote = None      # einfache Zeichenkette ohne Abschluss in ihrer Zeile
+            ungueltig = True
         i += 1
-    return saldo, quote is not None and dreifach
+
+    if quote is not None and not dreifach:
+        ungueltig = True      # einfache Zeichenkette bis Textende nicht geschlossen
+    return saldo, quote is not None and dreifach, ungueltig
 
 
 def klammer_saldo(quelltext: str) -> int:
-    """Offene '{' minus geschlossene '}', ohne Zeichenketten und Kommentare."""
+    """Offene '(', '[', '{' minus geschlossene ')', ']', '}', ohne Zeichenketten und Kommentare."""
     return _eingabe_abtasten(quelltext)[0]
 
 
 def eingabe_unvollstaendig(quelltext: str) -> bool:
-    """True, wenn die REPL weitere Zeilen lesen soll: ein '{'-Block ist noch
-    offen oder eine mehrzeilige \"\"\"-Zeichenkette nicht geschlossen."""
-    saldo, offene_zeichenkette = _eingabe_abtasten(quelltext)
+    """True, wenn die REPL weitere Zeilen lesen soll: irgendeine Klammer ist noch offen
+    oder eine mehrzeilige \"\"\"-Zeichenkette nicht geschlossen. Ist der Quelltext schon
+    fehlerhaft (überzählige oder falsch geschlossene Klammer), wartet die REPL nicht,
+    sondern führt ihn aus, damit der Syntaxfehler angezeigt wird."""
+    saldo, offene_zeichenkette, ungueltig = _eingabe_abtasten(quelltext)
+    if ungueltig:
+        return False
     return saldo > 0 or offene_zeichenkette
 
 
@@ -399,7 +422,7 @@ def repl():
         if not zeile.strip():
             continue
 
-        # Mehrzeilige Eingabe: weiterlesen bis { } ausgeglichen (Zeichenketten
+        # Mehrzeilige Eingabe: weiterlesen, solange eine ( [ { offen ist (Zeichenketten
         # und Kommentare zählen nicht mit)
         quelltext = zeile
         while eingabe_unvollstaendig(quelltext):
