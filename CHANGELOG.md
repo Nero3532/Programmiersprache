@@ -4,6 +4,33 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Bit-Operatoren `&`, `|`, `^`, `~` und Schiebeoperatoren `<<`, `>>` für Ganzzahlen; `&`, `|`, `^` auch für Mengen
+  (Schnitt, Vereinigung, symmetrische Differenz). Verbund-Zuweisungen `&=`, `|=`, `^=`, `<<=`, `>>=`.
+- Zahlliterale `0xFF`, `0b101`, `0o17`; `_` als Trenner zwischen Ziffern (`1_000`).
+- Null-Koaleszenz `a ?? b`: wertet `b` nur aus, wenn `a` gleich `nichts` ist (`0` und `falsch` bleiben erhalten).
+- Zeilenumbrüche innerhalb von `( … )` (Aufrufe, Parameterlisten, Klammerausdrücke) sowie ein abschließendes
+  Komma in Aufrufen und Parameterlisten.
+- Lambda-Kurzform `funktion(x) -> ausdruck`, auch benannt (`funktion verdopple(x) -> x * 2`) und in Klassen.
+- `abbilden`, `filtere` und `reduziere` als Builtins und als verkettbare Listen-Methoden
+  (`liste.abbilden(f).filtere(g)`).
+- `schluessel=` (auch `schlüssel=`) bei `sortiere`, `max` und `min`; `umgekehrt=` bei `sortiere`.
+  `liste.sortiere()` nimmt beide Argumente ebenfalls.
+- CLI-Optionen: `--version` (`-V`), `--hilfe` (`-h`, `--help`), `-c "code"` (Code direkt ausführen; Argumente
+  über `kommandozeilen_argumente()`), `--pruefen datei.deu` (nur Syntaxprüfung, nichts wird ausgeführt).
+- REPL-Befehl `hilfe` zeigt eine Übersicht der Befehle.
+- `py -m deutsch` startet das Programm als Modul, mit denselben Optionen wie `main.py`.
+- CI: Tests auf Windows und Linux für Python 3.10 bis 3.14; die Beispiele werden über die CLI ausgeführt,
+  nach der Paket-Installation werden Version und Aufruf geprüft.
+
+### Geändert
+- Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
+
+### Behoben
+- Zeilennummern bei Fehlern in `{…}`-Interpolationen waren falsch; gemeldet wird jetzt die absolute Zeile des `{`.
+- `"{1 2}"` wird als Syntaxfehler gemeldet, statt den Rest des Ausdrucks stillschweigend zu ignorieren.
+- REPL: Bei offener `(` oder `[` wartet sie auf Folgezeilen (bisher nur bei `{`).
+
 ## [2.7.1]
 
 ### Geändert
