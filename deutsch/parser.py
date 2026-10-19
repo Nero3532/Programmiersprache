@@ -1,6 +1,11 @@
 # -*- coding: utf-8 -*-
+import difflib
+
 from .token_typen import TokenTyp
 from . import ast_knoten as ast
+
+# Was ein Klassenkörper einleiten darf (für die „meintest du …?"-Diagnose)
+_KLASSENKOERPER_SCHLUESSELWOERTER = ['funktion', 'statisch', 'sei', 'konstante']
 
 _VERBUND_OPS = {
     TokenTyp.PLUS_GLEICH:          '+',
@@ -242,7 +247,7 @@ class Parser:
                 eltern.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
             self._verbrauche(TokenTyp.RPAREN)
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
-        self._ueberspringen_leerzeilen()
+        self._optionale_trennzeichen()
         methoden = []
         statische_methoden = []
         klassenattribute = []
@@ -257,10 +262,28 @@ class Parser:
             elif self._aktuell().typ == TokenTyp.KONSTANTE:
                 klassenattribute.append(self._konstante_deklaration())
             else:
-                self.pos += 1
+                self._klassenkoerper_fehler()
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
         return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)
+
+    def _klassenkoerper_fehler(self):
+        """Meldet ein Token, das im Klassenkörper nicht erlaubt ist."""
+        t = self._aktuell()
+        if t.typ == TokenTyp.ZEICHENKETTE:
+            gefunden = 'Zeichenkette'
+        elif isinstance(t.wert, str):
+            gefunden = t.wert
+        else:
+            gefunden = t.typ.name
+        msg = (f"Im Klassenkörper nicht erlaubt: '{gefunden}' – erlaubt sind nur "
+               f"'funktion', 'statisch funktion', 'sei' und 'konstante'")
+        if t.typ == TokenTyp.BEZEICHNER:
+            treffer = difflib.get_close_matches(
+                gefunden, _KLASSENKOERPER_SCHLUESSELWOERTER, n=1, cutoff=0.6)
+            if treffer:
+                msg += f" – meintest du '{treffer[0]}'?"
+        raise SyntaxError(f'Zeile {t.zeile}: {msg}')
 
     # ------------------------------------------------------- Kontrollfluss
 
@@ -449,12 +472,20 @@ class Parser:
         return links
 
     def _und(self):
-        links = self._vergleich()
+        links = self._nicht()
         while self._aktuell().typ == TokenTyp.UND:
             self.pos += 1
-            rechts = self._vergleich()
+            rechts = self._nicht()
             links = ast.BinaereOperation(links, 'und', rechts)
         return links
+
+    def _nicht(self):
+        # Vorrang wie in Python: 'nicht' bindet schwächer als Vergleiche und
+        # 'in'/'nicht in', aber stärker als 'und'.  'nicht 1 == 2' = 'nicht (1 == 2)'
+        if self._aktuell().typ == TokenTyp.NICHT:
+            self.pos += 1
+            return ast.UnaereOperation('nicht', self._nicht())
+        return self._vergleich()
 
     def _vergleich(self):
         operanden = [self._addition()]
@@ -508,9 +539,6 @@ class Parser:
         return links
 
     def _unaer(self):
-        if self._aktuell().typ == TokenTyp.NICHT:
-            self.pos += 1
-            return ast.UnaereOperation('nicht', self._unaer())
         if self._aktuell().typ == TokenTyp.MINUS:
             self.pos += 1
             return ast.UnaereOperation('-', self._unaer())
@@ -618,6 +646,12 @@ class Parser:
         if t.typ == TokenTyp.FUNKTION:
             return self._funktion_ausdruck()
 
+        if t.typ == TokenTyp.NICHT:
+            # 'nicht' steht über den Vergleichen (wie in Python) und darf daher
+            # nicht direkt als Operand eines Operators stehen: 'a == nicht b'
+            self._fehler("'nicht' ist als Operand nicht erlaubt – setze Klammern, "
+                         "z. B. 'a == (nicht b)'")
+
         self._fehler(f'Unerwartetes Token {t.typ.name!r}')
 
     def _interp_zeichenkette(self, token):
@@ -723,7 +757,14 @@ class Parser:
     def _neu_instanz(self):
         self._verbrauche(TokenTyp.NEU)
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        klasse = ast.Bezeichner(name)
+        # Punktpfad: neu modul.Klasse(...) bzw. neu a.b.Klasse(...)
+        while self._aktuell().typ == TokenTyp.PUNKT:
+            self.pos += 1
+            teil = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            name += '.' + teil
+            klasse = ast.AttributZugriff(klasse, teil)
         self._verbrauche(TokenTyp.LPAREN)
         args, kwargs = self._argumente_lesen()
         self._verbrauche(TokenTyp.RPAREN)
-        return ast.NeuInstanz(name, args, kwargs)
+        return ast.NeuInstanz(name, args, kwargs, klasse)

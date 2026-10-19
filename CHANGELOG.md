@@ -4,6 +4,35 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.7.1]
+
+### Geändert
+- `nicht` bindet wie in Python schwächer als Vergleiche: `nicht a == b` ist jetzt `nicht (a == b)`.
+  `x == nicht y` ist ein Syntaxfehler — Klammern setzen: `x == (nicht y)`.
+- Zuweisung an einen nicht deklarierten Namen wirft `NameError` (mit „meintest du …?“, wenn ein
+  ähnlicher Name bekannt ist), statt still eine Variable anzulegen. Neue Variablen werden mit `sei` angelegt.
+- `lade` löst relative Pfade ab dem Ordner der ladenden Datei auf, nicht mehr nur ab dem Ordner des Hauptskripts.
+- Strg+C bricht während einer laufenden Eingabe nur diese ab („Unterbrochen.“) statt die REPL zu beenden.
+  Am Prompt `>>>` beendet Strg+C die REPL weiterhin.
+
+### Behoben
+- `abbrechen`/`weiter` in einer Funktion beendeten still die Schleife des Aufrufers; jetzt Fehler
+  „'abbrechen' außerhalb einer Schleife“. Auf oberster Ebene erschienen interne Signalnamen; jetzt derselbe
+  deutsche Fehler (ebenso `zurück` außerhalb einer Funktion).
+- Typ-Hinweise von `sei`-Variablen wurden bei Neuzuweisung und `+=` nicht geprüft; jetzt werden sie bei jeder Zuweisung geprüft.
+- Rekursion brach schon nach ca. 900 Aufrufen ab; jetzt läuft die Ausführung in einem Thread mit großem Stack (ca. 5900 Aufrufe).
+- REPL: `{` in einer Zeichenkette oder einem Kommentar ließ die REPL weiterlesen, Eingaben gingen verloren.
+- Zeilennummern nach mehrzeiligen `"""`-Zeichenketten waren falsch.
+- Tippfehler im Klassenkörper (z. B. `funtion`) wurden still übersprungen; jetzt Syntaxfehler mit Vorschlag („meintest du …?“).
+- `lade`: deutsche Meldung bei fehlender Datei; Fehler in geladenen Dateien nennen Dateiname und richtige Zeile;
+  `neu modul.Klasse(...)` funktioniert.
+- Englische Python-Fehlertexte übersetzt: `%` durch Null, unäres Minus auf Nicht-Zahl, `zahl()`, `max`/`min`
+  mit gemischten Typen, `entferne` auf leerer Liste, EOF bei `eingabe`, Iteration über Nicht-Iterierbares,
+  `json_lesen`, `json_schreiben`, `datei_lesen`/`datei_schreiben`/`datei_anhängen`.
+- `json_schreiben` prüft den Wert, bevor die Datei angelegt wird: nicht speicherbare Werte und zirkuläre
+  Verweise werden auf Deutsch gemeldet, und die Datei wird dabei nicht überschrieben.
+- 182 neue Regressionstests (331 gesamt).
+
 ## [2.7.0]
 
 ### Hinzugefügt
