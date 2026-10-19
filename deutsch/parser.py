@@ -233,11 +233,16 @@ class Parser:
             params.append((name, default, variadic, typhinweis))
 
             if variadic:
-                break  # *args muss letzter Parameter sein
+                # *args muss letzter Parameter sein; ein abschließendes Komma ist erlaubt
+                if self._aktuell().typ == TokenTyp.KOMMA and self._vorschau().typ == TokenTyp.RPAREN:
+                    self.pos += 1
+                break
 
             if self._aktuell().typ != TokenTyp.KOMMA:
                 break
             self.pos += 1
+            if self._aktuell().typ == TokenTyp.RPAREN:
+                break  # abschließendes Komma: funktion f(a, b,)
 
         return params
 
@@ -259,14 +264,34 @@ class Parser:
         self._verbrauche(TokenTyp.LPAREN)
         parameter = self._in_klammern(self._parameter_lesen)
 
-        # Optionaler Rückgabetyp: -> Typ
+        # '->' leitet entweder einen Rückgabetyp ein ('-> Typ { … }') oder die Kurzform
+        # ('-> ausdruck', gleichbedeutend mit '{ zurück ausdruck }').  Unterschied: ein Typname
+        # steht direkt vor dem '{' des Rumpfs; ein Ausdruck wird nie von '{' gefolgt.
         typhinweis = None
         if self._aktuell().typ == TokenTyp.PFEIL:
             self.pos += 1
-            typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.LGESCHWEIFTE:
+                typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            else:
+                return self._kurzform_rumpf(name, parameter)
 
         koerper = self._block()
         return ast.FunktionDefinition(name, parameter, koerper, typhinweis)
+
+    def _kurzform_rumpf(self, name, parameter):
+        """Rumpf der Kurzform 'funktion(x) -> ausdruck' (das '->' ist schon verbraucht).
+        Der Ausdruck reicht so weit wie möglich (wie Pythons lambda) und endet erst an einem
+        Token, das ihn nicht fortsetzt, z. B. ',' oder ')' eines umgebenden Aufrufs."""
+        self._ueberspringen_leerzeilen()
+        t = self._aktuell()
+        if t.typ in (TokenTyp.DATEIENDE, TokenTyp.RPAREN, TokenTyp.RECKIG, TokenTyp.RGESCHWEIFTE,
+                     TokenTyp.KOMMA, TokenTyp.SEMIKOLON):
+            self._fehler("Nach '->' fehlt der Funktionsrumpf (ein Ausdruck, oder ein Rückgabetyp "
+                         "vor '{ … }')")
+        ausdruck = self._ausdruck()
+        zurueck = ast.ZurueckAnweisung(ausdruck)
+        zurueck.zeile = t.zeile
+        return ast.FunktionDefinition(name, parameter, ast.Block([zurueck]), None)
 
     def _klassen_definition(self):
         self._verbrauche(TokenTyp.KLASSE)
@@ -652,6 +677,8 @@ class Parser:
             if self._aktuell().typ != TokenTyp.KOMMA:
                 break
             self.pos += 1
+            if self._aktuell().typ == TokenTyp.RPAREN:
+                break  # abschließendes Komma: f(a, b,)
         return args, kwargs
 
     def _aufruf(self):
@@ -746,6 +773,7 @@ class Parser:
                 sub_tokens = Lexer(ausdruck_text, start_zeile=teil[2]).tokenisieren()
                 sub_parser = Parser(sub_tokens)
                 ausdruck = sub_parser._ausdruck()
+                sub_parser._interpolation_ende_pruefen(inhalt)
                 if format_spec is not None:
                     ausdruck = ast.FormatierterAusdruck(ausdruck, format_spec)
                 teile.append(ausdruck)
@@ -754,6 +782,26 @@ class Parser:
         if len(teile) == 1 and isinstance(teile[0], ast.Zeichenkette):
             return teile[0]
         return ast.InterpolierteZeichenkette(teile)
+
+    def _interpolation_ende_pruefen(self, inhalt: str):
+        """Sub-Parser einer '{…}'-Interpolation: nach dem Ausdruck darf nichts mehr folgen
+        ('{1 2}' ist ein Syntaxfehler, kein stilles Ignorieren des Rests)."""
+        self._ueberspringen_leerzeilen()
+        t = self._aktuell()
+        if t.typ == TokenTyp.DATEIENDE:
+            return
+        if t.typ in (TokenTyp.ZEICHENKETTE, TokenTyp.INTERP_ZEICHENKETTE):
+            gefunden = 'Zeichenkette'
+        elif isinstance(t.wert, bool):
+            gefunden = 'wahr' if t.wert else 'falsch'
+        elif t.wert is None:
+            gefunden = t.typ.name.lower()
+        else:
+            gefunden = str(t.wert)
+        raise SyntaxError(
+            f"Zeile {t.zeile}: Ungültiger Ausdruck in der Interpolation '{{{inhalt.strip()}}}': "
+            f"nach dem Ausdruck folgt unerwartet '{gefunden}'"
+        )
 
     def _listen_literal(self):
         self._verbrauche(TokenTyp.LECKIG)

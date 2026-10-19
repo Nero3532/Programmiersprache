@@ -146,8 +146,8 @@ class TestKlammerzaehlung(unittest.TestCase):
     def test_einfache_zeichenkette_endet_am_zeilenende(self):
         # Vergessenes Anführungszeichen darf die REPL nicht festhalten ...
         self.assertFalse(eingabe_unvollstaendig('drucke("abc'))
-        # ... und die Zählung der nächsten Zeile nicht verfälschen
-        self.assertEqual(klammer_saldo('drucke("abc\nwenn wahr {'), 1)
+        # ... und die Zählung der nächsten Zeile nicht verfälschen ('(' von drucke bleibt offen)
+        self.assertEqual(klammer_saldo('drucke("abc\nwenn wahr {'), 2)
 
     def test_kommentar(self):
         self.assertEqual(klammer_saldo('drucke(1) # {'), 0)
@@ -172,6 +172,56 @@ class TestKlammerzaehlung(unittest.TestCase):
             quelltext = zeile if not quelltext else quelltext + '\n' + zeile
             with self.subTest(zeile=zeile):
                 self.assertEqual(eingabe_unvollstaendig(quelltext), offen)
+
+    def test_runde_klammer_ueber_zwei_zeilen(self):
+        self.assertEqual(klammer_saldo('drucke(1 +'), 1)
+        self.assertTrue(eingabe_unvollstaendig('drucke(1 +'))
+        self.assertEqual(klammer_saldo('drucke(1 +\n2'), 1)
+        self.assertTrue(eingabe_unvollstaendig('drucke(1 +\n2'))
+        self.assertFalse(eingabe_unvollstaendig('drucke(1 +\n2)'))
+
+    def test_eckige_klammer_ueber_zwei_zeilen(self):
+        self.assertEqual(klammer_saldo('sei l = [1,'), 1)
+        self.assertTrue(eingabe_unvollstaendig('sei l = [1,'))
+        self.assertFalse(eingabe_unvollstaendig('sei l = [1,\n2]'))
+        self.assertFalse(eingabe_unvollstaendig('sei l = [1, 2]'))
+
+    def test_gemischte_klammern_schritt_fuer_schritt(self):
+        zeilen = ['sei g = f(funktion(x) {', '    zurueck x * 2', '})']
+        quelltext = ''
+        erwartet = [True, True, False]
+        for zeile, offen in zip(zeilen, erwartet):
+            quelltext = zeile if not quelltext else quelltext + '\n' + zeile
+            with self.subTest(zeile=zeile):
+                self.assertEqual(eingabe_unvollstaendig(quelltext), offen)
+        self.assertEqual(klammer_saldo(quelltext), 0)
+
+    def test_klammer_in_zeichenkette_und_kommentar_zaehlt_nicht_mit(self):
+        self.assertEqual(klammer_saldo('drucke("(")'), 0)
+        self.assertEqual(klammer_saldo("drucke('[')"), 0)
+        self.assertEqual(klammer_saldo('drucke("([{")'), 0)
+        self.assertEqual(klammer_saldo('drucke(1) # ('), 0)
+        self.assertEqual(klammer_saldo('sei x = 1 # [ {'), 0)
+        self.assertFalse(eingabe_unvollstaendig('drucke("(")'))
+        self.assertFalse(eingabe_unvollstaendig('drucke(1) # ('))
+        self.assertFalse(eingabe_unvollstaendig('sei x = "[" # {'))
+        # Klammer in einer mehrzeiligen Zeichenkette zählt ebenfalls nicht
+        self.assertFalse(eingabe_unvollstaendig('sei x = """(\n)"""'))
+
+    def test_ueberzaehlige_schliessklammer_blockiert_nicht(self):
+        # Die Eingabe ist schon fehlerhaft: sofort ausführen, nicht auf weitere Zeilen warten
+        self.assertEqual(klammer_saldo(')'), -1)
+        self.assertFalse(eingabe_unvollstaendig(')'))
+        self.assertEqual(klammer_saldo('drucke(1))'), -1)
+        self.assertFalse(eingabe_unvollstaendig('drucke(1))'))
+        # eine spätere öffnende Klammer hebt die Überzählige nicht auf
+        self.assertFalse(eingabe_unvollstaendig(') ('))
+        self.assertFalse(eingabe_unvollstaendig('drucke(1) ) ( {'))
+
+    def test_falsch_geschlossene_klammer_blockiert_nicht(self):
+        self.assertFalse(eingabe_unvollstaendig('drucke(1]'))
+        self.assertFalse(eingabe_unvollstaendig('wenn wahr (}'))
+        self.assertFalse(eingabe_unvollstaendig('funktion f() {\n    drucke(1)\n)'))
 
 
 class TestGrosserStack(unittest.TestCase):
@@ -300,6 +350,19 @@ class TestRepl(unittest.TestCase):
         self.assertEqual(code, 0)
         self.assertIn('a}b', ausgabe)
         self.assertIn('>>> 7', ausgabe)
+
+    def test_offene_runde_klammer_fordert_folgezeile(self):
+        code, ausgabe, _ = starte(eingabe='drucke(1 +\n2)\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertIn('... ', ausgabe)           # Folgezeile angefordert
+        self.assertIn('3', ausgabe.split())      # und die Eingabe ausgeführt
+
+    def test_ueberzaehlige_klammer_blockiert_repl_nicht(self):
+        code, ausgabe, _ = starte(eingabe='drucke(1))\ndrucke(7)\nbeenden\n')
+        self.assertEqual(code, 0)
+        self.assertNotIn('... ', ausgabe)        # keine Folgezeile angefordert
+        self.assertIn('SyntaxError', ausgabe)    # Fehler sofort angezeigt
+        self.assertIn('7', ausgabe.split())      # REPL läuft danach weiter
 
     def test_dreifach_zeichenkette_ueber_mehrere_zeilen(self):
         code, ausgabe, _ = starte(

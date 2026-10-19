@@ -2,6 +2,7 @@
 import os
 import math
 import functools
+import inspect
 import random
 import json
 import re
@@ -123,6 +124,13 @@ class DeutschNamensraum:
 _NICHT_GEFUNDEN = object()
 
 
+def _mit_keywords(fn):
+    """Markiert eine eingebaute Funktion oder Methode, die Keyword-Argumente annimmt
+    (z. B. sortiere(liste, schluessel=f)). Alle anderen Eingebauten lehnen Keywords ab."""
+    fn._akzeptiert_keywords = True
+    return fn
+
+
 class DeutschKlasse:
     def __init__(self, name: str, eltern: list, methoden: dict, statische_methoden: dict = None):
         self.name = name
@@ -235,7 +243,7 @@ class Interpreter:
             'entferne':  lambda obj, *a: self._liste_entferne(obj, *a),
             'enthält':   lambda obj, x: x in obj,
             'umkehren':  lambda obj: (obj.reverse(), None)[1],
-            'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
+            'sortiere':  _mit_keywords(lambda obj, /, *a, **kw: self._liste_sortiere(obj, a, kw)),
             'erste':     lambda obj: obj[0] if obj else None,
             'letzte':    lambda obj: obj[-1] if obj else None,
             'kopiere':   lambda obj: list(obj),
@@ -244,6 +252,9 @@ class Interpreter:
             'zaehle':    lambda obj, x: self._zaehle(obj, x, 'Liste'),
             'einfuegen': lambda obj, index, wert: self._liste_einfuegen(obj, index, wert),
             'erweitere': lambda obj, andere: self._liste_erweitere(obj, andere),
+            'abbilden':  lambda obj, *a: self._liste_abbilden(obj, a),
+            'filtere':   lambda obj, *a: self._liste_filtere(obj, a),
+            'reduziere': lambda obj, *a: self._liste_reduziere(obj, a),
         }
 
     def _string_methoden_aufbauen(self):
@@ -319,6 +330,9 @@ class Interpreter:
         g.setze('wahrheitswert', self._eb_wahrheitswert)
         g.setze('bereich',      self._eb_bereich)
         g.setze('sortiere',     self._eb_sortiere)
+        g.setze('abbilden',     self._eb_abbilden)
+        g.setze('filtere',      self._eb_filtere)
+        g.setze('reduziere',    self._eb_reduziere)
         g.setze('anhaengen',    self._eb_anhaengen)
         g.setze('anhängen',     self._eb_anhaengen)
         g.setze('entferne',     self._eb_entferne)
@@ -430,11 +444,58 @@ class Interpreter:
         if len(args) == 3:   return list(range(int(args[0]), int(args[1]), int(args[2])))
         raise TypeError("'bereich' erwartet 1–3 Argumente")
 
-    def _eb_sortiere(self, *args):
+    @_mit_keywords
+    def _eb_sortiere(self, /, *args, **kwargs):
+        schluessel, umgekehrt = self._sortier_optionen('sortiere', kwargs)
         self._pruefe_args('sortiere', args, 1)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'sortiere' erwartet eine Liste oder Menge")
-        return self._sortiert(list(args[0]))
+        return self._sortiere_mit(list(args[0]), schluessel, umgekehrt)
+
+    def _liste_sortiere(self, obj, args, kwargs):
+        """liste.sortiere([schluessel=f][, umgekehrt=wahr]) – sortiert in place, gibt nichts zurück."""
+        if args:
+            raise TypeError("'sortiere' nimmt nur die Keyword-Argumente 'schluessel' und 'umgekehrt' an")
+        schluessel, umgekehrt = self._sortier_optionen('sortiere', kwargs)
+        obj[:] = self._sortiere_mit(list(obj), schluessel, umgekehrt)  # bei Fehler im Schlüssel bleibt obj unverändert
+        return None
+
+    def _sortier_optionen(self, name, kwargs):
+        """Liest schluessel=/schlüssel= (alle) und umgekehrt= (nur 'sortiere'). Gibt (schluessel|None, umgekehrt) zurück.
+        schluessel=nichts bedeutet: kein Schlüssel."""
+        schluessel, umgekehrt, schluessel_gesetzt = None, False, False
+        for k, v in kwargs.items():
+            if k in ('schluessel', 'schlüssel'):
+                if schluessel_gesetzt:
+                    raise TypeError(f"'{name}': 'schluessel' und 'schlüssel' sind dasselbe Argument "
+                                    f"und dürfen nicht beide angegeben werden")
+                schluessel_gesetzt = True
+                if v is not None:
+                    self._pruefe_funktion(name, v, 1, f"für '{k}'")
+                    schluessel = v
+            elif k == 'umgekehrt' and name == 'sortiere':
+                umgekehrt = self._ist_wahr(v)
+            else:
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+        return schluessel, umgekehrt
+
+    def _sortiere_mit(self, liste, schluessel, umgekehrt):
+        """Neue, sortierte Liste. Ohne Schlüssel und ohne 'umgekehrt' exakt das bisherige Verhalten.
+        Gleiche Schlüssel behalten ihre ursprüngliche Reihenfolge (auch bei 'umgekehrt')."""
+        if schluessel is None and not umgekehrt:
+            return self._sortiert(liste)
+        if schluessel is None:
+            try:
+                return sorted(liste, reverse=umgekehrt)
+            except TypeError:
+                return sorted(liste, key=str, reverse=umgekehrt)
+        schluessel_werte = [self._aufrufen(schluessel, [e]) for e in liste]
+        try:
+            reihenfolge = sorted(range(len(liste)), key=schluessel_werte.__getitem__, reverse=umgekehrt)
+        except TypeError:  # nicht vergleichbare Schlüssel (gemischte Typen): wie ohne Schlüssel nach Text
+            reihenfolge = sorted(range(len(liste)), key=lambda i: self._zu_text(schluessel_werte[i]),
+                                 reverse=umgekehrt)
+        return [liste[i] for i in reihenfolge]
 
     @staticmethod
     def _sortiert(liste, in_place=False):
@@ -483,8 +544,16 @@ class Interpreter:
         except IndexError:
             raise IndexError(f'Index {position} ist außerhalb des Bereichs')
 
-    def _vergleichs_extremum(self, fn, werte, name):
-        """max/min über werte. Nicht vergleichbare Typen (z. B. Ganzzahl und Zeichenkette) → deutsche Meldung."""
+    def _vergleichs_extremum(self, fn, werte, name, schluessel=None):
+        """max/min über werte (mit schluessel: über die Schlüsselwerte, bei Gleichstand gewinnt der erste).
+        Nicht vergleichbare Typen (z. B. Ganzzahl und Zeichenkette) → deutsche Meldung."""
+        if schluessel is not None:
+            vergleichswerte = [self._aufrufen(schluessel, [w]) for w in werte]
+            try:
+                return werte[fn(range(len(werte)), key=vergleichswerte.__getitem__)]
+            except TypeError:
+                typen = list(dict.fromkeys(self._typname(w) for w in vergleichswerte))
+                raise TypeError(f"'{name}' kann Schlüsselwerte dieser Typen nicht vergleichen: {', '.join(typen)}")
         try:
             return fn(werte)
         except TypeError:
@@ -543,17 +612,138 @@ class Interpreter:
             raise TypeError("Erstes Argument von 'verbinde' muss eine Liste sein")
         return trenn.join(self._zu_text(e) for e in liste)
 
-    def _eb_max(self, *args):
+    @_mit_keywords
+    def _eb_max(self, /, *args, **kwargs):
+        schluessel, _ = self._sortier_optionen('max', kwargs)
         if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
         if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
-        return self._vergleichs_extremum(max, werte, 'max')
+        return self._vergleichs_extremum(max, werte, 'max', schluessel)
 
-    def _eb_min(self, *args):
+    @_mit_keywords
+    def _eb_min(self, /, *args, **kwargs):
+        schluessel, _ = self._sortier_optionen('min', kwargs)
         if not args: raise TypeError("'min' erwartet mindestens 1 Argument")
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
         if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
-        return self._vergleichs_extremum(min, werte, 'min')
+        return self._vergleichs_extremum(min, werte, 'min', schluessel)
+
+    # ----------------------------------------------- Funktionen höherer Ordnung
+
+    def _eb_abbilden(self, *args):
+        self._pruefe_args('abbilden', args, 2)
+        return self._hof_abbilden(args[0], args[1], 'als 2. Argument')
+
+    def _eb_filtere(self, *args):
+        self._pruefe_args('filtere', args, 2)
+        return self._hof_filtere(args[0], args[1], 'als 2. Argument')
+
+    def _eb_reduziere(self, *args):
+        if len(args) not in (2, 3):
+            raise TypeError(f"'reduziere' erwartet 2–3 Argumente, bekam {len(args)}")
+        return self._hof_reduziere(args[0], args[1], args[2:], 'als 2. Argument')
+
+    def _liste_abbilden(self, obj, args):
+        self._pruefe_args('abbilden', args, 1)
+        return self._hof_abbilden(obj, args[0], 'als Argument')
+
+    def _liste_filtere(self, obj, args):
+        self._pruefe_args('filtere', args, 1)
+        return self._hof_filtere(obj, args[0], 'als Argument')
+
+    def _liste_reduziere(self, obj, args):
+        if len(args) not in (1, 2):
+            raise TypeError(f"'reduziere' erwartet 1–2 Argumente, bekam {len(args)}")
+        return self._hof_reduziere(obj, args[0], args[1:], 'als Argument')
+
+    def _hof_abbilden(self, sammlung, f, wo_f):
+        elemente = self._hof_elemente('abbilden', sammlung)
+        self._pruefe_funktion('abbilden', f, 1, wo_f)
+        return [self._aufrufen(f, [e]) for e in elemente]
+
+    def _hof_filtere(self, sammlung, f, wo_f):
+        elemente = self._hof_elemente('filtere', sammlung)
+        self._pruefe_funktion('filtere', f, 1, wo_f)
+        return [e for e in elemente if self._ist_wahr(self._aufrufen(f, [e]))]
+
+    def _hof_reduziere(self, sammlung, f, start, wo_f):
+        """start: leeres Tupel (kein Startwert) oder (wert,) – 'nichts' ist ein gültiger Startwert."""
+        elemente = self._hof_elemente('reduziere', sammlung)
+        self._pruefe_funktion('reduziere', f, 2, wo_f)
+        if start:
+            ergebnis = start[0]
+        elif elemente:
+            ergebnis, elemente = elemente[0], elemente[1:]
+        else:
+            raise ValueError("'reduziere' kann eine leere Sammlung nicht ohne Startwert reduzieren")
+        for e in elemente:
+            ergebnis = self._aufrufen(f, [ergebnis, e])
+        return ergebnis
+
+    def _hof_elemente(self, name, sammlung):
+        """Elemente einer Liste, Menge (sortiert, damit das Ergebnis stabil ist) oder Zeichenkette als neue Liste."""
+        if isinstance(sammlung, (list, str)):
+            return list(sammlung)
+        if isinstance(sammlung, set):
+            return self._sortiert(list(sammlung))
+        raise TypeError(f"'{name}' erwartet als erstes eine Liste, Menge oder Zeichenkette, "
+                        f"bekam {self._typname(sammlung)}")
+
+    @staticmethod
+    def _argumente_text(n, dativ=False):
+        if n == 1:
+            return '1 Argument'
+        return f'{n} Argumenten' if dativ else f'{n} Argumente'
+
+    def _pruefe_funktion(self, name, f, n, wo):
+        """Stellt vorab sicher, dass f eine Funktion ist, die mit n Argumenten aufrufbar ist,
+        damit die Meldung auf Deutsch kommt (statt erst beim Aufruf, ggf. als Python-Fehler)."""
+        if isinstance(f, DeutschFunktion):
+            bereich = self._parameter_bereich(f.definition.parameter, 0)
+        elif isinstance(f, GebundeneMethode):
+            bereich = self._parameter_bereich(f.funktion.definition.parameter, 1)  # 'dies' ist schon belegt
+        elif callable(f):
+            bereich = self._python_bereich(f)
+        else:
+            raise TypeError(f"'{name}' erwartet {wo} eine Funktion, bekam {self._typname(f)}")
+        if bereich is None:
+            return
+        minimum, maximum = bereich
+        if n < minimum or (maximum is not None and n > maximum):
+            if maximum is None:
+                soll = f'mindestens {self._argumente_text(minimum)}'
+            elif minimum == maximum:
+                soll = f'genau {self._argumente_text(minimum)}'
+            else:
+                soll = f'{minimum} bis {self._argumente_text(maximum)}'
+            raise TypeError(f"'{name}': Die übergebene Funktion erwartet {soll}, "
+                            f"wird hier aber mit {self._argumente_text(n, dativ=True)} aufgerufen")
+
+    @staticmethod
+    def _parameter_bereich(parameter, abzug):
+        """(Minimum, Maximum|None) der positionalen Argumente einer Deutsch-Funktion; abzug: schon belegte vorne."""
+        feste = [p for p in parameter if not p[2]]
+        minimum = max((i + 1 for i, p in enumerate(feste) if p[1] is None), default=0)
+        maximum = None if len(feste) != len(parameter) else len(feste)
+        return max(minimum - abzug, 0), (None if maximum is None else max(maximum - abzug, 0))
+
+    @staticmethod
+    def _python_bereich(f):
+        """Wie _parameter_bereich für eingebaute Funktionen; None, wenn die Signatur unbekannt ist."""
+        try:
+            signatur = inspect.signature(f)
+        except (ValueError, TypeError):
+            return None
+        minimum, maximum = 0, 0
+        for p in signatur.parameters.values():
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD):
+                if maximum is not None:
+                    maximum += 1
+                if p.default is p.empty:
+                    minimum += 1
+            elif p.kind is p.VAR_POSITIONAL:
+                maximum = None
+        return minimum, maximum
 
     def _eb_abs(self, *args):
         self._pruefe_args('abs', args, 1); return abs(args[0])
@@ -1615,12 +1805,16 @@ class Interpreter:
             return self._funktion_aufrufen(fn.funktion, [fn.instanz] + args, kwargs)
         if callable(fn):
             if kwargs:
-                raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
+                ziel = fn.func if isinstance(fn, functools.partial) else fn
+                if not getattr(ziel, '_akzeptiert_keywords', False):
+                    raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
+                return fn(*args, **kwargs)
             return fn(*args)
         raise TypeError(f"'{self._zu_text(fn)}' ist nicht aufrufbar")
 
     def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
         kwargs = kwargs or {}
+        fname = fn.definition.name or '<anonym>'
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
 
         # Parameterstruktur analysieren
@@ -1630,14 +1824,14 @@ class Interpreter:
 
         unbekannt = set(kwargs) - set(param_namen)
         if unbekannt:
-            raise TypeError(f"'{fn.definition.name}' hat kein Parameter '{next(iter(unbekannt))}'")
+            raise TypeError(f"'{fname}' hat kein Parameter '{next(iter(unbekannt))}'")
         if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
             raise TypeError(
                 f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
             )
         if variadic_idx is None and len(args) > n_gesamt:
             raise TypeError(
-                f"'{fn.definition.name}' erwartet höchstens {n_gesamt} Argument(e), "
+                f"'{fname}' erwartet höchstens {n_gesamt} Argument(e), "
                 f"bekam {len(args)}"
             )
 
@@ -1650,7 +1844,7 @@ class Interpreter:
             if i < len(args):
                 if p_name in kwargs:
                     raise TypeError(
-                        f"'{fn.definition.name}' erhielt mehrere Werte für Parameter '{p_name}'"
+                        f"'{fname}' erhielt mehrere Werte für Parameter '{p_name}'"
                     )
                 wert = args[i]
             elif p_name in kwargs:
@@ -1664,13 +1858,13 @@ class Interpreter:
             fn_u.setze(p_name, wert)
 
         if fehlende:
-            raise TypeError(f"'{fn.definition.name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+            raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
-        self._aufruf_stack.append((fn.definition.name or '<anonym>', self._aktuelle_zeile))
+        self._aufruf_stack.append((fname, self._aktuelle_zeile))
         vorherige_datei = self._aktuelle_datei
         self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
         try:
-            kontext = f"Rückgabewert von '{fn.definition.name or '<anonym>'}'"
+            kontext = f"Rückgabewert von '{fname}'"
             try:
                 self._besuche(fn.definition.koerper, fn_u)
             except _ZurueckSignal as r:
