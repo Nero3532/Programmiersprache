@@ -22,6 +22,11 @@ Benötigt Python 3.10+.
 ```
 python main.py              # interaktive REPL
 python main.py datei.deu    # Datei ausführen
+python main.py datei.deu a b        # Argumente: kommandozeilen_argumente() → ["a", "b"]
+python main.py -c "drucke(1 + 2)"   # Code direkt ausführen
+python main.py --pruefen datei.deu  # nur auf Syntaxfehler prüfen, nichts ausführen
+python main.py --version            # Version (auch -V)
+python main.py --hilfe              # alle Optionen (auch -h, --help)
 ```
 
 Alternativ installierbar:
@@ -31,6 +36,14 @@ pip install -e .
 deutsch                     # interaktive REPL
 deutsch datei.deu           # Datei ausführen
 ```
+
+Als Modul, mit denselben Optionen wie `main.py` (unter Linux/macOS `python3 -m deutsch`):
+
+```
+py -m deutsch -c "drucke(2 ** 10)"
+```
+
+In der REPL zeigt `hilfe` die Befehle, `beenden` verlässt sie.
 
 ## Sprachüberblick
 
@@ -42,6 +55,8 @@ sei y = 3.14                 # Kommazahl
 sei s = "Text"                # Zeichenkette
 sei b = wahr                  # Wahrheitswert (wahr/falsch)
 sei n = nichts                 # Nichts (null)
+sei hex = 0xFF                # Zahlliterale: 0x Hex, 0b Binär, 0o Oktal
+sei million = 1_000_000       # Unterstriche zwischen Ziffern
 sei liste = [1, 2, 3]
 sei dict = {"a": 1, "b": 2}
 
@@ -64,8 +79,21 @@ selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
 Arithmetisch: `+ - * / % ** //` (Potenz, Ganzzahldivision), Verbund-Zuweisung: `+= -= *= /= %= **= //=`
 Vergleich: `== != < > <= >=` — auch verkettet: `1 < x < 10` (jeder Operand nur einmal ausgewertet)
 Logisch: `und oder nicht`
+Bitweise: `& | ^ ~` und Schieben `<< >>` für Ganzzahlen; Verbund-Zuweisung `&= |= ^= <<= >>=`
 Mitgliedschaft: `in`, `nicht in`
+Null-Koaleszenz: `a ?? b` (liefert `b` nur, wenn `a` gleich `nichts` ist)
 Ternär: `dann_wert wenn bedingung sonst sonst_wert`
+
+```
+0xFF & 0b1010                 # 10
+1 << 4                        # 16
+sei name = nichts
+drucke(name ?? "Gast")        # Gast
+```
+
+Vorrang (schwach → stark): Ternär `wenn … sonst` · `??` · `oder` · `und` · `nicht` · Vergleiche und `in` ·
+`|` · `^` · `&` · `<< >>` · `+ -` · `* / % //` · unär `- ~` · `**`.
+Wie in Python binden `& | ^` stärker als Vergleiche: `x & 1 == 0` ist `(x & 1) == 0`.
 
 `nicht` bindet schwächer als Vergleiche (wie in Python): `nicht a == b` ist `nicht (a == b)`. Steht `nicht`
 als Operand, etwa in `a == nicht b`, ist das ein Syntaxfehler; dann Klammern setzen: `a == (nicht b)`.
@@ -94,6 +122,8 @@ funktion addiere(a: Ganzzahl, b: Ganzzahl = 10) -> Ganzzahl {
 }
 
 sei quadrat = funktion(x) { zurück x * x }   # anonyme Funktion / Lambda
+sei kubik = funktion(x) -> x * x * x          # Kurzform: '-> ausdruck' statt '{ zurück … }'
+funktion verdopple(x) -> x * 2                # Kurzform auch benannt
 
 funktion summe(*zahlen) {                     # variadische Parameter
     sei s = 0
@@ -104,6 +134,21 @@ funktion summe(*zahlen) {                     # variadische Parameter
 addiere(b=5, a=3)          # Keyword-Argumente, beliebige Reihenfolge
 addiere(3, b=5)             # gemischt — positional muss vor Keyword stehen
 ```
+
+Der Ausdruck nach `->` reicht so weit wie möglich (wie Pythons `lambda`). Innerhalb von `( … )` dürfen
+Aufrufe, Parameterlisten und Klammerausdrücke über mehrere Zeilen gehen, auch mit einem abschließenden Komma.
+
+```
+abbilden([1, 2, 3], funktion(x) -> x * 10)          # [10, 20, 30]
+filtere([1, 2, 3, 4], funktion(x) -> x % 2 == 0)    # [2, 4]
+reduziere([1, 2, 3, 4], funktion(a, b) -> a + b)    # 10 (Startwert optional als 3. Argument)
+[3, 1, 2].filtere(funktion(x) -> x > 1).abbilden(funktion(x) -> x * 2)   # [6, 4]
+sortiere(["bb", "a", "ccc"], schluessel=laenge)     # [a, bb, ccc]
+```
+
+`abbilden`, `filtere` und `reduziere` nehmen Listen, Mengen (in sortierter Reihenfolge) und Zeichenketten;
+`abbilden` und `filtere` liefern immer eine Liste. Die Methodenform gibt es für Listen. `sortiere`, `max` und
+`min` nehmen `schluessel=f` (auch `schlüssel=`), `sortiere` zusätzlich `umgekehrt=wahr`.
 
 ### Klassen
 
@@ -185,6 +230,9 @@ m1.schnittmenge(m2)    # {2, 3}
 m1.differenz(m2)       # {1}
 menge([1, 1, 2, 2])    # {1, 2} – Umwandlung/Deduplizierung, menge() ohne Argument = leere Menge
 ```
+Die Operatoren `&` (Schnitt), `|` (Vereinigung) und `^` (symmetrische Differenz) funktionieren auch auf Mengen:
+`m1 & m2` ist `{2, 3}`.
+
 `{}` bleibt (wie in Python) ein leeres *Wörterbuch*, nicht eine leere Menge.
 
 ### String-Interpolation mit Format-Spezifizierer
@@ -228,7 +276,7 @@ erlaubt und führt sie erneut aus.
 **Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
 eingeschlossen), `mische(liste)` (mischt in-place)
 
-**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`
+**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`, `abbilden`, `filtere`, `reduziere`
 
 **Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`
 
@@ -278,6 +326,7 @@ für eine vollständige Demonstration.
 ```
 main.py              REPL / Datei-Runner / Fehleranzeige
 deutsch/
+  __main__.py          Aufruf als Modul (py -m deutsch)
   lexer.py            Tokenisierung
   parser.py            rekursiver Abstiegs-Parser
   ast_knoten.py         AST-Knotenklassen
