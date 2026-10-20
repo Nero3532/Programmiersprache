@@ -304,17 +304,20 @@ erlaubt und führt sie erneut aus.
 
 **Allgemein:** `drucke`, `eingabe`, `laenge`/`länge`, `typ`, `ganzzahl`, `kommazahl`, `zeichenkette`,
 `wahrheitswert`, `bereich`, `sortiere`, `anhaengen`/`anhängen`, `entferne`, `umkehren`, `verbinde`,
-`max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`
+`max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`, `eindeutig`, `zusammenfuehren`/`zusammenführen`
 
-**Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `logarithmus`, `exponential`,
-`boden`, `decke`, `ggt`, `kgv`, `vorzeichen`
+`runde` rundet kaufmännisch (ab ,5 vom Nullpunkt weg): `runde(2.5)` ergibt 3, `runde(2.675, 2)` ergibt 2.68.
+
+**Mathe:** `pi`, `e` (Konstanten), `wurzel`, `sinus`, `kosinus`, `tangens`, `arcsin`, `arccos`, `arctan`,
+`arctan2`, `logarithmus`, `exponential`, `boden`, `decke`, `ggt`, `kgv`, `vorzeichen`
 
 **Zufall:** `zufall()` (Kommazahl in [0,1)), `zufallszahl(min, max)` (Ganzzahl, beide Enden
 eingeschlossen), `mische(liste)` (mischt in-place)
 
-**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`, `abbilden`, `filtere`, `reduziere`
+**Funktional:** `summe`, `alle`, `einige`, `aufzaehlen`, `zippe`, `abbilden`, `filtere`, `reduziere`, `gruppiere`
 
-**Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`
+**Datei-I/O:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen`/`datei_anhängen`, `zeilen_lesen`,
+`datei_loeschen`/`datei_löschen`, `umbenennen`
 
 **JSON:** `json_lesen`, `json_schreiben` (Mengen werden beim Schreiben automatisch zu sortierten
 Listen konvertiert)
@@ -330,6 +333,7 @@ Stichprobe — definiert auch für einelementige Listen)
 
 **Datum/Zeit:** `jetzt()` (Unix-Epoch-Sekunden), `datum_formatieren(zeitstempel, format)`
 (Python-`strftime`-Direktiven, z. B. `"%Y-%m-%d"`)
+`datum_lesen(text, format)` ist das Gegenstück (liefert Epoch-Sekunden), `warte(sekunden)` hält die Ausführung an.
 
 **Kopieren:** `tiefe_kopie(wert)` — rekursive Kopie verschachtelter Listen/Wörterbücher/Mengen/
 Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen Strukturen
@@ -337,7 +341,8 @@ Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen St
 
 **Hashing/Kodierung:** `hash_sha256`, `base64_kodieren`, `base64_dekodieren`
 
-**Dateisystem:** `pfad_existiert`, `dateien_auflisten`, `ordner_erstellen`
+**Dateisystem:** `pfad_existiert`, `dateien_auflisten`, `ordner_erstellen`, `ist_datei`, `ist_ordner`,
+`pfad_verbinden`, `dateiname`, `ordnername`, `endung`
 
 **System:** `kommandozeilen_argumente()` — Argumente hinter dem Skriptnamen
 (`deutsch skript.deu a b` → `["a", "b"]`), `umgebungsvariable(name)`/`umgebungsvariable(name, standard)`
@@ -345,6 +350,14 @@ Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen St
 Listen, Zeichenketten, Wörterbücher und Mengen haben zusätzlich Methoden (`liste.laenge()`, `text.gross()`,
 `dict.schluessel()`, `menge.vereinigung()`, …) — siehe [beispiele/alle_features.deu](beispiele/alle_features.deu)
 für eine vollständige Demonstration.
+
+**Zeichenketten-Methoden:** `links_auffuellen(breite[, zeichen])` (auch `links_auffüllen`),
+`rechts_auffuellen(breite[, zeichen])` (auch `rechts_auffüllen`), `zentrieren(breite[, zeichen])`,
+`ersetze(alt, neu[, anzahl])`.
+
+**Listen-Methoden:** `eindeutig()`, `max()` und `min()` (mit `schluessel=`).
+
+**Wörterbuch-Methoden:** `zusammenfuehren(…)` (auch `zusammenführen`).
 
 ## Bekannte Einschränkungen
 
