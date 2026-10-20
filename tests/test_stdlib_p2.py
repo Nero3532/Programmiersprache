@@ -10,6 +10,7 @@ Ausführen mit:
 import datetime as dt
 import math
 import os
+import re
 import sys
 import tempfile
 import unittest
@@ -617,6 +618,60 @@ class TestDatumLesen(unittest.TestCase):
     def test_falsche_argumentzahl(self):
         with self.assertRaises(TypeError):
             auswerten('datum_lesen("2024-01-01")')
+
+
+class TestDatumFormatieren(unittest.TestCase):
+    def wertfehler(self, code, **variablen):
+        """Führt code aus, erwartet einen ValueError und gibt dessen Text ohne das 'Zeile N: ' zurück."""
+        with self.assertRaises(ValueError) as ctx:
+            auswerten(code, **variablen)
+        return re.sub(r'^Zeile \d+: ', '', str(ctx.exception))
+
+    def test_formatiert_zeitstempel(self):
+        self.assertEqual(auswerten('datum_formatieren(0, "%Y")'), '1970')
+        stempel = dt.datetime(2024, 3, 15, 10, 30).timestamp()
+        self.assertEqual(auswerten('datum_formatieren(stempel, "%d.%m.%Y %H:%M")', stempel=stempel),
+                         '15.03.2024 10:30')
+
+    def test_ganzzahl_und_kommazahl_als_zeitstempel(self):
+        self.assertEqual(auswerten('datum_formatieren(86400, "%Y")'), '1970')
+        self.assertEqual(auswerten('datum_formatieren(86400.5, "%Y")'), '1970')
+
+    def test_nicht_zahl_wirft_deutschen_wertfehler(self):
+        faelle = {'"x"': 'Zeichenkette', 'nichts': 'Nichts', '[1]': 'Liste'}
+        for wert, typname in faelle.items():
+            with self.subTest(wert=wert):
+                text = self.wertfehler(f'datum_formatieren({wert}, "%Y")')
+                self.assertEqual(
+                    text, f"'datum_formatieren' erwartet als Zeitstempel eine Zahl, bekam {typname}")
+                self.assertNotIn('argument must be', text)
+
+    def test_unendlich_und_nan_wirft_deutschen_wertfehler(self):
+        for wert, text in [(math.inf, 'inf'), (-math.inf, '-inf'), (math.nan, 'nan')]:
+            with self.subTest(wert=text):
+                self.assertEqual(
+                    self.wertfehler('datum_formatieren(stempel, "%Y")', stempel=wert),
+                    f"'datum_formatieren' erwartet als Zeitstempel eine endliche Zahl, bekam {text}")
+
+    def test_zeitstempel_ausserhalb_des_datumsbereichs(self):
+        for code in ('datum_formatieren(1e20, "%Y")', 'datum_formatieren(-1e20, "%Y")',
+                     'datum_formatieren(10 ** 30, "%Y")', 'datum_formatieren(1e12, "%Y")'):
+            with self.subTest(code=code):
+                text = self.wertfehler(code)
+                self.assertTrue(text.startswith('Zeitstempel '), text)
+                self.assertTrue(text.endswith(' liegt außerhalb des darstellbaren Datumsbereichs'), text)
+                self.assertNotIn('out of range', text)
+
+    def test_ungueltiges_format_wirft_deutschen_wertfehler(self):
+        # Ob ein Format ungültig ist, hängt von der Plattform ab: hier fällt strftime sicher aus
+        with mock.patch('deutsch.interpreter.datetime') as datum_klasse:
+            datum_klasse.fromtimestamp.return_value.strftime.side_effect = ValueError('Invalid format string')
+            text = self.wertfehler('datum_formatieren(0, "%Q")')
+        self.assertEqual(text, "Ungültiges Datumsformat '%Q'")
+
+    def test_falsche_argumentzahl(self):
+        with self.assertRaises(TypeError):
+            auswerten('datum_formatieren(0)')
 
 
 class TestUebersetzteFehlermeldungen(unittest.TestCase):

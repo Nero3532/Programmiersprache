@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import difflib
 
+from .lexer import SCHLUESSELWOERTER
 from .token_typen import TokenTyp
 from . import ast_knoten as ast
 
@@ -21,6 +22,50 @@ _VERBUND_OPS = {
     TokenTyp.KLEINER_KLEINER_GLEICH:   '<<',
     TokenTyp.GROESSER_GROESSER_GLEICH: '>>',
 }
+
+# Lesbare Namen der Token-Arten für Syntaxfehler: Symbole und Schlüsselwörter in Anführungszeichen,
+# der Rest als Wort. Jede Token-Art hat einen Eintrag (ein Test prüft das).
+_TOKEN_ANZEIGE = {
+    TokenTyp.GANZZAHL: 'Zahl',
+    TokenTyp.KOMMAZAHL: 'Zahl',
+    TokenTyp.ZEICHENKETTE: 'Zeichenkette',
+    TokenTyp.INTERP_ZEICHENKETTE: 'Zeichenkette',
+    TokenTyp.BEZEICHNER: 'Name',
+    TokenTyp.ZEILENENDE: 'Zeilenende',
+    TokenTyp.DATEIENDE: 'Dateiende',
+}
+for _wort, _typ in SCHLUESSELWOERTER.items():  # bei 'für'/'fuer' und 'zurück'/'zurueck' gilt die erste Schreibweise
+    _TOKEN_ANZEIGE.setdefault(_typ, f"'{_wort}'")
+for _typ, _zeichen in {
+    TokenTyp.PLUS: '+', TokenTyp.MINUS: '-', TokenTyp.STERN: '*', TokenTyp.SCHRAEGSTRICH: '/',
+    TokenTyp.PROZENT: '%', TokenTyp.GLEICH: '=', TokenTyp.DOPPELGLEICH: '==', TokenTyp.UNGLEICH: '!=',
+    TokenTyp.KLEINER: '<', TokenTyp.GROESSER: '>', TokenTyp.KLEINERGLEICH: '<=', TokenTyp.GROESSERGLEICH: '>=',
+    TokenTyp.STERN_STERN: '**', TokenTyp.SCHRAEGSTRICH_SCHRAEGSTRICH: '//',
+    TokenTyp.KAUFMANNSUND: '&', TokenTyp.SENKRECHT: '|', TokenTyp.HUT: '^', TokenTyp.TILDE: '~',
+    TokenTyp.KLEINER_KLEINER: '<<', TokenTyp.GROESSER_GROESSER: '>>', TokenTyp.FRAGE_FRAGE: '??',
+    TokenTyp.LPAREN: '(', TokenTyp.RPAREN: ')', TokenTyp.LGESCHWEIFTE: '{', TokenTyp.RGESCHWEIFTE: '}',
+    TokenTyp.LECKIG: '[', TokenTyp.RECKIG: ']', TokenTyp.KOMMA: ',', TokenTyp.PUNKT: '.',
+    TokenTyp.DOPPELPUNKT: ':', TokenTyp.SEMIKOLON: ';', TokenTyp.PFEIL: '->',
+}.items():
+    _TOKEN_ANZEIGE[_typ] = f"'{_zeichen}'"
+for _typ, _zeichen in _VERBUND_OPS.items():
+    _TOKEN_ANZEIGE[_typ] = f"'{_zeichen}='"
+del _wort, _typ, _zeichen
+
+
+def _art_anzeige(typ: TokenTyp) -> str:
+    """Lesbarer Name einer erwarteten Token-Art: ')', 'sonst', Name, Zeilenende, Dateiende …"""
+    return _TOKEN_ANZEIGE.get(typ, typ.name.lower())
+
+
+def _token_anzeige(t) -> str:
+    """Lesbare Anzeige eines gefundenen Tokens: sein Text in Anführungszeichen ('abc', '5', ')', 'fuer'),
+    sonst die Art (Zeichenkette, Zeilenende, Dateiende)."""
+    if t.typ in (TokenTyp.BEZEICHNER, TokenTyp.GANZZAHL, TokenTyp.KOMMAZAHL):
+        return f"'{t.wert}'"
+    if isinstance(t.wert, str) and t.typ not in (TokenTyp.ZEICHENKETTE, TokenTyp.ZEILENENDE):
+        return f"'{t.wert}'"  # Symbol oder Schlüsselwort, so geschrieben wie im Code
+    return _art_anzeige(t.typ)
 
 
 def _format_spec_trennen(code: str):
@@ -57,9 +102,13 @@ class Parser:
 
     # ---------------------------------------------------------------- Hilfsm.
 
-    def _fehler(self, msg: str):
+    def _fehler(self, msg: str, mit_gefunden: bool = True, zeile: int = None):
+        """Wirft einen Syntaxfehler 'Zeile N: msg (gefunden: …)' für das aktuelle Token.
+        mit_gefunden=False lässt die Angabe des gefundenen Tokens weg (wenn msg es schon nennt);
+        zeile überschreibt die Zeile des aktuellen Tokens."""
         t = self._aktuell()
-        raise SyntaxError(f'Zeile {t.zeile}: {msg} (gefunden: {t.typ.name!r})')
+        gefunden = f' (gefunden: {_token_anzeige(t)})' if mit_gefunden else ''
+        raise SyntaxError(f'Zeile {t.zeile if zeile is None else zeile}: {msg}{gefunden}')
 
     def _ueberspringe_umbrueche(self, p: int) -> int:
         while self.tokens[p].typ == TokenTyp.ZEILENENDE:  # letztes Token ist DATEIENDE
@@ -94,7 +143,7 @@ class Parser:
     def _verbrauche(self, typ: TokenTyp):
         t = self._aktuell()
         if t.typ != typ:
-            self._fehler(f'{typ.name!r} erwartet')
+            self._fehler(f'{_art_anzeige(typ)} erwartet')
         self.pos += 1
         return t
 
@@ -226,8 +275,10 @@ class Parser:
 
     def _namensmuster_lesen(self):
         """Liest ein Muster aus Namen '[a, *rest, [b, c]]' (das '[' steht noch) für 'sei' und 'für'.
-        Höchstens ein '*'-Eintrag; Muster dürfen verschachtelt sein; ein abschließendes Komma ist erlaubt."""
+        Höchstens ein '*'-Eintrag; Muster dürfen verschachtelt sein; ein abschließendes Komma ist erlaubt.
+        Zeilenumbrüche innerhalb der Klammern werden ignoriert (auch in verschachtelten Mustern)."""
         self._verbrauche(TokenTyp.LECKIG)
+        self._umbrueche_ignorieren.append(True)
         ziele = []
         rest = None
         while True:
@@ -247,6 +298,7 @@ class Parser:
             if self._aktuell().typ == TokenTyp.RECKIG:
                 break  # abschließendes Komma: sei [a, b,] = …
         self._verbrauche(TokenTyp.RECKIG)
+        self._umbrueche_ignorieren.pop()
         return ast.Muster(ziele, rest)
 
     def _parameter_lesen(self):
@@ -268,7 +320,11 @@ class Parser:
                 variadic = True
                 self.pos += 1
 
-            name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            name_token = self._verbrauche(TokenTyp.BEZEICHNER)
+            name = name_token.wert
+            if any(p[0] == name for p in params) or (kwargs_parameter and kwargs_parameter[0] == name):
+                self._fehler(f"Der Parametername '{name}' ist doppelt vergeben",
+                             mit_gefunden=False, zeile=name_token.zeile)
 
             # Optionaler Typ-Hinweis: name: Typ  (auch mit Punktpfad: name: modul.Klasse)
             typhinweis = None
@@ -286,8 +342,6 @@ class Parser:
                 default = self._ausdruck()
 
             if doppelstern:
-                if any(p[0] == name for p in params):
-                    self._fehler(f"Der Parametername '{name}' ist doppelt vergeben")
                 kwargs_parameter = (name, typhinweis)
                 # **name muss letzter Parameter sein; ein abschließendes Komma ist erlaubt
                 if self._aktuell().typ == TokenTyp.KOMMA:
@@ -308,6 +362,10 @@ class Parser:
                     elif folgt == TokenTyp.STERN_STERN:
                         self.pos += 1
                         continue
+                    else:
+                        self.pos += 1
+                        self._fehler(f"Nach dem Rest-Parameter '*{name}' darf nur noch ein "
+                                     f"'**name'-Parameter folgen")
                 break
 
             if self._aktuell().typ != TokenTyp.KOMMA:
@@ -401,17 +459,11 @@ class Parser:
     def _klassenkoerper_fehler(self):
         """Meldet ein Token, das im Klassenkörper nicht erlaubt ist."""
         t = self._aktuell()
-        if t.typ == TokenTyp.ZEICHENKETTE:
-            gefunden = 'Zeichenkette'
-        elif isinstance(t.wert, str):
-            gefunden = t.wert
-        else:
-            gefunden = t.typ.name
-        msg = (f"Im Klassenkörper nicht erlaubt: '{gefunden}' – erlaubt sind nur "
+        msg = (f"Im Klassenkörper nicht erlaubt: {_token_anzeige(t)} – erlaubt sind nur "
                f"'funktion', 'statisch funktion', 'sei' und 'konstante'")
         if t.typ == TokenTyp.BEZEICHNER:
             treffer = difflib.get_close_matches(
-                gefunden, _KLASSENKOERPER_SCHLUESSELWOERTER, n=1, cutoff=0.6)
+                t.wert, _KLASSENKOERPER_SCHLUESSELWOERTER, n=1, cutoff=0.6)
             if treffer:
                 msg += f" – meintest du '{treffer[0]}'?"
         raise SyntaxError(f'Zeile {t.zeile}: {msg}')
@@ -872,7 +924,7 @@ class Parser:
             self._fehler("'nicht' ist als Operand nicht erlaubt – setze Klammern, "
                          "z. B. 'a == (nicht b)'")
 
-        self._fehler(f'Unerwartetes Token {t.typ.name!r}')
+        self._fehler('Ausdruck erwartet')
 
     def _interp_zeichenkette(self, token):
         """Parst eine interpolierte Zeichenkette – Sub-Parser für Code-Teile."""

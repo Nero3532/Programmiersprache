@@ -1454,10 +1454,21 @@ class Interpreter:
     def _eb_datum_formatieren(self, *args):
         self._pruefe_args('datum_formatieren', args, 2)
         zeitstempel, format_str = args[0], self._zu_text(args[1])
+        if not isinstance(zeitstempel, (int, float)):
+            raise ValueError(f"'datum_formatieren' erwartet als Zeitstempel eine Zahl, "
+                             f"bekam {self._typname(zeitstempel)}")
+        if isinstance(zeitstempel, float) and not math.isfinite(zeitstempel):
+            raise ValueError(f"'datum_formatieren' erwartet als Zeitstempel eine endliche Zahl, "
+                             f"bekam {self._zu_text(zeitstempel)}")
         try:
-            return datetime.fromtimestamp(zeitstempel).strftime(format_str)
-        except (TypeError, ValueError, OSError) as e:
-            raise ValueError(f"Ungültiger Zeitstempel oder Format: {e}")
+            datum = datetime.fromtimestamp(zeitstempel)
+        except (OverflowError, OSError, ValueError):  # welche Art, hängt von Wert und Plattform ab
+            raise ValueError(f"Zeitstempel {self._zu_text(zeitstempel)} liegt außerhalb des "
+                             f"darstellbaren Datumsbereichs") from None
+        try:
+            return datum.strftime(format_str)
+        except (ValueError, OSError):  # z. B. ungültige Formatangabe (je nach Plattform)
+            raise ValueError(f"Ungültiges Datumsformat '{format_str}'") from None
 
     def _eb_datum_lesen(self, *args):
         """Gegenstück zu datum_formatieren: Text nach Formatangabe -> Zeitstempel (lokale Zeit, wie jetzt())."""
