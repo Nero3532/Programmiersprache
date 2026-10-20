@@ -361,7 +361,7 @@ class TestRepl(unittest.TestCase):
         code, ausgabe, _ = starte(eingabe='drucke(1))\ndrucke(7)\nbeenden\n')
         self.assertEqual(code, 0)
         self.assertNotIn('... ', ausgabe)        # keine Folgezeile angefordert
-        self.assertIn('SyntaxError', ausgabe)    # Fehler sofort angezeigt
+        self.assertIn('[SyntaxFehler]', ausgabe)    # Fehler sofort angezeigt
         self.assertIn('7', ausgabe.split())      # REPL läuft danach weiter
 
     def test_dreifach_zeichenkette_ueber_mehrere_zeilen(self):
