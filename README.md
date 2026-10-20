@@ -66,10 +66,10 @@ sei [a, b, c] = [1, 2, 3]     # Destrukturierung
 sei [kopf, *rest] = [1, 2, 3] # Rest-Muster: rest ist [2, 3]
 sei [x, [y, z]] = [1, [2, 3]] # verschachtelte Muster
 
-konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
+konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypFehler
 ```
 
-Neue Variablen entstehen nur durch `sei`; eine Zuweisung an einen nicht deklarierten Namen wirft `NameError`.
+Neue Variablen entstehen nur durch `sei`; eine Zuweisung an einen nicht deklarierten Namen wirft `NamensFehler`.
 Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der Deklaration.
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
@@ -190,7 +190,7 @@ neu Hund(name="Rex")                          # Keyword-Argumente auch bei neu
 
 klasse Zaehler {
     sei anzahl = 0                            # Klassenattribut, geteilt von allen Instanzen
-    konstante MAX = 1000                      # Klassenkonstante — Neuzuweisung wirft TypeError
+    konstante MAX = 1000                      # Klassenkonstante — Neuzuweisung wirft TypFehler
     funktion __init__(dies) { Zaehler.anzahl += 1 }
     statisch funktion aktuelle_anzahl() { zurück Zaehler.anzahl }   # kein 'dies' → statisch
 }
@@ -220,19 +220,37 @@ versuche {
     drucke("Immer ausgeführt")
 }
 
-pruefe 1 + 1 == 2                       # AssertionError bei Fehlschlag
+pruefe 1 + 1 == 2                       # ZusicherungsFehler bei Fehlschlag
 pruefe x > 0, "x muss positiv sein"     # optionale eigene Meldung
 
 versuche {
     sei d = {}
     d["fehlt"]
-} fange (SchluesselFehler, IndexError) f {   # nur diese Fehlerarten fangen, Rest propagiert weiter
+} fange (SchluesselFehler, IndexFehler) f {   # nur diese Fehlerarten fangen, Rest propagiert weiter
     drucke(f)
 }
 ```
-Typ-Namen beim typisierten `fange` sind die intern verwendeten (teils englischen) Klassennamen,
-wie sie auch in der Fehleranzeige erscheinen (`TypeError`, `ValueError`, `SchluesselFehler`,
-`AusnahmeFehler`, …). Auch Basisklassen matchen — `fange (KeyError) f` fängt auch `SchluesselFehler`.
+Die Fehlerarten haben deutsche Namen; sie stehen auch im Fehlerkopf der CLI, z. B.
+`[DivisionDurchNullFehler] Zeile 1: Division durch Null`:
+
+| Deutsch | Python | Deutsch | Python |
+|---|---|---|---|
+| `Fehler` | `Exception` (Oberbegriff, fängt alles) | `LaufzeitFehler` | `RuntimeError` |
+| `TypFehler` | `TypeError` | `RekursionsFehler` | `RecursionError` |
+| `WertFehler` | `ValueError` | `ZusicherungsFehler` | `AssertionError` |
+| `NamensFehler` | `NameError` | `ImportFehler` | `ImportError` |
+| `IndexFehler` | `IndexError` | `EingabeEndeFehler` | `EOFError` |
+| `SchluesselFehler` | `KeyError` | `DivisionDurchNullFehler` | `ZeroDivisionError` |
+| `AttributFehler` | `AttributeError` | `UeberlaufFehler` | `OverflowError` |
+| `DateiFehler` | `OSError` | `SyntaxFehler` | `SyntaxError` |
+
+`fange (…)` versteht diese Namen und die englischen Python-Namen (`fange (KeyError) f`), auch gemischt.
+Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`, `fange (LaufzeitFehler)`
+fängt auch `RekursionsFehler`. `fange (Fehler)` fängt alles, auch mit `werfe` geworfene Werte.
+Diese haben die Art `AusnahmeFehler` (`fange (AusnahmeFehler) e { … }`) und werden von den übrigen Arten
+nicht gefangen. Ein unbekannter Name, etwa ein Tippfehler, wirft einen `NamensFehler` mit Vorschlag
+(`meintest du 'WertFehler'?`).
+
 Ohne Typ-Liste (`fange f { ... }`) bleibt das bisherige Verhalten: alles wird gefangen.
 
 ### Listen/Strings: Indexing & Slicing
@@ -296,7 +314,7 @@ Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindun
 unter `name.attribut` erreichbar, ohne den aufrufenden Scope zu verändern.
 Relative Pfade in `lade` gelten ab dem Ordner der ladenden Datei.
 
-Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportError`
+Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportFehler`
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
 erlaubt und führt sie erneut aus.
 
@@ -337,7 +355,7 @@ Stichprobe — definiert auch für einelementige Listen)
 
 **Kopieren:** `tiefe_kopie(wert)` — rekursive Kopie verschachtelter Listen/Wörterbücher/Mengen/
 Instanzen (im Unterschied zum flachen `.kopiere()`); bei selbstreferenziellen Strukturen
-(`l.anhängen(l)`) `RecursionError` statt Endlosschleife
+(`l.anhängen(l)`) `RekursionsFehler` statt Endlosschleife
 
 **Hashing/Kodierung:** `hash_sha256`, `base64_kodieren`, `base64_dekodieren`
 
