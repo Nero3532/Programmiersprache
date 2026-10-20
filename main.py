@@ -93,6 +93,7 @@ _STACK_STUFEN_MB = (128, 64, 32, 16)        # Windows reserviert den Stack sofor
 _STACK_BYTES_PRO_FRAME = 2048               # großzügig geschätzt (real ca. 0,3-1 KB)
 _LIMIT_OHNE_THREAD = 10000                  # wie früher, falls kein Thread startet
 _STOPP_WARTEZEIT = 1.0                      # Sekunden, die ein Strg+C auf das Ende wartet
+_FREIGABE_WARTEZEIT = 60.0                  # Sicherung: so lange wartet der Thread höchstens auf die Freigabe
 
 
 def _thread_starten(ziel, ablage=None):
@@ -130,23 +131,33 @@ def _thread_starten(ziel, ablage=None):
             pass
 
 
-def _thread_unterbrechen(thread, fertig) -> bool:
+def _ausnahme_zustellen(ident, art) -> int:
+    """Stellt dem Thread mit der Kennung ident die Ausnahme art zu (PyThreadState_SetAsyncExc).
+    Gibt die Anzahl der getroffenen Threads zurück: 1 im Normalfall, 0 wenn es ihn nicht mehr gibt."""
+    import ctypes  # erst hier laden (kostet beim Start ~60 ms)
+    zustellen = ctypes.pythonapi.PyThreadState_SetAsyncExc
+    anzahl = zustellen(ctypes.c_ulong(ident), ctypes.py_object(art))
+    if anzahl > 1:  # laut C-API-Doku ein Fehler: Zustellung zurücknehmen
+        zustellen(ctypes.c_ulong(ident), None)
+    return anzahl
+
+
+def _thread_unterbrechen(thread, bereit, fertig) -> bool:
     """Löst im Thread ein KeyboardInterrupt aus (Strg+C) und wartet kurz.
-    Gibt True zurück, wenn der Thread danach beendet ist."""
-    if fertig.is_set():
-        # Schon fertig: nichts zu unterbrechen. Vor allem keine Ausnahme an eine
-        # Thread-ID schicken, die das Betriebssystem inzwischen neu vergeben haben kann.
-        return True
-    # ctypes erst hier laden (kostet beim Start ~60 ms). Der Thread rechnet
-    # eventuell in einer Endlosschleife und hält die GIL; mit kurzem
+    Gibt True zurück, wenn der Thread danach beendet ist.
+
+    Zugestellt wird nur, wenn der Thread seinen geschützten Bereich in im_grossen_stack
+    erreicht hat (bereit). Davor sieht er den Abbruch-Merker selbst; danach bleibt er dort,
+    bis der Aufrufer die Freigabe gibt. So trifft die Ausnahme nie den Start oder das Ende
+    des Threads (dort würde sie als Fehlermeldung des Threads ausgegeben)."""
+    if fertig.is_set() or not bereit.is_set():
+        return fertig.wait(_STOPP_WARTEZEIT)
+    # Der Thread rechnet eventuell in einer Endlosschleife und hält die GIL; mit kurzem
     # Umschaltintervall kommt dieser Thread trotzdem schnell zum Zug.
     altes_intervall = sys.getswitchinterval()
     try:
         sys.setswitchinterval(1e-5)
-        if thread.ident is not None:  # None: Thread ist noch nicht richtig gestartet
-            import ctypes
-            ctypes.pythonapi.PyThreadState_SetAsyncExc(
-                ctypes.c_ulong(thread.ident), ctypes.py_object(KeyboardInterrupt))
+        _ausnahme_zustellen(thread.ident, KeyboardInterrupt)
     except Exception:
         pass
     finally:
@@ -168,16 +179,29 @@ def im_grossen_stack(funktion, *args):
     ergebnis = {}
     fertig = threading.Event()  # zuverlässiger als Thread.is_alive() nach Strg+C
     abbruch = threading.Event()  # Strg+C kam schon, bevor der Thread loslief
+    bereit = threading.Event()  # Thread steht im geschützten Bereich (ab hier wird zugestellt)
+    freigabe = threading.Event()  # Aufrufer stellt nichts mehr zu: Thread darf enden
     angelegt = []  # der Thread, sobald er angelegt ist (auch bei Strg+C mitten im Start)
 
     def arbeit():
+        # Geschützter Bereich: ein zugestelltes Strg+C (siehe _thread_unterbrechen) kommt nur
+        # zwischen bereit.set() und dem Ende von freigabe.wait() an, also in diesem try.
+        # Die try-Körper bestehen bewusst nur aus Aufrufen, ohne Schleife: CPython 3.13 übergeht
+        # bei einer zugestellten Ausnahme die Handler des Frames, der gerade am Rücksprung
+        # einer Schleife steht (python/cpython#139622); ein Frame, der in einem Aufruf steht,
+        # fängt sie in jeder Version.
         try:
-            if not abbruch.is_set():
-                ergebnis['wert'] = funktion(*args)
-        except BaseException as e:
-            ergebnis['fehler'] = e
-        finally:
-            fertig.set()
+            try:
+                bereit.set()
+                if not abbruch.is_set():
+                    ergebnis['wert'] = funktion(*args)
+            except BaseException as e:
+                ergebnis['fehler'] = e
+            finally:
+                fertig.set()
+            freigabe.wait(_FREIGABE_WARTEZEIT)
+        except KeyboardInterrupt:
+            fertig.set()  # Strg+C kam erst nach dem Ende der Ausführung an: nichts mehr zu tun
 
     altes_limit = sys.getrecursionlimit()
     ohne_thread = False
@@ -193,13 +217,14 @@ def im_grossen_stack(funktion, *args):
         except KeyboardInterrupt:
             if not angelegt:
                 raise  # kein Thread: Strg+C vor dem Start oder im Rückfall ohne Thread
-            abbruch.set()  # vor dem Lesen von thread.ident (siehe _thread_unterbrechen)
-            if not _thread_unterbrechen(angelegt[0], fertig):
+            abbruch.set()  # vor dem Prüfen von bereit (siehe _thread_unterbrechen)
+            if not _thread_unterbrechen(angelegt[0], bereit, fertig):
                 # Thread steckt fest (z. B. in eingabe()): Prozess beenden,
                 # der Daemon-Thread wird dabei verworfen.
                 raise SystemExit(130)
             raise
     finally:
+        freigabe.set()
         sys.setrecursionlimit(altes_limit)
 
     if ohne_thread:

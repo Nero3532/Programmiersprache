@@ -279,23 +279,40 @@ class TestGrosserStack(unittest.TestCase):
         Fehlerfall und großzügig, damit auch ein langsamer CI-Runner nicht stört.
         zustand_pruefen: prüft zusätzlich, dass Rekursionslimit und Stackgröße des
         Aufrufers unverändert sind - nur sinnvoll, wenn das Strg+C nicht mitten im
-        Start landen kann (dort ist ein unwiederbringlicher Zwischenzustand möglich)."""
+        Start landen kann (dort ist ein unwiederbringlicher Zwischenzustand möglich).
+
+        Ziel: Der Thread endet durch das zugestellte KeyboardInterrupt, der aufrufende Thread
+        bekommt genau eines. Die Schleife steht in einer eigenen Funktion, der Handler eine
+        Ebene darüber: CPython 3.13 übergeht die Handler des Frames, der gerade am Rücksprung
+        einer Schleife steht (python/cpython#139622); eine Ebene höher kommt die Ausnahme
+        in jeder Version an."""
         beenden = threading.Event()
         laeuft = laeuft if laeuft is not None else threading.Event()
-        gestoppt = []
+        ausfuehrung = []    # der Ausführungs-Thread
+        im_thread = []      # (Thread-Kennung, Art) jeder Ausnahme, die dort ankam
+        zustellungen = []   # [Ziel-Kennung, Rückgabewert von PyThreadState_SetAsyncExc]
+        nachlauf = []       # Ausnahmen, die danach noch im aufrufenden Thread ankamen
+
+        def rechnen(frist):
+            while not beenden.is_set() and time.monotonic() < frist:
+                pass
 
         def endlosschleife():
-            frist = time.monotonic() + 60
+            ausfuehrung.append(threading.current_thread())
             try:
                 laeuft.set()
-                while not beenden.is_set() and time.monotonic() < frist:
-                    pass
+                rechnen(time.monotonic() + 60)
             except BaseException as e:
-                # Art festhalten statt nur KeyboardInterrupt zu erwarten: Python 3.13 stellt
-                # die per PyThreadState_SetAsyncExc geschickte Ausnahme in CI anders zu.
-                # Entscheidend ist, dass der Thread durch die Unterbrechung endet.
-                gestoppt.append(type(e).__name__)
+                im_thread.append((threading.get_ident(), type(e).__name__))
                 raise
+
+        echt_zustellen = main_modul._ausnahme_zustellen
+
+        def zustellen(ident, art):
+            eintrag = [ident, 'keiner (Ausnahme kam schon hier an)']
+            zustellungen.append(eintrag)
+            eintrag[1] = echt_zustellen(ident, art)
+            return eintrag[1]
 
         vorher_limit = sys.getrecursionlimit()
         vorher_stack = threading.stack_size()
@@ -304,17 +321,31 @@ class TestGrosserStack(unittest.TestCase):
         try:
             # Das Warten auf den Thread nach dem Strg+C darf lange dauern (Sicherung gegen
             # SystemExit(130) auf einem überlasteten Rechner); im Normalfall endet es sofort.
-            with mock.patch.object(main_modul, '_STOPP_WARTEZEIT', 30):
-                with self.assertRaises(KeyboardInterrupt):
+            with mock.patch.object(main_modul, '_STOPP_WARTEZEIT', 30), \
+                    mock.patch.object(main_modul, '_ausnahme_zustellen', zustellen):
+                with self.assertRaises(KeyboardInterrupt) as ctx:
                     im_grossen_stack(endlosschleife)
+            try:  # eine fehlgeleitete Ausnahme käme spätestens hier im aufrufenden Thread an
+                rechnen(time.monotonic() + 0.05)
+            except BaseException as e:
+                nachlauf.append(type(e).__name__)
         finally:
             beenden.set()
             sender.join(30)
-        self.assertEqual(len(gestoppt), 1,
-                         f'Thread wurde nicht durch eine Ausnahme gestoppt: {gestoppt} '
-                         f'(Python {sys.version_info[0]}.{sys.version_info[1]})')
-        if sys.version_info[:2] != (3, 13):
-            self.assertEqual(gestoppt, ['KeyboardInterrupt'])
+        for thread in ausfuehrung:
+            thread.join(30)
+        diagnose = (f'Python {sys.version.split()[0]}; Zustellungen (Ziel, Rückgabe): {zustellungen}; '
+                    f'Ausführungs-Thread: {[t.ident for t in ausfuehrung]}, aufrufender Thread: '
+                    f'{threading.get_ident()}; im Thread angekommen: {im_thread}; danach im '
+                    f'aufrufenden Thread: {nachlauf}; Vorgänger der Ausnahme im aufrufenden Thread: '
+                    f'{type(ctx.exception.__context__).__name__}')
+        self.assertEqual(len(ausfuehrung), 1, diagnose)
+        self.assertEqual(im_thread, [(ausfuehrung[0].ident, 'KeyboardInterrupt')], diagnose)
+        self.assertFalse(ausfuehrung[0].is_alive(), diagnose)
+        # Genau ein KeyboardInterrupt im aufrufenden Thread: ein zweites wäre während der
+        # Behandlung des ersten entstanden (Vorgänger) oder käme im Nachlauf an.
+        self.assertNotIsInstance(ctx.exception.__context__, KeyboardInterrupt, diagnose)
+        self.assertEqual(nachlauf, [], diagnose)
         if zustand_pruefen:  # auch nach Strg+C bleibt der Zustand des Aufrufers unverändert
             self.assertEqual(sys.getrecursionlimit(), vorher_limit)
             self.assertEqual(threading.stack_size(), vorher_stack)
@@ -366,6 +397,39 @@ class TestGrosserStack(unittest.TestCase):
 
         with mock.patch.object(main_modul, '_thread_starten', start_dann_strg_c):
             self._endlosschleife_mit_strg_c(kein_sender, laeuft)
+
+    def test_spaet_zugestelltes_strg_c_bleibt_im_thread(self):
+        """Erreicht das Strg+C den Thread erst, als die Ausführung schon zu Ende ist, fängt der
+        Thread es selbst ab: keine Fehlermeldung des Threads, nichts im aufrufenden Thread."""
+        ausfuehrung = []
+        thread_fehler = []
+        zustellungen = []  # Rückgabewerte von PyThreadState_SetAsyncExc
+        echtes_warten = main_modul._auf_ende_warten
+
+        def ausfuehren():
+            ausfuehrung.append(threading.current_thread())
+            return 42
+
+        def warten_dann_strg_c(fertig):
+            echtes_warten(fertig)  # die Ausführung ist zu Ende
+            raise KeyboardInterrupt
+
+        def unterbrechen(thread, bereit, fertig):
+            # Wie _thread_unterbrechen, aber ohne die Abkürzung für einen fertigen Thread:
+            # so trifft die Zustellung sicher den Zeitraum nach dem Ende.
+            zustellungen.append(main_modul._ausnahme_zustellen(thread.ident, KeyboardInterrupt))
+            return fertig.wait(30)
+
+        with mock.patch.object(main_modul, '_auf_ende_warten', warten_dann_strg_c), \
+                mock.patch.object(main_modul, '_thread_unterbrechen', unterbrechen), \
+                mock.patch.object(threading, 'excepthook', thread_fehler.append), \
+                mock.patch.object(sys, 'unraisablehook', thread_fehler.append):
+            with self.assertRaises(KeyboardInterrupt):
+                im_grossen_stack(ausfuehren)
+            ausfuehrung[0].join(30)
+        self.assertEqual(zustellungen, [1])
+        self.assertFalse(ausfuehrung[0].is_alive())
+        self.assertEqual(thread_fehler, [])
 
 
 class TestRekursionImProgramm(unittest.TestCase):
