@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from deutsch import ast_knoten as ast
 from deutsch.lexer import Lexer
-from deutsch.parser import Parser
+from deutsch.parser import Parser, _TOKEN_ANZEIGE
 from deutsch.interpreter import Interpreter
 from deutsch.token_typen import TokenTyp
 
@@ -548,7 +548,8 @@ class TestMehrzeiligeKlammern(_Basis):
     def test_fehler_nicht_geschlossene_klammer(self):
         msg = self.syntaxfehler('drucke(1,\n2')
         self.assertIn('Zeile 2', msg)
-        self.assertIn('RPAREN', msg)
+        self.assertIn("')' erwartet", msg)
+        self.assertIn('Dateiende', msg)
 
     def test_fehler_fehlendes_komma_ueber_zeilen(self):
         msg = self.syntaxfehler('drucke(1\n2)')
@@ -558,7 +559,7 @@ class TestMehrzeiligeKlammern(_Basis):
         # Umbruch vor einer Klammer-auf-Anweisung bleibt ein Trenner: das 'sei x =' hat keinen Wert
         msg = self.syntaxfehler('sei x =\n5')
         self.assertIn('Zeile 1', msg)
-        self.assertIn('ZEILENENDE', msg)
+        self.assertIn('Zeilenende', msg)
 
     def test_fehler_in_parameterliste(self):
         msg = self.syntaxfehler('funktion f(a,\n  b,\n  1) { }')
@@ -628,6 +629,257 @@ class TestInterpolationZeilen(_Basis):
 
     def test_formatangabe_mit_groesser_kleiner_unveraendert(self):
         self.assertEqual(ausgabe('sei a = 5\ndrucke("[{a:>4}] [{a:<4}] [{a:^5}]")'), '[   5] [5   ] [  5  ]\n')
+
+
+# ---------------------------------------------------------------------------
+# 6. Mehrzeilige Muster bei 'sei' und 'für'
+# ---------------------------------------------------------------------------
+
+class TestMehrzeiligeMuster(_Basis):
+    def test_sei_mehrzeilig(self):
+        self.assertEqual(ausgabe('sei [\n  a,\n  b\n] = [1, 2]\ndrucke(a, b)'), '1 2\n')
+
+    def test_sei_umbruch_nur_vor_der_schliessenden_klammer(self):
+        self.assertEqual(ausgabe('sei [a, b\n] = [1, 2]\ndrucke(a, b)'), '1 2\n')
+
+    def test_sei_umbruch_nur_nach_der_oeffnenden_klammer(self):
+        self.assertEqual(ausgabe('sei [\na, b] = [1, 2]\ndrucke(a, b)'), '1 2\n')
+
+    def test_sei_mit_rest(self):
+        self.assertEqual(ausgabe('sei [\n  kopf,\n  *rest\n] = [1, 2, 3]\ndrucke(kopf, rest)'), '1 [2, 3]\n')
+
+    def test_sei_verschachtelt_mit_abschliessendem_komma(self):
+        code = 'sei [\n  a,\n  [\n    b,\n    *c\n  ],\n] = [1, [2, 3, 4]]\ndrucke(a, b, c)'
+        self.assertEqual(ausgabe(code), '1 2 [3, 4]\n')
+
+    def test_fuer_mehrzeilig(self):
+        code = 'für [\n  i,\n  w\n] in aufzaehlen(["x", "y"]) {\n  drucke(i, w)\n}'
+        self.assertEqual(ausgabe(code), '0 x\n1 y\n')
+
+    def test_fuer_verschachtelt_mit_rest(self):
+        code = ('für [\n  i,\n  [\n    kopf,\n    *rest\n  ]\n] in aufzaehlen([[1, 2, 3]]) {\n'
+                '  drucke(i, kopf, rest)\n}')
+        self.assertEqual(ausgabe(code), '0 1 [2, 3]\n')
+
+    def test_listen_comprehension_mehrzeilig(self):
+        self.assertEqual(ausgabe('drucke([a + b für [\n  a,\n  b\n] in [[1, 2], [3, 4]]])'), '[3, 7]\n')
+
+    def test_zuweisung_mehrzeilig_wie_bisher(self):
+        self.assertEqual(ausgabe('sei a = 0\nsei b = 0\n[\n  a,\n  b\n] = [3, 4]\ndrucke(a, b)'), '3 4\n')
+
+    def test_anweisungen_danach_bleiben_zeilenweise_getrennt(self):
+        code = 'sei [\n  a,\n  b\n] = [1, 2]\nsei c = 3\ndrucke(a, b, c)'
+        self.assertEqual(ausgabe(code), '1 2 3\n')
+
+    def test_muster_in_funktionsrumpf(self):
+        code = 'funktion f(l) {\n  sei [\n    x,\n    y\n  ] = l\n  zurück x * y\n}\ndrucke(f([3, 4]))'
+        self.assertEqual(ausgabe(code), '12\n')
+
+    def test_umbruchzustand_wird_nach_dem_muster_zurueckgesetzt(self):
+        # Hinter dem Muster gilt wieder: ein Umbruch beendet die Anweisung ('sei x =' hat keinen Wert)
+        msg = self.syntaxfehler('sei [\n  a\n] = [1]\nsei x =\n5')
+        self.assertIn('Zeile 4', msg)
+        self.assertIn('Zeilenende', msg)
+
+    def test_fehler_umbruch_vor_gleichzeichen(self):
+        msg = self.syntaxfehler('sei [\n  a,\n  b\n]\n= [1, 2]')
+        self.assertIn('Zeile 4', msg)
+        self.assertIn("'=' erwartet", msg)
+        self.assertIn('Zeilenende', msg)
+
+    def test_fehler_nicht_geschlossenes_muster(self):
+        msg = self.syntaxfehler('sei [\n  a,\n  b\n= [1, 2]')
+        self.assertIn('Zeile 4', msg)
+        self.assertIn("']' erwartet", msg)
+        self.assertIn("(gefunden: '=')", msg)
+
+    def test_fehler_leeres_muster(self):
+        msg = self.syntaxfehler('sei [\n] = [1]')
+        self.assertIn('Zeile 2', msg)
+        self.assertIn("Name erwartet (gefunden: ']')", msg)
+
+    def test_fehler_zwei_rest_eintraege(self):
+        msg = self.syntaxfehler('sei [\n  *a,\n  *b\n] = [1, 2]')
+        self.assertIn("höchstens ein '*'", msg)
+        self.assertIn('Zeile 3', msg)
+
+    def test_fehler_kein_name_im_muster(self):
+        msg = self.syntaxfehler('für [\n  i,\n  5\n] in [[1, 2]] { }')
+        self.assertIn('Zeile 3', msg)
+        self.assertIn("Name erwartet (gefunden: '5')", msg)
+
+
+# ---------------------------------------------------------------------------
+# 7. Doppelte Parameternamen
+# ---------------------------------------------------------------------------
+
+class TestDoppelteParameter(_Basis):
+    def test_verschiedene_namen_sind_erlaubt(self):
+        self.assertEqual(ausgabe('funktion f(a, b, *r, **k) { zurück a }\ndrucke(f(1, 2))'), '1\n')
+
+    def test_gleicher_name_in_verschiedenen_funktionen_ist_erlaubt(self):
+        code = 'funktion f(a) { zurück a }\nfunktion g(a) { zurück f(a) + 1 }\ndrucke(g(1))'
+        self.assertEqual(ausgabe(code), '2\n')
+
+    def test_innere_funktion_darf_namen_der_aeusseren_wiederverwenden(self):
+        code = 'funktion f(a) { zurück funktion(a) -> a * 2 }\ndrucke(f(1)(5))'
+        self.assertEqual(ausgabe(code), '10\n')
+
+    def _doppelt(self, code, name='a'):
+        msg = self.syntaxfehler(code)
+        self.assertIn(f"Der Parametername '{name}' ist doppelt vergeben", msg)
+        self.assertNotIn('gefunden', msg)
+        return msg
+
+    def test_zwei_normale_parameter(self):
+        self.assertTrue(self._doppelt('funktion f(a, a) { }').startswith('Zeile 1:'))
+
+    def test_mit_stern_parameter(self):
+        self._doppelt('funktion f(a, *a) { }')
+
+    def test_stern_parameter_und_doppelstern_parameter(self):
+        self._doppelt('funktion f(*a, **a) { }')
+
+    def test_normaler_und_doppelstern_parameter(self):
+        self._doppelt('funktion f(a, **a) { }')
+
+    def test_mit_standardwerten_und_typ_hinweisen(self):
+        self._doppelt('funktion f(a: Ganzzahl = 1, a: Ganzzahl = 2) { }')
+
+    def test_kurzform(self):
+        self._doppelt('funktion f(a, a) -> a')
+        self._doppelt('sei g = funktion(x, y, x) -> x', name='x')
+
+    def test_anonyme_funktion(self):
+        self._doppelt('sei g = funktion(a, a) { zurück a }')
+
+    def test_methode_in_klasse(self):
+        self._doppelt('klasse K {\n  funktion m(selbst, selbst) { }\n}', name='selbst')
+
+    def test_nennt_die_zeile_des_zweiten_namens(self):
+        msg = self._doppelt('funktion f(\n  a,\n  b,\n  a\n) { }')
+        self.assertTrue(msg.startswith('Zeile 4:'), msg)
+
+
+# ---------------------------------------------------------------------------
+# 8. Parameter nach '*rest'
+# ---------------------------------------------------------------------------
+
+class TestParameterNachRest(_Basis):
+    def test_stern_parameter_mit_doppelstern_parameter(self):
+        code = 'funktion f(a, *rest, **opt) { drucke(a, rest, opt) }\nf(1, 2, 3, x = 4)'
+        self.assertEqual(ausgabe(code), '1 [2, 3] {x: 4}\n')
+
+    def test_stern_parameter_mit_abschliessendem_komma(self):
+        self.assertEqual(ausgabe('funktion f(*rest,) { drucke(rest) }\nf(1, 2)'), '[1, 2]\n')
+
+    def test_stern_parameter_zuletzt_in_kurzform(self):
+        self.assertEqual(ausgabe('drucke((funktion(a, *r) -> r)(1, 2, 3))'), '[2, 3]\n')
+
+    def _fehler_nach_rest(self, code):
+        msg = self.syntaxfehler(code)
+        self.assertIn("Nach dem Rest-Parameter '*rest' darf nur noch ein '**name'-Parameter folgen", msg)
+        self.assertNotIn('RPAREN', msg)
+        self.assertNotIn('KOMMA', msg)
+        return msg
+
+    def test_normaler_parameter_nach_rest(self):
+        msg = self._fehler_nach_rest('funktion f(*rest, b) { }')
+        self.assertTrue(msg.startswith('Zeile 1:'), msg)
+        self.assertIn("(gefunden: 'b')", msg)
+
+    def test_parameter_mit_standardwert_nach_rest(self):
+        self._fehler_nach_rest('funktion f(a, *rest, b = 1) { }')
+
+    def test_zweiter_rest_parameter(self):
+        msg = self._fehler_nach_rest('funktion f(*rest, *mehr) { }')
+        self.assertIn("(gefunden: '*')", msg)
+
+    def test_kurzform_und_anonyme_funktion(self):
+        self._fehler_nach_rest('funktion f(*rest, b) -> b')
+        self._fehler_nach_rest('sei g = funktion(*rest, b) { }')
+
+    def test_mehrzeilig_nennt_die_zeile_des_parameters(self):
+        msg = self._fehler_nach_rest('funktion f(\n  a,\n  *rest,\n  b\n) { }')
+        self.assertTrue(msg.startswith('Zeile 4:'), msg)
+
+    def test_doppelstern_parameter_bleibt_letzter_parameter(self):
+        msg = self.syntaxfehler('funktion f(**opt, b) { }')
+        self.assertIn('muss der letzte Parameter sein', msg)
+
+
+# ---------------------------------------------------------------------------
+# 9. Lesbare Syntaxfehler (keine internen Token-Namen)
+# ---------------------------------------------------------------------------
+
+class TestLesbareSyntaxfehler(_Basis):
+    def test_jede_token_art_hat_eine_anzeige(self):
+        for typ in TokenTyp:
+            with self.subTest(typ=typ.name):
+                self.assertIn(typ, _TOKEN_ANZEIGE)
+                self.assertNotEqual(_TOKEN_ANZEIGE[typ].strip("'"), typ.name)
+
+    def test_ausdruck_erwartet_ohne_doppelte_angabe(self):
+        self.assertEqual(self.syntaxfehler('drucke(5 ??)'), "Zeile 1: Ausdruck erwartet (gefunden: ')')")
+
+    def test_erwartetes_symbol(self):
+        self.assertEqual(self.syntaxfehler('drucke(1 2)'), "Zeile 1: ')' erwartet (gefunden: '2')")
+        self.assertEqual(self.syntaxfehler('sei x == 1'), "Zeile 1: '=' erwartet (gefunden: '==')")
+        self.assertEqual(self.syntaxfehler('wenn wahr drucke(1)'), "Zeile 1: '{' erwartet (gefunden: 'drucke')")
+
+    def test_erwarteter_name(self):
+        self.assertEqual(self.syntaxfehler('sei = 5'), "Zeile 1: Name erwartet (gefunden: '=')")
+        self.assertEqual(self.syntaxfehler('sei 5 = 5'), "Zeile 1: Name erwartet (gefunden: '5')")
+
+    def test_gefundener_name_zeigt_den_text(self):
+        self.assertEqual(self.syntaxfehler('drucke(a b)'), "Zeile 1: ')' erwartet (gefunden: 'b')")
+
+    def test_zeilenende(self):
+        self.assertEqual(self.syntaxfehler('sei x =\n5'), 'Zeile 1: Ausdruck erwartet (gefunden: Zeilenende)')
+
+    def test_dateiende(self):
+        self.assertEqual(self.syntaxfehler('drucke(1,\n2'), "Zeile 2: ')' erwartet (gefunden: Dateiende)")
+        self.assertEqual(self.syntaxfehler('sei x = 1 +'), 'Zeile 1: Ausdruck erwartet (gefunden: Dateiende)')
+
+    def test_schluesselwort(self):
+        self.assertEqual(self.syntaxfehler('sei x = sonst'), "Zeile 1: Ausdruck erwartet (gefunden: 'sonst')")
+        self.assertEqual(self.syntaxfehler('für x { }'), "Zeile 1: 'in' erwartet (gefunden: '{')")
+
+    def test_erwartetes_schluesselwort(self):
+        self.assertEqual(self.syntaxfehler('drucke(1 wenn 2)'), "Zeile 1: 'sonst' erwartet (gefunden: ')')")
+
+    def test_schluesselwort_so_geschrieben_wie_im_code(self):
+        self.assertIn("(gefunden: 'fuer')", self.syntaxfehler('drucke(fuer)'))
+        self.assertIn("(gefunden: 'für')", self.syntaxfehler('drucke(für)'))
+
+    def test_wahrheitswert_und_nichts(self):
+        self.assertEqual(self.syntaxfehler('drucke(1 wahr)'), "Zeile 1: ')' erwartet (gefunden: 'wahr')")
+        self.assertEqual(self.syntaxfehler('drucke(1 nichts)'), "Zeile 1: ')' erwartet (gefunden: 'nichts')")
+
+    def test_zeichenkette(self):
+        self.assertEqual(self.syntaxfehler('drucke(1 "abc")'), "Zeile 1: ')' erwartet (gefunden: Zeichenkette)")
+        self.assertEqual(self.syntaxfehler('drucke(1 "a{1}")'), "Zeile 1: ')' erwartet (gefunden: Zeichenkette)")
+
+    def test_mehrzeichen_operatoren_und_verbundzuweisung(self):
+        self.assertEqual(self.syntaxfehler('drucke(1 <<)'), "Zeile 1: Ausdruck erwartet (gefunden: ')')")
+        self.assertEqual(self.syntaxfehler('sei x = 1 += 2'), "Zeile 1: Ausdruck erwartet (gefunden: '+=')")
+
+    def test_klassenkoerper_zeigt_zahl_und_zeichenkette_lesbar(self):
+        self.assertIn("nicht erlaubt: '42'", self.syntaxfehler('klasse K { 42 }'))
+        self.assertIn('nicht erlaubt: Zeichenkette', self.syntaxfehler('klasse K { "abc" }'))
+        self.assertIn('nicht erlaubt: Zeichenkette', self.syntaxfehler('klasse K { "a{1}" }'))
+        self.assertIn("nicht erlaubt: 'wahr'", self.syntaxfehler('klasse K { wahr }'))
+
+    def test_keine_internen_token_namen_in_den_meldungen(self):
+        faelle = [
+            'drucke(5 ??)', 'drucke(1 2)', 'sei = 5', 'sei x =\n5', 'drucke(1,\n2', 'für x { }',
+            'drucke(1 wenn 2)', 'wenn wahr', 'sei x = )', 'klasse K { 42 }', 'klasse K { "a{1}" }',
+            'funktion f(a: 5) { }', 'passe 1 { x }', 'lade 5 als', 'x += ', 'drucke(1) }', ';',
+            'sei [a, b = [1, 2]', 'funktion f(*r, b) { }', 'funktion f(a, a) { }',
+        ]
+        for code in faelle:
+            with self.subTest(code=code):
+                self.assertNotRegex(self.syntaxfehler(code), r'\b[A-Z][A-Z_]{2,}\b')
 
 
 if __name__ == '__main__':

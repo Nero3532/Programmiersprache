@@ -4,6 +4,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.8.0]
+
 ### Hinzugefügt
 - Bit-Operatoren `&`, `|`, `^`, `~` und Schiebeoperatoren `<<`, `>>` für Ganzzahlen; `&`, `|`, `^` auch für Mengen
   (Schnitt, Vereinigung, symmetrische Differenz). Verbund-Zuweisungen `&=`, `|=`, `^=`, `<<=`, `>>=`.
@@ -12,16 +14,6 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Zeilenumbrüche innerhalb von `( … )` (Aufrufe, Parameterlisten, Klammerausdrücke) sowie ein abschließendes
   Komma in Aufrufen und Parameterlisten.
 - Lambda-Kurzform `funktion(x) -> ausdruck`, auch benannt (`funktion verdopple(x) -> x * 2`) und in Klassen.
-- `abbilden`, `filtere` und `reduziere` als Builtins und als verkettbare Listen-Methoden
-  (`liste.abbilden(f).filtere(g)`).
-- `schluessel=` (auch `schlüssel=`) bei `sortiere`, `max` und `min`; `umgekehrt=` bei `sortiere`.
-  `liste.sortiere()` nimmt beide Argumente ebenfalls.
-- CLI-Optionen: `--version` (`-V`), `--hilfe` (`-h`, `--help`), `-c "code"` (Code direkt ausführen; Argumente
-  über `kommandozeilen_argumente()`), `--pruefen datei.deu` (nur Syntaxprüfung, nichts wird ausgeführt).
-- REPL-Befehl `hilfe` zeigt eine Übersicht der Befehle.
-- `py -m deutsch` startet das Programm als Modul, mit denselben Optionen wie `main.py`.
-- CI: Tests auf Windows und Linux für Python 3.10 bis 3.14; die Beispiele werden über die CLI ausgeführt,
-  nach der Paket-Installation werden Version und Aufruf geprüft.
 - Entpacken mit `*` und `**`: `f(*liste, **wb)` in Aufrufen (auch bei `neu K(…)` und Methoden), `[*a, *b]` in Listen,
   `{**a, **b}` in Wörterbüchern und `{*a, *b}` in Mengen.
 - `**kwargs`-Parameter: `funktion f(a, **optionen)` sammelt überzählige Keyword-Argumente in einem Wörterbuch.
@@ -30,14 +22,19 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Rest- und verschachtelte Muster `[kopf, *rest]` und `[a, [b, c]]` bei `sei`, Zuweisung und `für`
   (auch in Comprehensions).
 - Kettenzuweisung `a = b = 0`, auch an Attribute und Indizes. `sei a = b = 0` ist ein Syntaxfehler mit Hinweis.
-- Pfade und Dateien: `pfad_verbinden`, `dateiname`, `ordnername`, `endung`, `ist_datei`, `ist_ordner`,
-  `datei_loeschen` (auch `datei_löschen`), `umbenennen` (auch für Ordner; wirft, wenn das Ziel schon existiert)
-  und `zeilen_lesen` (Liste der Zeilen ohne Zeilenende).
+- Basisklassen und Typ-Hinweise mit Punktpfad: `klasse X(modul.Basis)`, `sei k: modul.Klasse`, `konstante`,
+  Parameter und Rückgabetyp (`-> modul.Klasse`), auch für Klassen aus Modulen, die mit `lade … als modul` geladen wurden.
+- Pfade und Dateien: `pfad_verbinden`, `dateiname`, `ordnername`, `endung`,
+  `ist_datei`, `ist_ordner`, `datei_loeschen` (auch `datei_löschen`), `umbenennen` (auch für Ordner; wirft, wenn das
+  Ziel schon existiert) und `zeilen_lesen` (Liste der Zeilen ohne Zeilenende).
+- `abbilden`, `filtere` und `reduziere` als Builtins und als verkettbare Listen-Methoden
+  (`liste.abbilden(f).filtere(g)`). `schluessel=` (auch `schlüssel=`) bei `sortiere`, `max` und `min`; `umgekehrt=`
+  bei `sortiere`; `liste.sortiere()` nimmt beide Argumente ebenfalls.
+- Listen und Wörterbücher: `eindeutig` (als Funktion und Methode; das erste Vorkommen bleibt in seiner Reihenfolge),
+  `gruppiere(sammlung, f)`, `zusammenfuehren` (auch `zusammenführen`; spätere Werte gewinnen) sowie die
+  Listen-Methoden `max()` und `min()`.
 - Text: `links_auffuellen` und `rechts_auffuellen` (auch mit `ü`) sowie `zentrieren` als Methoden, jeweils
   `(breite[, zeichen])`; `ersetze(alt, neu, anzahl)` ersetzt höchstens `anzahl` Vorkommen.
-- Listen und Wörterbücher: `eindeutig` (als Funktion und Methode; das erste Vorkommen bleibt in seiner Reihenfolge),
-  `gruppiere(sammlung, f)`, `zusammenfuehren` (auch `zusammenführen`; spätere Werte gewinnen) und die
-  Listen-Methoden `max()` und `min()`.
 - Mathe: `arcsin`, `arccos`, `arctan` und `arctan2(y, x)`.
 - Zeit: `warte(sekunden)` und `datum_lesen(text, format)` als Gegenstück zu `datum_formatieren`.
 - Deutsche Fehlerarten für `fange (…)` und den Fehlerkopf der CLI: `Fehler` (Oberbegriff, fängt alles), `TypFehler`
@@ -45,28 +42,56 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   `SchluesselFehler` (`KeyError`), `AttributFehler` (`AttributeError`), `DateiFehler` (`OSError`), `SyntaxFehler`
   (`SyntaxError`), `LaufzeitFehler` (`RuntimeError`), `RekursionsFehler` (`RecursionError`), `ZusicherungsFehler`
   (`AssertionError`), `ImportFehler` (`ImportError`), `EingabeEndeFehler` (`EOFError`), `DivisionDurchNullFehler`
-  (`ZeroDivisionError`), `UeberlaufFehler` (`OverflowError`). Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`.
-- `fange (…)` nimmt die deutschen Namen; die englischen Python-Namen funktionieren weiter, auch gemischt.
+  (`ZeroDivisionError`), `UeberlaufFehler` (`OverflowError`). Mit Vererbung: `fange (DateiFehler)` fängt auch
+  `FileNotFoundError`. `fange (…)` nimmt diese deutschen Namen sowie die englischen Python-Namen, auch gemischt.
   Mit `werfe` geworfene Werte heißen `AusnahmeFehler`.
+- Aufrufkette: Bei Fehlern aus geladenen Modulen nennt jeder Eintrag die Datei der Aufrufstelle, z. B.
+  `in Funktion 'f' (hilfe.deu, Zeile 3)`; im Hauptskript bleibt es bei `(Zeile 3)`.
+- CLI-Optionen: `--version` (`-V`), `--hilfe` (`-h`, `--help`), `-c "code"` (Code direkt ausführen; Argumente
+  über `kommandozeilen_argumente()`), `--pruefen datei.deu` (nur Syntaxprüfung, nichts wird ausgeführt).
+  `py -m deutsch` startet das Programm als Modul, mit denselben Optionen wie `main.py`.
+- REPL-Befehl `hilfe` zeigt eine Übersicht der Befehle.
+- CI: Tests auf Windows und Linux für Python 3.10 bis 3.14; die Beispiele werden über die CLI ausgeführt,
+  nach der Paket-Installation werden Version und Aufruf geprüft.
 
 ### Geändert
-- Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
+- Typ-Hinweise von Parametern gelten auch bei Neuzuweisung im Funktionskörper: `funktion f(a: Ganzzahl) { a = "text" }`
+  wirft bei der Zuweisung `TypFehler`, wie bei `sei`.
 - `runde` rundet kaufmännisch: ab ,5 vom Nullpunkt weg (`runde(2.5)` ergibt 3, `runde(2.675, 2)` ergibt 2.68).
   Negative Stellen runden vor dem Komma (`runde(1234.5, -2)` ergibt 1200). Zeichenketten werden jetzt einheitlich
   abgelehnt; die Stellenzahl muss eine Ganzzahl sein.
+- `werfe f` mit der Fehlervariable aus `fange` behält Meldung, Datei und Zeile des ursprünglichen Fehlers; die Art
+  des erneut geworfenen Fehlers ist danach `AusnahmeFehler`.
 - Fehlerkopf der CLI zeigt die deutschen Arten: `[DivisionDurchNullFehler]` statt `[ZeroDivisionError]`,
   `[RekursionsFehler]` statt `[Fehler]` bei zu tiefer Rekursion.
 - `fange (…)` meldet unbekannte Namen als `NamensFehler`: mit Vorschlag bei Tippfehlern (`meintest du 'WertFehler'?`),
   sonst mit der Liste der bekannten Arten.
+- Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
 
 ### Behoben
-- Zeilennummern bei Fehlern in `{…}`-Interpolationen waren falsch; gemeldet wird jetzt die absolute Zeile des `{`.
 - `"{1 2}"` wird als Syntaxfehler gemeldet, statt den Rest des Ausdrucks stillschweigend zu ignorieren.
-- REPL: Bei offener `(` oder `[` wartet sie auf Folgezeilen (bisher nur bei `{`).
+- `sei [a, b] = …` prüft Konstanten im selben Geltungsbereich: Eine `konstante a` wird nicht mehr still überschrieben,
+  sondern wirft `TypFehler`; dabei wird nichts halb gebunden.
+- Zeilennummern bei Fehlern in `{…}`-Interpolationen waren falsch; gemeldet wird jetzt die absolute Zeile des `{`.
+- Nach einem Funktionsaufruf stimmt die aktuelle Zeile wieder: Bei `g() + h()` zeigte die Aufrufkette für `h` bisher
+  eine Zeile aus dem Körper von `g`.
 - Deutsche Meldungen für `abs`, `runde`, `logarithmus` (Basis 1), `exponential` (zu große Werte) und `ersetze`.
-- Übersetzte Meldungen behalten die ursprüngliche Fehlerklasse: `fange (UnicodeDecodeError)` greift auch nach der
+  Übersetzte Meldungen behalten die ursprüngliche Fehlerklasse: `fange (UnicodeDecodeError)` greift auch nach der
   Übersetzung. Deutsche Texte für Unicode-Fehler (mit Kodierung und Position) und häufige Python-Meldungen
   (z. B. Division durch Null, Rekursionstiefe, Überlauf).
+- REPL: Bei offener `(` oder `[` wartet sie auf Folgezeilen (bisher nur bei `{`).
+- Muster über mehrere Zeilen: `sei [` … `] = …` und `für [` … `] in …` ignorieren Zeilenumbrüche innerhalb der
+  Klammern, auch verschachtelt und mit `*rest` (bisher „'BEZEICHNER' erwartet (gefunden: 'ZEILENENDE')“).
+- Doppelte Parameternamen wie `funktion f(a, a)` (auch mit `*a`, `**a`, in der Kurzform und in Methoden) sind ein
+  Syntaxfehler: „Der Parametername 'a' ist doppelt vergeben“.
+- Ein Parameter nach `*rest` meldet jetzt, dass nur noch `**name` folgen darf (bisher „'RPAREN' erwartet (gefunden: 'KOMMA')“).
+- Syntaxfehler nennen keine internen Token-Namen mehr: `')' erwartet (gefunden: ',')`, `Name erwartet (gefunden: Zeilenende)`,
+  `Ausdruck erwartet (gefunden: Dateiende)`; Symbole und Schlüsselwörter erscheinen als Text in Anführungszeichen,
+  gefundene Namen und Zahlen mit ihrem Text. `drucke(5 ??)` meldet „Ausdruck erwartet (gefunden: ')')“ statt
+  „Unerwartetes Token 'RPAREN' (gefunden: 'RPAREN')“.
+- `datum_formatieren` meldet Zeitstempel, die keine Zahl, unendlich, NaN oder außerhalb des Datumsbereichs sind, sowie
+  ungültige Formate auf Deutsch (immer als `WertFehler`), statt Python-Texte wie „argument must be int or float“ durchzureichen.
+- 837 neue Regressionstests (1168 gesamt).
 
 ## [2.7.1]
 

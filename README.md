@@ -70,11 +70,13 @@ konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypFehler
 ```
 
 Neue Variablen entstehen nur durch `sei`; eine Zuweisung an einen nicht deklarierten Namen wirft `NamensFehler`.
-Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der Deklaration.
+Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der Deklaration. Das gilt auch für
+Parameter: Ein Parameter mit Typ-Hinweis wird bei Neuzuweisung im Funktionskörper geprüft.
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
 `Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
-selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
+selbstdefinierter Klassenname, auch als Punktpfad `modul.Klasse` (siehe Abschnitt Module). Ein unbekannter
+Typ-Hinweis wirft einen Fehler.
 
 Destrukturierende Zuweisung funktioniert auch ohne `sei`, an Variablen, Attribute und Indizes. Die rechte
 Seite wird vollständig ausgewertet, bevor zugewiesen wird. Ohne `*rest` muss die Anzahl passen. Muster gelten
@@ -248,8 +250,9 @@ Die Fehlerarten haben deutsche Namen; sie stehen auch im Fehlerkopf der CLI, z. 
 Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`, `fange (LaufzeitFehler)`
 fängt auch `RekursionsFehler`. `fange (Fehler)` fängt alles, auch mit `werfe` geworfene Werte.
 Diese haben die Art `AusnahmeFehler` (`fange (AusnahmeFehler) e { … }`) und werden von den übrigen Arten
-nicht gefangen. Ein unbekannter Name, etwa ein Tippfehler, wirft einen `NamensFehler` mit Vorschlag
-(`meintest du 'WertFehler'?`).
+nicht gefangen. Wird ein gefangener Fehler mit `werfe e` erneut geworfen, behält er Meldung, Datei und Zeile;
+die Art ist danach ebenfalls `AusnahmeFehler`. Ein unbekannter Name, etwa ein Tippfehler, wirft einen
+`NamensFehler` mit Vorschlag (`meintest du 'WertFehler'?`).
 
 Ohne Typ-Liste (`fange f { ... }`) bleibt das bisherige Verhalten: alles wird gefangen.
 
@@ -308,11 +311,14 @@ lade "andere_datei.deu" als modul   # Namensraum statt globaler Vermischung
 modul.funktion()
 modul.KONSTANTE
 neu modul.Klasse(1, 2)                  # Klasse aus dem Modul
+klasse Hund(modul.Tier) { }             # Basisklasse aus dem Modul
+sei t: modul.Tier = neu Hund()          # Typ-Hinweis mit Punktpfad
 ```
 Ohne `als` landen alle Top-Level-Definitionen der geladenen Datei im globalen Scope (wie bisher).
 Mit `als name` läuft die Datei in einem isolierten Scope; ihre Top-Level-Bindungen werden stattdessen
 unter `name.attribut` erreichbar, ohne den aufrufenden Scope zu verändern.
-Relative Pfade in `lade` gelten ab dem Ordner der ladenden Datei.
+Relative Pfade in `lade` gelten ab dem Ordner der ladenden Datei. Basisklassen und Typ-Hinweise akzeptieren einen
+Punktpfad `modul.Name`; bei Parametern und Rückgabetyp wird er dort aufgelöst, wo die Funktion definiert ist.
 
 Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren `ImportFehler`
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
@@ -383,8 +389,8 @@ für eine vollständige Demonstration.
 - Mehrfachvererbung nutzt einfache links-nach-rechts-Tiefensuche, keine echte C3-Linearisierung.
 - Variadische Parameter (`*args`) werden nicht einzeln typgeprüft.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
-- Rekursionstiefe: ca. 5900 Deutsch-Aufrufe (Ausführung in einem Thread mit 128-MB-Stack; fällt der Stack
-  kleiner aus, sinkt die Grenze entsprechend). Darüber bricht das Programm mit einem Rekursionsfehler ab.
+- Rekursionstiefe: ca. 5950 Deutsch-Aufrufe bei einfacher Rekursion (Ausführung in einem Thread mit 128-MB-Stack;
+  fällt der Stack kleiner aus, sinkt die Grenze entsprechend). Darüber bricht das Programm mit einem Rekursionsfehler ab.
 - Die Version in `pyproject.toml` wird manuell parallel zu `deutsch/__init__.py`s `__version__`
   gepflegt (kein dynamisches Versioning-Setup).
 
@@ -395,6 +401,7 @@ main.py              REPL / Datei-Runner / Fehleranzeige
 deutsch/
   __main__.py          Aufruf als Modul (py -m deutsch)
   lexer.py            Tokenisierung
+  token_typen.py      Token-Arten
   parser.py            rekursiver Abstiegs-Parser
   ast_knoten.py         AST-Knotenklassen
   interpreter.py         Baum-Interpreter (Visitor-Pattern)

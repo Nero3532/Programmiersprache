@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Deutsch 2.0 – Einstiegspunkt
+Deutsch – Einstiegspunkt
 Verwendung:
     python main.py              → interaktive REPL
     python main.py datei.deu    → Datei ausführen
