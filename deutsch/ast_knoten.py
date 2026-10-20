@@ -43,13 +43,27 @@ class Bezeichner(Knoten):
     __slots__ = ('name',)
     def __init__(self, name): self.name = name
 
+class Entpacken(Knoten):
+    """'*ausdruck' in einer Liste, Menge oder Argumentliste (Spread). '**ausdruck' hat keinen
+    eigenen Knoten: es steht in Wörterbuch-Literalen und Aufrufen als Eintrag mit Schlüssel/Name None."""
+    __slots__ = ('ausdruck',)
+    def __init__(self, ausdruck): self.ausdruck = ausdruck
+
+def _hat_entpacken(elemente):
+    return any(isinstance(e, Entpacken) for e in elemente)
+
 class Liste(Knoten):
-    __slots__ = ('elemente',)
-    def __init__(self, elemente): self.elemente = elemente
+    __slots__ = ('elemente', 'mit_entpacken')
+    def __init__(self, elemente):
+        self.elemente = elemente  # [Knoten | Entpacken, ...]
+        self.mit_entpacken = _hat_entpacken(elemente)
 
 class Woerterbuch(Knoten):
-    __slots__ = ('paare',)
-    def __init__(self, paare): self.paare = paare  # [(schlüssel_knoten, wert_knoten), ...]
+    __slots__ = ('paare', 'mit_entpacken')
+    def __init__(self, paare):
+        # [(schlüssel_knoten, wert_knoten), ...]; '**ausdruck' steht als (None, ausdruck_knoten)
+        self.paare = paare
+        self.mit_entpacken = any(k is None for k, _ in paare)
 
 class ListenAusdruck(Knoten):
     """List comprehension: [ausdruck für variable in iterable wenn bedingung]"""
@@ -91,15 +105,19 @@ class TernaerAusdruck(Knoten):
         self.sonst_wert = sonst_wert
 
 class MengenLiteral(Knoten):
-    __slots__ = ('elemente',)
-    def __init__(self, elemente): self.elemente = elemente
+    __slots__ = ('elemente', 'mit_entpacken')
+    def __init__(self, elemente):
+        self.elemente = elemente  # [Knoten | Entpacken, ...]
+        self.mit_entpacken = _hat_entpacken(elemente)
 
 class FunktionAufruf(Knoten):
-    __slots__ = ('funktion', 'argumente', 'keyword_argumente')
+    __slots__ = ('funktion', 'argumente', 'keyword_argumente', 'mit_entpacken')
     def __init__(self, funktion, argumente, keyword_argumente=None):
         self.funktion = funktion
-        self.argumente = argumente                        # [Knoten, ...] positional
-        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
+        self.argumente = argumente                        # [Knoten | Entpacken, ...] positional
+        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]; '**x' als (None, Knoten)
+        self.mit_entpacken = (_hat_entpacken(self.argumente)
+                              or any(n is None for n, _ in self.keyword_argumente))
 
 class AttributZugriff(Knoten):
     __slots__ = ('objekt', 'attribut')
@@ -123,12 +141,14 @@ class SliceAusdruck(Knoten):
 
 class NeuInstanz(Knoten):
     """neu Klasse(...) bzw. neu modul.Klasse(...) (Punktpfad, auch mehrstufig)."""
-    __slots__ = ('name', 'klasse', 'argumente', 'keyword_argumente')
+    __slots__ = ('name', 'klasse', 'argumente', 'keyword_argumente', 'mit_entpacken')
     def __init__(self, name, argumente, keyword_argumente=None, klasse=None):
         self.name = name                                  # str, bei Punktpfad 'modul.Klasse' (für Meldungen)
         self.klasse = klasse if klasse is not None else Bezeichner(name)  # Bezeichner | AttributZugriff-Kette
-        self.argumente = argumente
-        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]
+        self.argumente = argumente                        # [Knoten | Entpacken, ...]
+        self.keyword_argumente = keyword_argumente or []   # [(str, Knoten), ...]; '**x' als (None, Knoten)
+        self.mit_entpacken = (_hat_entpacken(self.argumente)
+                              or any(n is None for n, _ in self.keyword_argumente))
 
 # -------------------------------------------------------------- Anweisungen
 
@@ -148,17 +168,33 @@ class VariableDeklaration(Knoten):
         self.wert = wert
         self.ist_konstante = ist_konstante
 
+class Muster(Knoten):
+    """Destrukturierungs-Muster '[a, *rest, [b, c]]' (bei 'sei', 'für' und Zuweisung).
+    ziele: je Eintrag ein Name (str, bei 'sei'/'für'), ein Bezeichner/AttributZugriff/IndexZugriff
+    (bei Zuweisung) oder ein verschachteltes Muster; rest: Index des '*'-Eintrags oder None."""
+    __slots__ = ('ziele', 'rest')
+    def __init__(self, ziele, rest=None):
+        self.ziele = ziele
+        self.rest = rest
+
 class DestrukturierendeDeklaration(Knoten):
-    """sei [a, b, c] = ausdruck"""
-    __slots__ = ('namen', 'wert')
-    def __init__(self, namen, wert):
-        self.namen = namen  # [str, ...]
+    """sei [a, b, c] = ausdruck  (auch mit Rest '*r' und verschachtelt)"""
+    __slots__ = ('muster', 'wert')
+    def __init__(self, muster, wert):
+        self.muster = muster  # Muster mit Namen (str)
         self.wert = wert
 
 class Zuweisung(Knoten):
     __slots__ = ('ziel', 'wert')
     def __init__(self, ziel, wert):
-        self.ziel = ziel   # Bezeichner | AttributZugriff | IndexZugriff
+        self.ziel = ziel   # Bezeichner | AttributZugriff | IndexZugriff | Muster
+        self.wert = wert
+
+class KettenZuweisung(Knoten):
+    """a = b = ausdruck: der Wert wird einmal ausgewertet und links nach rechts zugewiesen."""
+    __slots__ = ('ziele', 'wert')
+    def __init__(self, ziele, wert):
+        self.ziele = ziele  # [Bezeichner | AttributZugriff | IndexZugriff | Muster, ...]
         self.wert = wert
 
 class VerbundZuweisung(Knoten):
@@ -186,21 +222,23 @@ class SolangeAnweisung(Knoten):
 class FuerAnweisung(Knoten):
     __slots__ = ('variable', 'iterable', 'koerper')
     def __init__(self, variable, iterable, koerper):
-        self.variable = variable
+        self.variable = variable  # str | Muster
         self.iterable = iterable
         self.koerper = koerper
 
 class FunktionDefinition(Knoten):
     """
-    parameter: [(name, default_expr|None, is_variadic), ...]
+    parameter: [(name, default_expr|None, is_variadic, typhinweis|None), ...]
     typhinweis: str | None  (Rückgabetyp, ignoriert zur Laufzeit)
+    kwargs_parameter: (name, typhinweis|None) | None  – der '**name'-Parameter (sammelt überzählige Keywords)
     """
-    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis')
-    def __init__(self, name, parameter, koerper, typhinweis=None):
+    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter')
+    def __init__(self, name, parameter, koerper, typhinweis=None, kwargs_parameter=None):
         self.name = name
         self.parameter = parameter
         self.koerper = koerper
         self.typhinweis = typhinweis
+        self.kwargs_parameter = kwargs_parameter
 
 class ZurueckAnweisung(Knoten):
     __slots__ = ('wert',)

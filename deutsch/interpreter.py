@@ -1338,14 +1338,55 @@ class Interpreter:
     def _besuche_Bezeichner(self, k, u):
         return u.hole(k.name)
 
+    # Entpacken ('*x', '**x'): erlaubt sind Listen, Mengen, Zeichenketten und Wörterbücher (deren Schlüssel)
+    _ENTPACKBAR = (list, tuple, set, frozenset, str, dict)
+
+    def _entpackte_elemente(self, knoten, u):
+        """Wert von '*ausdruck' (ast.Entpacken): eine Sammlung, deren Elemente eingesetzt werden."""
+        wert = self._besuche(knoten.ausdruck, u)
+        if not isinstance(wert, self._ENTPACKBAR):
+            raise TypeError(f"Entpacken mit '*' erwartet eine Liste, Menge, Zeichenkette oder ein "
+                            f"Wörterbuch, bekam {self._typname(wert)}")
+        return wert
+
+    def _entpacktes_woerterbuch(self, ausdruck, u):
+        """Wert von '**ausdruck': ein Wörterbuch, dessen Einträge eingesetzt werden."""
+        wert = self._besuche(ausdruck, u)
+        if not isinstance(wert, dict):
+            raise TypeError(f"Entpacken mit '**' erwartet ein Wörterbuch, bekam {self._typname(wert)}")
+        return wert
+
+    def _elemente_mit_entpacken(self, elemente, u):
+        ergebnis = []
+        for e in elemente:
+            if isinstance(e, ast.Entpacken):
+                ergebnis.extend(self._entpackte_elemente(e, u))
+            else:
+                ergebnis.append(self._besuche(e, u))
+        return ergebnis
+
     def _besuche_Liste(self, k, u):
+        if k.mit_entpacken:
+            return self._elemente_mit_entpacken(k.elemente, u)
         return [self._besuche(e, u) for e in k.elemente]
 
     def _besuche_Woerterbuch(self, k, u):
-        return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+        if not k.mit_entpacken:
+            return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+        ergebnis = {}
+        for kk, ww in k.paare:
+            if kk is None:  # '**x': spätere Schlüssel überschreiben frühere
+                ergebnis.update(self._entpacktes_woerterbuch(ww, u))
+            else:
+                schluessel = self._besuche(kk, u)
+                ergebnis[schluessel] = self._besuche(ww, u)
+        return ergebnis
 
     def _besuche_MengenLiteral(self, k, u):
-        elemente = [self._besuche(e, u) for e in k.elemente]
+        if k.mit_entpacken:
+            elemente = self._elemente_mit_entpacken(k.elemente, u)
+        else:
+            elemente = [self._besuche(e, u) for e in k.elemente]
         try:
             return set(elemente)
         except TypeError:
@@ -1362,18 +1403,43 @@ class Interpreter:
         return ergebnis
 
     def _schleifenvariable_binden(self, variable, elem, u):
-        """variable: str (einfache Bindung) | list[str] (Destrukturierung)."""
-        if isinstance(variable, list):
-            if not isinstance(elem, (list, tuple)):
-                raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(elem)}")
-            if len(elem) != len(variable):
-                raise TypeError(
-                    f"Destrukturierung erwartet {len(variable)} Werte, bekam {len(elem)}"
-                )
-            for name, wert in zip(variable, elem):
+        """variable: str (einfache Bindung) | ast.Muster (Destrukturierung)."""
+        if isinstance(variable, ast.Muster):
+            paare = []
+            self._muster_zerlegen(variable, elem, paare)
+            for name, wert in paare:
                 u.setze(name, wert)
         else:
             u.setze(variable, elem)
+
+    @staticmethod
+    def _werte_text(n):
+        return '1 Wert' if n == 1 else f'{n} Werte'
+
+    def _muster_zerlegen(self, muster, wert, paare):
+        """Verteilt wert auf die Ziele des Musters und hängt (ziel, teilwert) für jedes Blatt an paare an.
+        Prüft zuerst alles (Typ, Anzahl, verschachtelte Muster); erst danach darf jemand binden/zuweisen.
+        Ein Rest-Ziel ('*r') bekommt eine Liste; Blätter sind Namen (str) oder Zuweisungsziele (Knoten)."""
+        if not isinstance(wert, (list, tuple)):
+            raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
+        ziele = muster.ziele
+        if muster.rest is None:
+            if len(wert) != len(ziele):
+                raise TypeError(f"Destrukturierung erwartet {self._werte_text(len(ziele))}, bekam {len(wert)}")
+            teile = list(wert)
+        else:
+            mindestens = len(ziele) - 1
+            if len(wert) < mindestens:
+                raise TypeError(
+                    f"Destrukturierung erwartet mindestens {self._werte_text(mindestens)}, bekam {len(wert)}")
+            nach_rest = len(ziele) - muster.rest - 1
+            ende = len(wert) - nach_rest
+            teile = list(wert[:muster.rest]) + [list(wert[muster.rest:ende])] + list(wert[ende:])
+        for ziel, teil in zip(ziele, teile):
+            if isinstance(ziel, ast.Muster):
+                self._muster_zerlegen(ziel, teil, paare)
+            else:
+                paare.append((ziel, teil))
 
     # Typ-Hinweise
     def _pruefe_typ(self, wert, typhinweis, kontext_msg, u):
@@ -1420,13 +1486,9 @@ class Interpreter:
 
     def _besuche_DestrukturierendeDeklaration(self, k, u):
         wert = self._besuche(k.wert, u)
-        if not isinstance(wert, (list, tuple)):
-            raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
-        if len(wert) != len(k.namen):
-            raise TypeError(
-                f"Destrukturierung erwartet {len(k.namen)} Werte, bekam {len(wert)}"
-            )
-        for name, einzelwert in zip(k.namen, wert):
+        paare = []
+        self._muster_zerlegen(k.muster, wert, paare)
+        for name, einzelwert in paare:
             u.setze(name, einzelwert)
         return wert
 
@@ -1434,6 +1496,25 @@ class Interpreter:
         wert = self._besuche(k.wert, u)
         self._ziel_setzen(k.ziel, wert, u)
         return wert
+
+    def _besuche_KettenZuweisung(self, k, u):
+        # a = b = ausdruck: Wert einmal auswerten; alle Namen müssen vorher existieren,
+        # damit bei einem unbekannten Namen keines der Ziele schon verändert ist
+        wert = self._besuche(k.wert, u)
+        for ziel in k.ziele:
+            self._ziel_vorpruefen(ziel, u)
+        for ziel in k.ziele:
+            self._ziel_setzen(ziel, wert, u)
+        return wert
+
+    def _ziel_vorpruefen(self, ziel, u):
+        """Wirft den NameError für noch nicht deklarierte Namen, bevor irgendetwas zugewiesen wird."""
+        if isinstance(ziel, ast.Bezeichner):
+            if not u.existiert(ziel.name):
+                raise NameError(u.nicht_deklariert_meldung(ziel.name))
+        elif isinstance(ziel, ast.Muster):
+            for teilziel in ziel.ziele:
+                self._ziel_vorpruefen(teilziel, u)
 
     def _besuche_VerbundZuweisung(self, k, u):
         if isinstance(k.ziel, ast.Bezeichner) and not u.existiert(k.ziel.name):
@@ -1445,7 +1526,14 @@ class Interpreter:
         return neuer_wert
 
     def _ziel_setzen(self, ziel, wert, u):
-        if isinstance(ziel, ast.Bezeichner):
+        if isinstance(ziel, ast.Muster):
+            # [a, b] = …: erst vollständig zerlegen und Namen prüfen, dann zuweisen
+            paare = []
+            self._muster_zerlegen(ziel, wert, paare)
+            self._ziel_vorpruefen(ziel, u)
+            for teilziel, teilwert in paare:
+                self._ziel_setzen(teilziel, teilwert, u)
+        elif isinstance(ziel, ast.Bezeichner):
             # Existiert der Name in keinem Scope, wirft weise_zu einen NameError (neue Variablen: 'sei')
             u.weise_zu(
                 ziel.name, wert,
@@ -1793,9 +1881,32 @@ class Interpreter:
 
     def _besuche_FunktionAufruf(self, k, u):
         fn = self._besuche(k.funktion, u)
-        args = [self._besuche(a, u) for a in k.argumente]
-        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        args, kwargs = self._argumente_auswerten(k, u)
         return self._aufrufen(fn, args, kwargs)
+
+    def _argumente_auswerten(self, k, u):
+        """Wertet die Argumente eines Aufrufs (FunktionAufruf, NeuInstanz) aus: (args, kwargs).
+        Mit Entpacken: '*x' fügt die Elemente an der Stelle ein, '**x' die Einträge (Schlüssel = Namen)."""
+        if not k.mit_entpacken:
+            return ([self._besuche(a, u) for a in k.argumente],
+                    {name: self._besuche(w, u) for name, w in k.keyword_argumente})
+        args = self._elemente_mit_entpacken(k.argumente, u)
+        kwargs = {}
+        for name, w in k.keyword_argumente:
+            if name is None:
+                for schluessel, wert in self._entpacktes_woerterbuch(w, u).items():
+                    if not isinstance(schluessel, str):
+                        raise TypeError("Entpacken mit '**' in einem Aufruf braucht Zeichenketten als "
+                                        f"Schlüssel, bekam {self._typname(schluessel)}")
+                    if schluessel in kwargs:
+                        raise TypeError(f"Keyword-Argument '{schluessel}' mehrfach angegeben")
+                    kwargs[schluessel] = wert
+            else:
+                wert = self._besuche(w, u)
+                if name in kwargs:
+                    raise TypeError(f"Keyword-Argument '{name}' mehrfach angegeben")
+                kwargs[name] = wert
+        return args, kwargs
 
     def _aufrufen(self, fn, args, kwargs=None):
         kwargs = kwargs or {}
@@ -1822,13 +1933,22 @@ class Interpreter:
         param_namen = [p[0] for p in params]
         n_gesamt = len(params) - (1 if variadic_idx is not None else 0)  # ohne variadic
 
-        unbekannt = set(kwargs) - set(param_namen)
-        if unbekannt:
-            raise TypeError(f"'{fname}' hat kein Parameter '{next(iter(unbekannt))}'")
-        if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
-            raise TypeError(
-                f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
-            )
+        kwargs_parameter = fn.definition.kwargs_parameter  # (name, typhinweis|None) | None
+        ueberzaehlige = None
+        if kwargs_parameter is None:
+            unbekannt = [n for n in kwargs if n not in param_namen]
+            if unbekannt:
+                raise TypeError(f"'{fname}' hat kein Parameter '{unbekannt[0]}'")
+            if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
+                raise TypeError(
+                    f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
+                )
+        else:
+            # Mit '**name': jedes Keyword, das kein benannter Parameter ist, landet im Wörterbuch
+            # (der '*'-Parameter ist per Keyword nicht ansprechbar, auch das geht ins Wörterbuch)
+            benannte = {n for i, n in enumerate(param_namen) if i != variadic_idx}
+            ueberzaehlige = {n: w for n, w in kwargs.items() if n not in benannte}
+            kwargs = {n: w for n, w in kwargs.items() if n in benannte}
         if variadic_idx is None and len(args) > n_gesamt:
             raise TypeError(
                 f"'{fname}' erwartet höchstens {n_gesamt} Argument(e), "
@@ -1856,6 +1976,10 @@ class Interpreter:
                 continue
             self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
             fn_u.setze(p_name, wert)
+
+        if kwargs_parameter is not None:
+            self._pruefe_typ(ueberzaehlige, kwargs_parameter[1], f"Parameter '{kwargs_parameter[0]}'", fn.umgebung)
+            fn_u.setze(kwargs_parameter[0], ueberzaehlige)
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
@@ -1907,8 +2031,7 @@ class Interpreter:
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
         instanz = DeutschInstanz(klasse)
-        args = [self._besuche(a, u) for a in k.argumente]
-        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        args, kwargs = self._argumente_auswerten(k, u)
         init = klasse.suche_methode('__init__')
         if init:
             self._funktion_aufrufen(init, [instanz] + args, kwargs)
