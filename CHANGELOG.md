@@ -91,7 +91,9 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   „Unerwartetes Token 'RPAREN' (gefunden: 'RPAREN')“.
 - `datum_formatieren` meldet Zeitstempel, die keine Zahl, unendlich, NaN oder außerhalb des Datumsbereichs sind, sowie
   ungültige Formate auf Deutsch (immer als `WertFehler`), statt Python-Texte wie „argument must be int or float“ durchzureichen.
-- 837 neue Regressionstests (1168 gesamt).
+- Überlauf-Meldungen werden unabhängig vom Plattform-Wortlaut übersetzt (Linux: „Numerical result out of range“).
+- Strg+C direkt nach dem Start einer Ausführung stoppt den Ausführungs-Thread zuverlässig (vorher lief er weiter).
+- 840 neue Regressionstests (1171 gesamt).
 
 ## [2.7.1]
 

@@ -15,11 +15,13 @@ import tempfile
 import threading
 import time
 import unittest
+from unittest import mock
 
 PROJEKT_WURZEL = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, PROJEKT_WURZEL)
 
 from deutsch import __version__
+import main as main_modul
 from main import (BANNER, _fehler_anzeigen, eingabe_unvollstaendig, im_grossen_stack,
                   klammer_saldo)
 
@@ -267,37 +269,96 @@ class TestGrosserStack(unittest.TestCase):
         with self.assertRaises(RecursionError):
             im_grossen_stack(endlos, 0)
 
-    @unittest.skipUnless(signal.getsignal(signal.SIGINT) is signal.default_int_handler,
-                         'SIGINT-Handler ist ersetzt (z. B. unittest -c)')
-    def test_strg_c_stoppt_laufenden_thread(self):
+    def _endlosschleife_mit_strg_c(self, strg_c_senden, laeuft=None, zustand_pruefen=True):
+        """Lässt im_grossen_stack eine Endlosschleife ausführen, schickt über
+        strg_c_senden(laeuft) ein Strg+C und prüft, dass es den Thread stoppt.
+
+        Ohne feste Wartezeiten: strg_c_senden bekommt das Event 'laeuft', das erst
+        gesetzt wird, wenn die Schleife läuft (schon im try, jede Unterbrechung
+        landet also im except). Die Zeitlimits sind nur Sicherungen für den
+        Fehlerfall und großzügig, damit auch ein langsamer CI-Runner nicht stört.
+        zustand_pruefen: prüft zusätzlich, dass Rekursionslimit und Stackgröße des
+        Aufrufers unverändert sind - nur sinnvoll, wenn das Strg+C nicht mitten im
+        Start landen kann (dort ist ein unwiederbringlicher Zwischenzustand möglich)."""
         beenden = threading.Event()
-        laeuft = threading.Event()
+        laeuft = laeuft if laeuft is not None else threading.Event()
         gestoppt = []
 
         def endlosschleife():
-            laeuft.set()
-            frist = time.monotonic() + 20
+            frist = time.monotonic() + 60
             try:
+                laeuft.set()
                 while not beenden.is_set() and time.monotonic() < frist:
                     pass
             except KeyboardInterrupt:
                 gestoppt.append(True)
                 raise
 
-        def strg_c_senden():
-            laeuft.wait(10)
-            time.sleep(0.2)
-            _thread.interrupt_main()  # wie ein SIGINT durch Strg+C
-
-        sender = threading.Thread(target=strg_c_senden, daemon=True)
+        vorher_limit = sys.getrecursionlimit()
+        vorher_stack = threading.stack_size()
+        sender = threading.Thread(target=strg_c_senden, args=(laeuft,), daemon=True)
         sender.start()
         try:
-            with self.assertRaises(KeyboardInterrupt):
-                im_grossen_stack(endlosschleife)
+            # Das Warten auf den Thread nach dem Strg+C darf lange dauern (Sicherung gegen
+            # SystemExit(130) auf einem überlasteten Rechner); im Normalfall endet es sofort.
+            with mock.patch.object(main_modul, '_STOPP_WARTEZEIT', 30):
+                with self.assertRaises(KeyboardInterrupt):
+                    im_grossen_stack(endlosschleife)
         finally:
             beenden.set()
-            sender.join(5)
+            sender.join(30)
         self.assertEqual(gestoppt, [True])
+        if zustand_pruefen:  # auch nach Strg+C bleibt der Zustand des Aufrufers unverändert
+            self.assertEqual(sys.getrecursionlimit(), vorher_limit)
+            self.assertEqual(threading.stack_size(), vorher_stack)
+
+    @unittest.skipUnless(signal.getsignal(signal.SIGINT) is signal.default_int_handler,
+                         'SIGINT-Handler ist ersetzt (z. B. unittest -c)')
+    def test_strg_c_stoppt_laufenden_thread(self):
+        """Echtes Strg+C (SIGINT-Weg), während der aufrufende Thread auf das Ende wartet."""
+        im_warten = threading.Event()
+        echtes_warten = main_modul._auf_ende_warten
+
+        def warten(fertig):
+            im_warten.set()  # ab hier ist die Unterbrechung sicher im Warten-Zweig
+            return echtes_warten(fertig)
+
+        def strg_c_senden(laeuft):
+            laeuft.wait(30)
+            im_warten.wait(30)
+            _thread.interrupt_main()  # wie ein SIGINT durch Strg+C
+
+        with mock.patch.object(main_modul, '_auf_ende_warten', warten):
+            self._endlosschleife_mit_strg_c(strg_c_senden)
+
+    @unittest.skipUnless(signal.getsignal(signal.SIGINT) is signal.default_int_handler,
+                         'SIGINT-Handler ist ersetzt (z. B. unittest -c)')
+    def test_strg_c_sofort_nach_thread_start_stoppt_thread(self):
+        """Echtes Strg+C, sobald der Thread rechnet - egal, wo der aufrufende Thread gerade
+        steht (noch im Start oder schon im Warten). Dieser Zeitpunkt ist nicht steuerbar;
+        der Thread darf in keinem Fall weiterrechnen."""
+        def strg_c_senden(laeuft):
+            laeuft.wait(30)
+            _thread.interrupt_main()
+
+        self._endlosschleife_mit_strg_c(strg_c_senden, zustand_pruefen=False)
+
+    def test_strg_c_zwischen_start_und_warten_stoppt_thread(self):
+        """Strg+C genau nach dem Start des Threads, noch vor dem Warten. Früher blieb der
+        Thread dann verwaist (in der REPL: er rechnete neben dem nächsten Prompt weiter)."""
+        laeuft = threading.Event()
+        echter_start = main_modul._thread_starten
+
+        def start_dann_strg_c(ziel, ablage=None):
+            echter_start(ziel, ablage)
+            laeuft.wait(30)  # der Thread rechnet nachweislich schon
+            raise KeyboardInterrupt
+
+        def kein_sender(laeuft):
+            pass  # das Strg+C kommt aus start_dann_strg_c
+
+        with mock.patch.object(main_modul, '_thread_starten', start_dann_strg_c):
+            self._endlosschleife_mit_strg_c(kein_sender, laeuft)
 
 
 class TestRekursionImProgramm(unittest.TestCase):

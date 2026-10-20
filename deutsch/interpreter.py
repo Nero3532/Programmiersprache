@@ -156,12 +156,17 @@ def _fehlerart_pruefen(name: str, bekannte_klassennamen) -> None:
 
 _PYTHON_TYPNAMEN = {'list': 'Liste', 'dict': 'Woerterbuch', 'set': 'Menge'}
 
+# Gleitkomma-Überlauf meldet Python je nach Betriebssystem anders: Windows 'Result too large',
+# Linux das errno-Tupel "(34, 'Numerical result out of range')". Deshalb gilt jeder nicht deutsche
+# OverflowError, den keine genauere Regel unten trifft, als Überlauf in eine Kommazahl (siehe _meldung_deutsch).
+_UEBERLAUF_MELDUNG = 'Ergebnis ist zu groß für eine Kommazahl'
+# Erkennt schon deutsche Meldungen anhand von Umlauten, ß oder typischen Wörtern (Python-Meldungen sind englisch).
+_DEUTSCH_MERKMALE = re.compile(r'[äöüßÄÖÜ]|\b(?:ist|ergibt|eine|zu|nicht)\b')
+
 # Deutsche Fassungen häufiger englischer Python-Meldungen, die ohne eigene Übersetzung durchrutschen:
 # (Fehlerklasse, Muster für die ganze Meldung, Ersetzung mit \1, \2 … oder Funktion(Treffer))
 _MELDUNGS_REGELN = tuple(
     (klasse, re.compile(muster, re.DOTALL), ersatz) for klasse, muster, ersatz in (
-        (OverflowError, r"\(34, 'Result too large'\)|Result too large",
-         'Ergebnis ist zu groß für eine Kommazahl'),
         (OverflowError, r'int too large to convert to float', 'Ganzzahl ist zu groß für eine Kommazahl'),
         (OverflowError, r'integer division result too large for a float',
          'Ergebnis der Division ist zu groß für eine Kommazahl'),
@@ -224,6 +229,11 @@ def _unicode_meldung(e) -> str | None:
     return None
 
 
+def _ist_deutsch(text: str) -> bool:
+    """Grobe Erkennung schon deutscher Meldungen anhand von Umlauten, ß oder typischen Wörtern."""
+    return _DEUTSCH_MERKMALE.search(text) is not None
+
+
 def _meldung_deutsch(e) -> str:
     """Meldung von e; bekannte englische Python-Texte (und Unicode-Fehler) auf Deutsch."""
     text = str(e)
@@ -234,6 +244,8 @@ def _meldung_deutsch(e) -> str:
             treffer = muster.fullmatch(text)
             if treffer:
                 return ersatz(treffer) if callable(ersatz) else treffer.expand(ersatz)
+    if isinstance(e, OverflowError) and not _ist_deutsch(text):
+        return _UEBERLAUF_MELDUNG
     return text
 
 
