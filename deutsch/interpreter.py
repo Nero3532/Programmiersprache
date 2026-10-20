@@ -10,6 +10,8 @@ import time
 import statistics
 import hashlib
 import base64
+import builtins
+import difflib
 from datetime import datetime
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from . import ast_knoten as ast
@@ -89,6 +91,166 @@ class AusnahmeFehler(Exception):
 
     def __str__(self):
         return self.nachricht if self.nachricht is not None else str(self.wert)
+
+
+# ------------------------------------------------------- Deutsche Fehlerarten
+
+# Deutscher Name -> Python-Klasse. Gilt in 'fange (...)' (mit Vererbung: WertFehler fängt auch
+# UnicodeDecodeError) und im Fehlerkopf der CLI. 'Fehler' ist der Oberbegriff und fängt alles.
+FEHLERARTEN = {
+    'Fehler': Exception,
+    'TypFehler': TypeError,
+    'WertFehler': ValueError,
+    'NamensFehler': NameError,
+    'IndexFehler': IndexError,
+    'SchluesselFehler': KeyError,
+    'AttributFehler': AttributeError,
+    'DateiFehler': OSError,
+    'SyntaxFehler': SyntaxError,
+    'LaufzeitFehler': RuntimeError,
+    'RekursionsFehler': RecursionError,
+    'ZusicherungsFehler': AssertionError,
+    'ImportFehler': ImportError,
+    'EingabeEndeFehler': EOFError,
+    'DivisionDurchNullFehler': ZeroDivisionError,
+    'UeberlaufFehler': OverflowError,
+}
+
+# Umkehrung für den Fehlerkopf; 'Fehler' (Exception) ist nur der Auffangname für alles Übrige
+_FEHLERART_NAMEN = {klasse: name for name, klasse in FEHLERARTEN.items() if name != 'Fehler'}
+
+
+def fehlerart_name(fehler) -> str:
+    """Deutscher Name der speziellsten passenden Fehlerart, z. B. 'DivisionDurchNullFehler' für
+    ZeroDivisionError, 'DateiFehler' für FileNotFoundError, 'WertFehler' für UnicodeDecodeError.
+    Unbekannte Python-Typen heißen 'Fehler'; ein per 'werfe' geworfener Wert 'AusnahmeFehler'."""
+    if isinstance(fehler, AusnahmeFehler):
+        return 'AusnahmeFehler'
+    for klasse in type(fehler).__mro__:
+        name = _FEHLERART_NAMEN.get(klasse)
+        if name is not None:
+            return name
+    return 'Fehler'
+
+
+# Englische Namen, die 'fange (...)' zusätzlich annimmt: alle eingebauten Python-Fehlerklassen
+_ENGLISCHE_FEHLERNAMEN = frozenset(
+    name for name, obj in vars(builtins).items()
+    if isinstance(obj, type) and issubclass(obj, BaseException)
+) | {'AusnahmeFehler'}
+
+
+def _fehlerart_pruefen(name: str, bekannte_klassennamen) -> None:
+    """Löst einen Fehler aus, wenn 'name' in 'fange (...)' keine bekannte Fehlerart ist."""
+    if name in FEHLERARTEN or name in _ENGLISCHE_FEHLERNAMEN or name in bekannte_klassennamen:
+        return
+    text = f"Unbekannte Fehlerart '{name}' in 'fange'"
+    treffer = difflib.get_close_matches(name, list(FEHLERARTEN), n=1, cutoff=0.6)
+    if treffer:
+        text += f" – meintest du '{treffer[0]}'?"
+    else:
+        text += ". Bekannt: " + ', '.join(FEHLERARTEN)
+    raise NameError(text)
+
+
+_PYTHON_TYPNAMEN = {'list': 'Liste', 'dict': 'Woerterbuch', 'set': 'Menge'}
+
+# Deutsche Fassungen häufiger englischer Python-Meldungen, die ohne eigene Übersetzung durchrutschen:
+# (Fehlerklasse, Muster für die ganze Meldung, Ersetzung mit \1, \2 … oder Funktion(Treffer))
+_MELDUNGS_REGELN = tuple(
+    (klasse, re.compile(muster, re.DOTALL), ersatz) for klasse, muster, ersatz in (
+        (OverflowError, r"\(34, 'Result too large'\)|Result too large",
+         'Ergebnis ist zu groß für eine Kommazahl'),
+        (OverflowError, r'int too large to convert to float', 'Ganzzahl ist zu groß für eine Kommazahl'),
+        (OverflowError, r'integer division result too large for a float',
+         'Ergebnis der Division ist zu groß für eine Kommazahl'),
+        (OverflowError, r'cannot convert float infinity to integer',
+         'Unendlich lässt sich nicht in eine Ganzzahl umwandeln'),
+        (OverflowError, r'cannot convert float NaN to integer',
+         'NaN (keine Zahl) lässt sich nicht in eine Ganzzahl umwandeln'),
+        (OverflowError, r'math range error', 'Ergebnis liegt außerhalb des darstellbaren Zahlenbereichs'),
+        (ZeroDivisionError,
+         r'(?:integer |float )?(?:division|modulo|floor division|divmod\(\))(?: or modulo)? by zero'
+         r'|float modulo|float divmod\(\)',
+         'Division durch Null'),
+        (ZeroDivisionError, r'.*cannot be raised to a negative power',
+         'Null kann nicht mit negativem Exponenten potenziert werden'),
+        (RecursionError, r'maximum recursion depth exceeded.*', 'Maximale Rekursionstiefe überschritten'),
+        (ValueError, r'Exceeds the limit \((\d+) digits\) for integer string conversion.*',
+         r'Ganzzahl hat mehr als \1 Ziffern und ist zu lang zum Umwandeln in Text'),
+        (ValueError, r'invalid literal for int\(\) with base \d+: (.*)', r'Kann \1 nicht in Ganzzahl umwandeln'),
+        (ValueError, r'could not convert string to float: (.*)', r'Kann \1 nicht in Kommazahl umwandeln'),
+        (ValueError, r'math domain error', 'Wert liegt außerhalb des Definitionsbereichs'),
+        (ValueError, r'expected a finite input, got (.*)', r'Erwartet eine endliche Zahl, bekam \1'),
+        (ValueError, r'range\(\) arg 3 must not be zero', 'Die Schrittweite darf nicht 0 sein'),
+        (TypeError, r"(?:cannot use '\w+' as a (?:dict key|set element) \()?unhashable type: '(\w+)'\)?",
+         lambda m: f"Typ '{_PYTHON_TYPNAMEN.get(m.group(1), m.group(1))}' ist nicht hashbar "
+                   "und kann kein Schlüssel oder Mengen-Element sein"),
+    )
+)
+
+_UNICODE_GRUENDE = {
+    'invalid start byte': 'ungültiges Startbyte',
+    'invalid continuation byte': 'ungültiges Folgebyte',
+    'unexpected end of data': 'Daten enden unerwartet',
+    'invalid data': 'ungültige Daten',
+    'truncated data': 'abgeschnittene Daten',
+    'illegal encoding': 'ungültige Kodierung',
+}
+
+
+def _unicode_meldung(e) -> str | None:
+    """Deutsche Meldung für UnicodeDecodeError/UnicodeEncodeError mit Kodierung und Position."""
+    try:
+        start, ende = e.start, e.end
+        if isinstance(e, UnicodeDecodeError):
+            grund = _UNICODE_GRUENDE.get(e.reason, e.reason)
+            if ende - start <= 1:
+                stelle = f'Byte 0x{e.object[start]:02x} an Position {start}'
+            else:
+                stelle = f'Bytes an Position {start}–{ende - 1}'
+            return f"Text lässt sich nicht als '{e.encoding}' dekodieren: {grund} ({stelle})"
+        if isinstance(e, UnicodeEncodeError):
+            zeichen = e.object[start:ende]
+            if len(zeichen) == 1:
+                anzeige = f"'{zeichen}' " if zeichen.isprintable() else ''
+                stelle = f'Zeichen {anzeige}(U+{ord(zeichen):04X}) an Position {start}'
+            else:
+                stelle = f'Zeichen an Position {start}–{ende - 1}'
+            return f"{stelle} lässt sich nicht als '{e.encoding}' kodieren"
+    except Exception:  # unvollständig aufgebaute Ausnahme: dann den Originaltext lassen
+        pass
+    return None
+
+
+def _meldung_deutsch(e) -> str:
+    """Meldung von e; bekannte englische Python-Texte (und Unicode-Fehler) auf Deutsch."""
+    text = str(e)
+    if isinstance(e, (UnicodeDecodeError, UnicodeEncodeError)):
+        return _unicode_meldung(e) or text
+    for klasse, muster, ersatz in _MELDUNGS_REGELN:
+        if isinstance(e, klasse):
+            treffer = muster.fullmatch(text)
+            if treffer:
+                return ersatz(treffer) if callable(ersatz) else treffer.expand(ersatz)
+    return text
+
+
+_MELDUNGS_KLASSEN = {}
+
+
+def _klasse_mit_meldung(basis):
+    """Unterklasse von basis (gleicher Name), deren str() die gesetzte 'deutsche_meldung' ist.
+    Nötig für Klassen, die sich nicht aus einer einzelnen Meldung bauen lassen (UnicodeDecodeError)
+    oder deren str() die Meldung verändert (KeyError setzt sie in Anführungszeichen)."""
+    klasse = _MELDUNGS_KLASSEN.get(basis)
+    if klasse is None:
+        klasse = type(basis.__name__, (basis,), {
+            '__str__': lambda self: self.deutsche_meldung,
+            '__module__': basis.__module__,
+        })
+        _MELDUNGS_KLASSEN[basis] = klasse
+    return klasse
 
 
 # ---------------------------------------------------------- Laufzeit-Typen
@@ -1541,7 +1703,7 @@ class Interpreter:
         except Exception as e:
             if zeile is not None and 'Zeile' not in str(e):
                 self._letzter_aufruf_stack = list(self._aufruf_stack)
-                nachricht = f'{self._ort(zeile)}: {e}'
+                nachricht = f'{self._ort(zeile)}: {_meldung_deutsch(e)}'
                 if isinstance(e, AusnahmeFehler):
                     neu = AusnahmeFehler(e.wert, nachricht=nachricht)
                 else:
@@ -1554,14 +1716,28 @@ class Interpreter:
 
     @staticmethod
     def _fehler_neu_mit_meldung(e: Exception, nachricht: str) -> Exception:
-        """Baut e mit neuer Meldung neu. Typen mit mehreren Pflichtargumenten (z. B. UnicodeDecodeError)
-        fallen auf den nächsten Basistyp zurück, der eine einzelne Meldung annimmt; so greift
-        'fange (ValueError)' weiterhin. Notfalls RuntimeError."""
-        for klasse in type(e).__mro__:
-            if not issubclass(klasse, Exception):
+        """Baut e mit neuer Meldung neu und behält dabei die Klasse von e, damit 'fange (Klasse)'
+        weiter greift. Klassen, die sich nicht aus einer einzelnen Meldung bauen lassen (z. B.
+        UnicodeDecodeError) oder deren str() die Meldung verändert (KeyError), werden als gleichnamige
+        Unterklasse mit den Originalargumenten neu erzeugt. Notfalls Basisklasse bzw. RuntimeError."""
+        klasse = type(e)
+        try:
+            neu = klasse(nachricht)
+            if str(neu) == nachricht:
+                return neu
+        except Exception:
+            pass
+        try:
+            neu = _klasse_mit_meldung(klasse)(*e.args)
+            neu.deutsche_meldung = nachricht
+            return neu
+        except Exception:
+            pass
+        for basis in klasse.__mro__[1:]:
+            if not issubclass(basis, Exception):
                 continue
             try:
-                return klasse(nachricht)
+                return basis(nachricht)
             except TypeError:
                 continue
         return RuntimeError(nachricht)
@@ -2014,12 +2190,22 @@ class Interpreter:
 
     @staticmethod
     def _fehlertyp_passt(e, fange_typen):
-        """Prüft ob fange_typen (str-Namen, z.B. 'TypeError') den Fehler oder eine seiner
-        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten)."""
+        """Prüft ob fange_typen (Namen, z.B. 'WertFehler' oder 'ValueError') den Fehler oder eine seiner
+        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten). Ein Name, der weder eine
+        deutsche Fehlerart noch eine Python-Fehlerklasse ist, löst einen NameError aus."""
         if fange_typen is None:
             return True
-        namen = {klasse.__name__ for klasse in type(e).__mro__}
-        return not namen.isdisjoint(fange_typen)
+        klassennamen = {klasse.__name__ for klasse in type(e).__mro__}
+        for name in fange_typen:
+            _fehlerart_pruefen(name, klassennamen)
+        for name in fange_typen:
+            klasse = FEHLERARTEN.get(name)
+            if klasse is not None:
+                if isinstance(e, klasse):
+                    return True
+            elif name in klassennamen:
+                return True
+        return False
 
     def _pfad_aufloesen(self, pfad: str) -> str:
         if not os.path.isabs(pfad):

@@ -41,7 +41,7 @@ except ImportError:
 from deutsch import __version__
 from deutsch.lexer import Lexer
 from deutsch.parser import Parser
-from deutsch.interpreter import Interpreter
+from deutsch.interpreter import Interpreter, fehlerart_name
 
 _BANNER_INNEN = 58  # Breite zwischen den Rahmenzeichen
 
@@ -312,7 +312,7 @@ def _fehler_anzeigen(fehler: Exception, quelltext: str = '', dateiname: str = '<
 
     linien = quelltext.split('\n') if quelltext else []
 
-    ausgabe = [f'[{type(fehler).__name__}] {msg}']
+    ausgabe = [f'[{fehlerart_name(fehler)}] {msg}']
 
     if zeile_nr and 0 < zeile_nr <= len(linien):
         zeile_text = linien[zeile_nr - 1]
@@ -336,7 +336,7 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
         ergebnis = interpreter.ausfuehren(baum)
         return ergebnis, None
     except RecursionError:
-        return None, '[Fehler] Maximale Rekursionstiefe überschritten'
+        return None, '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
     except Exception as e:
         return None, _fehler_anzeigen(e, quelltext, dateiname,
                                       getattr(interpreter, '_letzter_aufruf_stack', None), ladepfad)
@@ -380,7 +380,7 @@ def _pruefen(quelltext: str, dateiname: str):
         Parser(Lexer(quelltext).tokenisieren()).parse()
         return None
     except RecursionError:
-        return '[Fehler] Maximale Rekursionstiefe überschritten'
+        return '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
     except Exception as e:
         return _fehler_anzeigen(e, quelltext, dateiname)
 
