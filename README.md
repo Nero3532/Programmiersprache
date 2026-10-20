@@ -63,6 +63,8 @@ sei dict = {"a": 1, "b": 2}
 sei alter: Ganzzahl = 25      # optionaler, zur Laufzeit geprüfter Typ-Hinweis
 
 sei [a, b, c] = [1, 2, 3]     # Destrukturierung
+sei [kopf, *rest] = [1, 2, 3] # Rest-Muster: rest ist [2, 3]
+sei [x, [y, z]] = [1, [2, 3]] # verschachtelte Muster
 
 konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypeError
 ```
@@ -73,6 +75,18 @@ Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
 `Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
 selbstdefinierter Klassenname. Ein unbekannter Typ-Hinweis wirft einen Fehler.
+
+Destrukturierende Zuweisung funktioniert auch ohne `sei`, an Variablen, Attribute und Indizes. Die rechte
+Seite wird vollständig ausgewertet, bevor zugewiesen wird. Ohne `*rest` muss die Anzahl passen. Muster gelten
+auch für `für`-Schleifen und Comprehensions. Kettenzuweisung `a = b = 0` setzt bestehende Ziele auf denselben
+Wert; `sei a = b = 0` ist ein Syntaxfehler.
+
+```
+sei a = 1
+sei b = 2
+[a, b] = [b, a]               # Tausch: a ist 2, b ist 1
+a = b = 0                     # Kettenzuweisung
+```
 
 ### Operatoren
 
@@ -131,9 +145,20 @@ funktion summe(*zahlen) {                     # variadische Parameter
     zurück s
 }
 
+# **optionen sammelt überzählige Keyword-Argumente
+funktion anzeigen(a, **optionen) { zurück [a, optionen] }
+
 addiere(b=5, a=3)          # Keyword-Argumente, beliebige Reihenfolge
 addiere(3, b=5)             # gemischt — positional muss vor Keyword stehen
+anzeigen(1, x = 2)           # [1, {x: 2}]
+sei werte = [3, 5]
+addiere(*werte)              # 8
+addiere(**{"a": 3, "b": 5})  # 8
 ```
+
+`*liste` und `**wb` entpacken beim Aufruf (auch bei `neu K(…)` und Methoden). In der Parameterliste sammelt
+`*name` überzählige Positionsargumente und `**name` überzählige Keyword-Argumente in einem Wörterbuch;
+`**name` muss der letzte Parameter sein.
 
 Der Ausdruck nach `->` reicht so weit wie möglich (wie Pythons `lambda`). Innerhalb von `( … )` dürfen
 Aufrufe, Parameterlisten und Klammerausdrücke über mehrere Zeilen gehen, auch mit einem abschließenden Komma.
@@ -219,6 +244,17 @@ l[::-1]     # umgekehrt
 l[::2]      # jedes zweite Element
 ```
 Slice-*Zuweisung* (`l[1:3] = [...]`) wird nicht unterstützt.
+
+Entpacken mit `*` (Listen, Mengen, Zeichenketten, Bereiche) und `**` (Wörterbücher) in Literalen. Das Ergebnis
+ist immer eine neue Sammlung; bei Wörterbüchern gewinnt der später stehende Schlüssel.
+
+```
+sei a = [1, 2]
+[*a, *a, 3]                       # [1, 2, 1, 2, 3]
+{**{"x": 1}, **{"x": 2, "y": 3}}  # {"x": 2, "y": 3}
+{*[1, 2], *[2, 3]}                # {1, 2, 3}
+```
+Wörterbuch- und Mengen-Entpacken lassen sich in einem Literal nicht mischen.
 
 ### Mengen
 
