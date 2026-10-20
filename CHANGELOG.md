@@ -30,14 +30,28 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Rest- und verschachtelte Muster `[kopf, *rest]` und `[a, [b, c]]` bei `sei`, Zuweisung und `für`
   (auch in Comprehensions).
 - Kettenzuweisung `a = b = 0`, auch an Attribute und Indizes. `sei a = b = 0` ist ein Syntaxfehler mit Hinweis.
+- Pfade und Dateien: `pfad_verbinden`, `dateiname`, `ordnername`, `endung`, `ist_datei`, `ist_ordner`,
+  `datei_loeschen` (auch `datei_löschen`), `umbenennen` (auch für Ordner; wirft, wenn das Ziel schon existiert)
+  und `zeilen_lesen` (Liste der Zeilen ohne Zeilenende).
+- Text: `links_auffuellen` und `rechts_auffuellen` (auch mit `ü`) sowie `zentrieren` als Methoden, jeweils
+  `(breite[, zeichen])`; `ersetze(alt, neu, anzahl)` ersetzt höchstens `anzahl` Vorkommen.
+- Listen und Wörterbücher: `eindeutig` (als Funktion und Methode; das erste Vorkommen bleibt in seiner Reihenfolge),
+  `gruppiere(sammlung, f)`, `zusammenfuehren` (auch `zusammenführen`; spätere Werte gewinnen) und die
+  Listen-Methoden `max()` und `min()`.
+- Mathe: `arcsin`, `arccos`, `arctan` und `arctan2(y, x)`.
+- Zeit: `warte(sekunden)` und `datum_lesen(text, format)` als Gegenstück zu `datum_formatieren`.
 
 ### Geändert
 - Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
+- `runde` rundet kaufmännisch: ab ,5 vom Nullpunkt weg (`runde(2.5)` ergibt 3, `runde(2.675, 2)` ergibt 2.68).
+  Negative Stellen runden vor dem Komma (`runde(1234.5, -2)` ergibt 1200). Zeichenketten werden jetzt einheitlich
+  abgelehnt; die Stellenzahl muss eine Ganzzahl sein.
 
 ### Behoben
 - Zeilennummern bei Fehlern in `{…}`-Interpolationen waren falsch; gemeldet wird jetzt die absolute Zeile des `{`.
 - `"{1 2}"` wird als Syntaxfehler gemeldet, statt den Rest des Ausdrucks stillschweigend zu ignorieren.
 - REPL: Bei offener `(` oder `[` wartet sie auf Folgezeilen (bisher nur bei `{`).
+- Deutsche Meldungen für `abs`, `runde`, `logarithmus` (Basis 1), `exponential` (zu große Werte) und `ersetze`.
 
 ## [2.7.1]
 
