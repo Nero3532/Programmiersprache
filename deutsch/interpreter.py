@@ -11,6 +11,7 @@ import statistics
 import hashlib
 import base64
 from datetime import datetime
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from . import ast_knoten as ast
 from .umgebung import Umgebung
 
@@ -255,6 +256,9 @@ class Interpreter:
             'abbilden':  lambda obj, *a: self._liste_abbilden(obj, a),
             'filtere':   lambda obj, *a: self._liste_filtere(obj, a),
             'reduziere': lambda obj, *a: self._liste_reduziere(obj, a),
+            'eindeutig': lambda obj: self._liste_eindeutig(obj),
+            'max':       _mit_keywords(lambda obj, /, *a, **kw: self._liste_extremum(obj, a, kw, max, 'max')),
+            'min':       _mit_keywords(lambda obj, /, *a, **kw: self._liste_extremum(obj, a, kw, min, 'min')),
         }
 
     def _string_methoden_aufbauen(self):
@@ -266,7 +270,17 @@ class Interpreter:
             'länge':         lambda obj: len(obj),
             'teile':         lambda obj, *a: obj.split(a[0]) if a else obj.split(),
             'enthält':       lambda obj, x: x in obj,
-            'ersetze':       lambda obj, alt, neu: obj.replace(alt, neu),
+            'ersetze':       lambda obj, *a: self._text_ersetze(obj, a),
+            'links_auffuellen': _mit_keywords(lambda obj, /, *a, **kw:
+                                self._text_auffuellen('links_auffuellen', obj, a, kw, str.rjust)),
+            'links_auffüllen':  _mit_keywords(lambda obj, /, *a, **kw:
+                                self._text_auffuellen('links_auffüllen', obj, a, kw, str.rjust)),
+            'rechts_auffuellen': _mit_keywords(lambda obj, /, *a, **kw:
+                                 self._text_auffuellen('rechts_auffuellen', obj, a, kw, str.ljust)),
+            'rechts_auffüllen':  _mit_keywords(lambda obj, /, *a, **kw:
+                                 self._text_auffuellen('rechts_auffüllen', obj, a, kw, str.ljust)),
+            'zentrieren':    _mit_keywords(lambda obj, /, *a, **kw:
+                             self._text_auffuellen('zentrieren', obj, a, kw, str.center)),
             'trimmen':       lambda obj: obj.strip(),
             'links_trimmen': lambda obj: obj.lstrip(),
             'rechts_trimmen':lambda obj: obj.rstrip(),
@@ -296,6 +310,8 @@ class Interpreter:
             'länge':      lambda obj: len(obj),
             'hole':       lambda obj, k, *d: obj.get(k, d[0] if d else None),
             'kopiere':    lambda obj: dict(obj),
+            'zusammenfuehren': lambda obj, *a: self._woerterbuecher_zusammenfuehren('zusammenfuehren', (obj,) + a),
+            'zusammenführen':  lambda obj, *a: self._woerterbuecher_zusammenfuehren('zusammenführen', (obj,) + a),
         }
 
     def _menge_methoden_aufbauen(self):
@@ -394,6 +410,26 @@ class Interpreter:
         g.setze('hash_sha256',       self._eb_hash_sha256)
         g.setze('base64_kodieren',   self._eb_base64_kodieren)
         g.setze('base64_dekodieren', self._eb_base64_dekodieren)
+        g.setze('pfad_verbinden',    self._eb_pfad_verbinden)
+        g.setze('dateiname',         self._eb_dateiname)
+        g.setze('ordnername',        self._eb_ordnername)
+        g.setze('endung',            self._eb_endung)
+        g.setze('ist_datei',         self._eb_ist_datei)
+        g.setze('ist_ordner',        self._eb_ist_ordner)
+        g.setze('datei_loeschen',    self._eb_datei_loeschen)
+        g.setze('datei_löschen',     self._eb_datei_loeschen)
+        g.setze('umbenennen',        self._eb_umbenennen)
+        g.setze('zeilen_lesen',      self._eb_zeilen_lesen)
+        g.setze('eindeutig',         self._eb_eindeutig)
+        g.setze('gruppiere',         self._eb_gruppiere)
+        g.setze('zusammenfuehren',   self._eb_zusammenfuehren)
+        g.setze('zusammenführen',    self._eb_zusammenfuehren)
+        g.setze('arcsin',            self._eb_arcsin)
+        g.setze('arccos',            self._eb_arccos)
+        g.setze('arctan',            self._eb_arctan)
+        g.setze('arctan2',           self._eb_arctan2)
+        g.setze('warte',             self._eb_warte)
+        g.setze('datum_lesen',       self._eb_datum_lesen)
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
@@ -529,6 +565,43 @@ class Interpreter:
         except ValueError:
             raise ValueError(f"Kann '{text}' nicht in Zahl umwandeln")
 
+    def _text_auffuellen(self, name, obj, args, kwargs, fn):
+        """links_auffuellen / rechts_auffuellen / zentrieren: breite und optional zeichen (positional oder als Keyword).
+        fn ist str.rjust, str.ljust bzw. str.center."""
+        unbekannt = [k for k in kwargs if k != 'zeichen']
+        if unbekannt:
+            raise TypeError(f"'{name}' hat kein Parameter '{unbekannt[0]}'")
+        if not 1 <= len(args) <= 2:
+            raise TypeError(f"'{name}' erwartet 1–2 Argumente, bekam {len(args)}")
+        if len(args) == 2 and 'zeichen' in kwargs:
+            raise TypeError(f"'{name}': 'zeichen' ist mehrfach angegeben")
+        breite = args[0]
+        zeichen = args[1] if len(args) == 2 else kwargs.get('zeichen', ' ')
+        if not isinstance(breite, int):
+            raise TypeError(f"'{name}' erwartet eine Ganzzahl als Breite, bekam {self._typname(breite)}")
+        if not isinstance(zeichen, str):
+            raise TypeError(f"'{name}' erwartet ein Füllzeichen als Zeichenkette, bekam {self._typname(zeichen)}")
+        if len(zeichen) != 1:
+            raise ValueError(f"'{name}': Das Füllzeichen muss genau 1 Zeichen lang sein, bekam {len(zeichen)}")
+        return fn(obj, breite, zeichen)
+
+    def _text_ersetze(self, obj, args):
+        """text.ersetze(alt, neu[, anzahl]): ersetzt alle Vorkommen oder höchstens 'anzahl' viele."""
+        if not 2 <= len(args) <= 3:
+            raise TypeError(f"'ersetze' erwartet 2–3 Argumente, bekam {len(args)}")
+        alt, neu = args[0], args[1]
+        if not isinstance(alt, str) or not isinstance(neu, str):
+            raise TypeError(f"'ersetze' erwartet Zeichenketten als erstes und zweites Argument, "
+                            f"bekam {self._typname(alt)} und {self._typname(neu)}")
+        if len(args) == 2:
+            return obj.replace(alt, neu)
+        anzahl = args[2]
+        if not isinstance(anzahl, int):
+            raise TypeError(f"'ersetze' erwartet eine Ganzzahl als Anzahl, bekam {self._typname(anzahl)}")
+        if anzahl < 0:
+            raise ValueError(f"'ersetze' erwartet eine Anzahl von 0 oder mehr, bekam {anzahl}")
+        return obj.replace(alt, neu, anzahl)
+
     def _liste_entferne(self, liste, *index):
         """Gemeinsame Logik für entferne(liste[, index]) und liste.entferne([index])."""
         if not index:
@@ -580,6 +653,31 @@ class Interpreter:
         obj.extend(andere)
         return None
 
+    def _liste_extremum(self, liste, args, kwargs, fn, name):
+        """liste.max([schluessel=f]) und liste.min(...): wie die gleichnamigen Builtins, die Liste ist der Empfänger."""
+        if args:
+            raise TypeError(f"'{name}' nimmt keine Positionsargumente an, nur das Keyword 'schluessel'")
+        schluessel, _ = self._sortier_optionen(name, kwargs)
+        if not liste:
+            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste")
+        return self._vergleichs_extremum(fn, liste, name, schluessel)
+
+    @staticmethod
+    def _liste_eindeutig(liste):
+        """Neue Liste ohne Dubletten; das erste Auftreten bestimmt die Reihenfolge.
+        Unhashbare Werte (Listen, Wörterbücher) werden über == verglichen."""
+        ergebnis, gesehen = [], set()
+        for e in liste:
+            try:
+                if e in gesehen:
+                    continue
+                gesehen.add(e)
+            except TypeError:
+                if e in ergebnis:
+                    continue
+            ergebnis.append(e)
+        return ergebnis
+
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
         liste, elem = args
@@ -627,6 +725,12 @@ class Interpreter:
         werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
         if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
         return self._vergleichs_extremum(min, werte, 'min', schluessel)
+
+    def _eb_eindeutig(self, *args):
+        self._pruefe_args('eindeutig', args, 1)
+        if not isinstance(args[0], list):
+            raise TypeError(f"'eindeutig' erwartet eine Liste, bekam {self._typname(args[0])}")
+        return self._liste_eindeutig(args[0])
 
     # ----------------------------------------------- Funktionen höherer Ordnung
 
@@ -678,6 +782,24 @@ class Interpreter:
             raise ValueError("'reduziere' kann eine leere Sammlung nicht ohne Startwert reduzieren")
         for e in elemente:
             ergebnis = self._aufrufen(f, [ergebnis, e])
+        return ergebnis
+
+    def _eb_gruppiere(self, *args):
+        self._pruefe_args('gruppiere', args, 2)
+        return self._hof_gruppiere(args[0], args[1], 'als 2. Argument')
+
+    def _hof_gruppiere(self, sammlung, f, wo_f):
+        """Wörterbuch: Schlüssel f(e) -> Liste aller Elemente e mit diesem Schlüssel (in ihrer Reihenfolge)."""
+        elemente = self._hof_elemente('gruppiere', sammlung)
+        self._pruefe_funktion('gruppiere', f, 1, wo_f)
+        ergebnis = {}
+        for e in elemente:
+            schluessel = self._aufrufen(f, [e])
+            try:
+                ergebnis.setdefault(schluessel, []).append(e)
+            except TypeError:  # unhashbarer Schlüssel, z. B. eine Liste
+                raise TypeError(f"'gruppiere' erwartet als Schlüssel einen unveränderlichen Wert, "
+                                f"bekam {self._typname(schluessel)}") from None
         return ergebnis
 
     def _hof_elemente(self, name, sammlung):
@@ -746,12 +868,44 @@ class Interpreter:
         return minimum, maximum
 
     def _eb_abs(self, *args):
-        self._pruefe_args('abs', args, 1); return abs(args[0])
+        self._pruefe_args('abs', args, 1)
+        try:
+            return abs(args[0])
+        except TypeError:
+            raise TypeError(f"'abs' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_runde(self, *args):
-        if len(args) not in (1, 2): raise TypeError("'runde' erwartet 1–2 Argumente")
-        stellen = int(args[1]) if len(args) == 2 else 0
-        return round(float(args[0]), stellen) if stellen > 0 else int(round(args[0]))
+        """Kaufmännisch: ab ,5 vom Nullpunkt weg. Ohne Stellen oder mit Stellen <= 0 eine Ganzzahl, sonst eine Kommazahl."""
+        if len(args) not in (1, 2):
+            raise TypeError(f"'runde' erwartet 1–2 Argumente, bekam {len(args)}")
+        zahl = args[0]
+        if not isinstance(zahl, (int, float)):
+            raise TypeError(f"'runde' erwartet eine Zahl, bekam {self._typname(zahl)}")
+        stellen = 0
+        if len(args) == 2:
+            stellen = args[1]
+            if not isinstance(stellen, int):
+                raise TypeError(f"'runde' erwartet eine Ganzzahl als Stellenzahl, bekam {self._typname(stellen)}")
+        if isinstance(zahl, float) and not math.isfinite(zahl):
+            raise ValueError(f"'runde' erwartet eine endliche Zahl, bekam {self._zu_text(zahl)}")
+        if isinstance(zahl, bool):  # Python rechnet mit wahr/falsch wie mit 1/0; str() würde 'True' liefern
+            zahl = int(zahl)
+        gerundet = self._runde_dezimal(zahl, stellen)
+        if stellen > 0:
+            return float(gerundet) + 0.0  # + 0.0: aus -0.0 wird 0.0
+        return int(gerundet)
+
+    @staticmethod
+    def _runde_dezimal(zahl, stellen):
+        """Rundet auf der Dezimaldarstellung (str) der Zahl, ROUND_HALF_UP. Gibt ein Decimal zurück."""
+        ganzstellen = len(str(int(abs(zahl))))
+        # Außerhalb dieser Grenzen ändert sich das Ergebnis nicht, nur die Zwischenwerte würden riesig:
+        # Stellen unter -(Ganzstellen+1) ergeben immer 0, ab 400 Nachkommastellen ist die Zahl schon exakt.
+        stellen = min(max(stellen, -(ganzstellen + 1)), 400)
+        with localcontext() as kontext:
+            kontext.prec = ganzstellen + max(stellen, 0) + 5
+            quantum = Decimal(1).scaleb(-stellen)
+            return Decimal(str(zahl)).quantize(quantum, rounding=ROUND_HALF_UP)
 
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
@@ -796,6 +950,35 @@ class Interpreter:
             return math.exp(args[0])
         except TypeError:
             raise TypeError(f"'exponential' erwartet eine Zahl, bekam {self._typname(args[0])}")
+        except OverflowError:
+            raise OverflowError(f"'exponential' ergibt für {self._zu_text(args[0])} eine zu große Zahl")
+
+    def _eb_arcsin(self, *args):
+        self._pruefe_args('arcsin', args, 1)
+        return self._arkusfunktion('arcsin', math.asin, args[0])
+
+    def _eb_arccos(self, *args):
+        self._pruefe_args('arccos', args, 1)
+        return self._arkusfunktion('arccos', math.acos, args[0])
+
+    def _eb_arctan(self, *args):
+        self._pruefe_args('arctan', args, 1)
+        return self._arkusfunktion('arctan', math.atan, args[0])
+
+    def _eb_arctan2(self, *args):
+        self._pruefe_args('arctan2', args, 2)
+        try:
+            return math.atan2(args[0], args[1])
+        except TypeError:
+            raise TypeError(f"'arctan2' erwartet zwei Zahlen, bekam {self._typname(args[0])} und {self._typname(args[1])}")
+
+    def _arkusfunktion(self, name, fn, wert):
+        try:
+            return fn(wert)
+        except TypeError:
+            raise TypeError(f"'{name}' erwartet eine Zahl, bekam {self._typname(wert)}")
+        except ValueError:  # nur arcsin/arccos: Definitionsbereich -1 bis 1
+            raise ValueError(f"'{name}' nicht definiert für {self._zu_text(wert)}, erlaubt sind Werte von -1 bis 1")
 
     def _eb_ggt(self, *args):
         if not args:
@@ -825,21 +1008,28 @@ class Interpreter:
 
     def _eb_logarithmus(self, *args):
         if len(args) not in (1, 2):
-            raise TypeError("'logarithmus' erwartet 1–2 Argumente")
+            raise TypeError(f"'logarithmus' erwartet 1–2 Argumente, bekam {len(args)}")
         try:
             return math.log(args[0]) if len(args) == 1 else math.log(args[0], args[1])
+        except ZeroDivisionError:  # nur bei Basis 1: log(Basis) ist 0
+            raise ZeroDivisionError(f"'logarithmus' ist mit Basis {self._zu_text(args[1])} nicht definiert")
         except ValueError:
-            raise ValueError(f"'logarithmus' nicht definiert für {args[0]}")
+            raise ValueError(f"'logarithmus' nicht definiert für {self._zu_text(args[0])}")
         except TypeError:
-            raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            falsch = next((a for a in args if not isinstance(a, (int, float))), args[0])
+            raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(falsch)}")
 
     def _eb_datei_lesen(self, *args):
         self._pruefe_args('datei_lesen', args, 1)
-        pfad = self._zu_text(args[0])
+        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read())
+
+    def _lese_datei(self, pfad: str, lese):
+        """Gemeinsame Fehlerübersetzung für datei_lesen und zeilen_lesen.
+        lese(f) liest aus der bereits geöffneten Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
             with open(voller_pfad, 'r', encoding='utf-8') as f:
-                return f.read()
+                return lese(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
         except IsADirectoryError:
@@ -880,6 +1070,70 @@ class Interpreter:
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
         self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt))
         return None
+
+    def _eb_zeilen_lesen(self, *args):
+        self._pruefe_args('zeilen_lesen', args, 1)
+        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f])
+
+    def _eb_datei_loeschen(self, *args):
+        self._pruefe_args('datei_loeschen', args, 1)
+        pfad = self._zu_text(args[0])
+        voller_pfad = self._pfad_vorpruefen(pfad)  # Ordner meldet das vorab als 'ist ein Ordner, keine Datei'
+        try:
+            os.remove(voller_pfad)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Löschen von '{pfad}'")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelöscht werden")
+        return None
+
+    def _eb_umbenennen(self, *args):
+        self._pruefe_args('umbenennen', args, 2)
+        alt, neu = self._zu_text(args[0]), self._zu_text(args[1])
+        voller_alt = self._pfad_vorpruefen(alt, ordner_erlaubt=True)
+        voller_neu = self._pfad_vorpruefen(neu, ordner_erlaubt=True)
+        if not os.path.lexists(voller_alt):
+            raise FileNotFoundError(f"Datei oder Ordner nicht gefunden: '{alt}'")
+        if os.path.lexists(voller_neu):  # os.rename würde unter Linux still überschreiben
+            raise FileExistsError(f"'{neu}' existiert bereits")
+        try:
+            os.rename(voller_alt, voller_neu)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Zielordner für '{neu}' existiert nicht")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Umbenennen von '{alt}'")
+        except OSError:
+            raise OSError(f"'{alt}' konnte nicht umbenannt werden")
+        return None
+
+    def _eb_pfad_verbinden(self, *args):
+        if not args:
+            raise TypeError("'pfad_verbinden' erwartet mindestens 1 Argument")
+        return os.path.join(*[self._zu_text(a) for a in args])
+
+    def _eb_dateiname(self, *args):
+        self._pruefe_args('dateiname', args, 1)
+        return os.path.basename(self._zu_text(args[0]))
+
+    def _eb_ordnername(self, *args):
+        """Pfad des enthaltenden Ordners ('a/b/c.txt' -> 'a/b', wie os.path.dirname); leer, wenn kein Ordneranteil da ist.
+        Passt zu pfad_verbinden(ordnername(p), dateiname(p))."""
+        self._pruefe_args('ordnername', args, 1)
+        return os.path.dirname(self._zu_text(args[0]))
+
+    def _eb_endung(self, *args):
+        self._pruefe_args('endung', args, 1)
+        return os.path.splitext(self._zu_text(args[0]))[1]
+
+    def _eb_ist_datei(self, *args):
+        self._pruefe_args('ist_datei', args, 1)
+        return os.path.isfile(self._pfad_aufloesen(self._zu_text(args[0])))
+
+    def _eb_ist_ordner(self, *args):
+        self._pruefe_args('ist_ordner', args, 1)
+        return os.path.isdir(self._pfad_aufloesen(self._zu_text(args[0])))
 
     def _eb_boden(self, *args):
         self._pruefe_args('boden', args, 1)
@@ -1033,6 +1287,27 @@ class Interpreter:
             return datetime.fromtimestamp(zeitstempel).strftime(format_str)
         except (TypeError, ValueError, OSError) as e:
             raise ValueError(f"Ungültiger Zeitstempel oder Format: {e}")
+
+    def _eb_datum_lesen(self, *args):
+        """Gegenstück zu datum_formatieren: Text nach Formatangabe -> Zeitstempel (lokale Zeit, wie jetzt())."""
+        self._pruefe_args('datum_lesen', args, 2)
+        text, format_str = self._zu_text(args[0]), self._zu_text(args[1])
+        try:
+            return datetime.strptime(text, format_str).timestamp()
+        except ValueError:
+            raise ValueError(f"'{text}' passt nicht zum Format '{format_str}'")
+        except (OverflowError, OSError):
+            raise ValueError(f"'{text}' liegt außerhalb des darstellbaren Datumsbereichs")
+
+    def _eb_warte(self, *args):
+        self._pruefe_args('warte', args, 1)
+        sekunden = args[0]
+        if not isinstance(sekunden, (int, float)):
+            raise TypeError(f"'warte' erwartet eine Zahl, bekam {self._typname(sekunden)}")
+        if not 0 <= sekunden < float('inf'):  # NaN fällt hier auch heraus
+            raise ValueError(f"'warte' erwartet eine Zeit von 0 oder mehr Sekunden, bekam {self._zu_text(sekunden)}")
+        time.sleep(sekunden)
+        return None
 
     def _eb_mittelwert(self, *args):
         self._pruefe_args('mittelwert', args, 1)
@@ -1751,14 +2026,14 @@ class Interpreter:
             pfad = os.path.join(self._ladepfad, pfad)
         return os.path.normpath(pfad)
 
-    def _pfad_vorpruefen(self, pfad: str) -> str:
+    def _pfad_vorpruefen(self, pfad: str, ordner_erlaubt: bool = False) -> str:
         """Voller Pfad für open(). Nullzeichen und Ordner meldet es vorab auf Deutsch,
-        bevor open() es unverständlich meldet."""
+        bevor open() es unverständlich meldet. ordner_erlaubt: Ordner sind hier kein Fehler (z. B. umbenennen)."""
         if '\x00' in pfad:
             sichtbar = pfad.replace('\x00', '\\0')
             raise ValueError(f"'{sichtbar}' ist kein gültiger Dateipfad")
         voller_pfad = self._pfad_aufloesen(pfad)
-        if os.path.isdir(voller_pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
+        if not ordner_erlaubt and os.path.isdir(voller_pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
             raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
         return voller_pfad
 
@@ -2086,6 +2361,20 @@ class Interpreter:
             return functools.partial(fn, obj)
 
         raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
+
+    def _eb_zusammenfuehren(self, *args):
+        if not args:
+            raise TypeError("'zusammenführen' erwartet mindestens 1 Argument")
+        return self._woerterbuecher_zusammenfuehren('zusammenführen', args)
+
+    def _woerterbuecher_zusammenfuehren(self, name, woerterbuecher):
+        """Neues Wörterbuch aus allen Eingaben; bei gleichen Schlüsseln gewinnt der spätere Wert."""
+        ergebnis = {}
+        for wb in woerterbuecher:
+            if not isinstance(wb, dict):
+                raise TypeError(f"'{name}' erwartet Wörterbücher, bekam {self._typname(wb)}")
+            ergebnis.update(wb)
+        return ergebnis
 
     @staticmethod
     def _woerterbuch_entferne(obj, schluessel):
