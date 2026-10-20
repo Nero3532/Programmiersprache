@@ -40,18 +40,33 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Listen-Methoden `max()` und `min()`.
 - Mathe: `arcsin`, `arccos`, `arctan` und `arctan2(y, x)`.
 - Zeit: `warte(sekunden)` und `datum_lesen(text, format)` als Gegenstück zu `datum_formatieren`.
+- Deutsche Fehlerarten für `fange (…)` und den Fehlerkopf der CLI: `Fehler` (Oberbegriff, fängt alles), `TypFehler`
+  (`TypeError`), `WertFehler` (`ValueError`), `NamensFehler` (`NameError`), `IndexFehler` (`IndexError`),
+  `SchluesselFehler` (`KeyError`), `AttributFehler` (`AttributeError`), `DateiFehler` (`OSError`), `SyntaxFehler`
+  (`SyntaxError`), `LaufzeitFehler` (`RuntimeError`), `RekursionsFehler` (`RecursionError`), `ZusicherungsFehler`
+  (`AssertionError`), `ImportFehler` (`ImportError`), `EingabeEndeFehler` (`EOFError`), `DivisionDurchNullFehler`
+  (`ZeroDivisionError`), `UeberlaufFehler` (`OverflowError`). Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`.
+- `fange (…)` nimmt die deutschen Namen; die englischen Python-Namen funktionieren weiter, auch gemischt.
+  Mit `werfe` geworfene Werte heißen `AusnahmeFehler`.
 
 ### Geändert
 - Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
 - `runde` rundet kaufmännisch: ab ,5 vom Nullpunkt weg (`runde(2.5)` ergibt 3, `runde(2.675, 2)` ergibt 2.68).
   Negative Stellen runden vor dem Komma (`runde(1234.5, -2)` ergibt 1200). Zeichenketten werden jetzt einheitlich
   abgelehnt; die Stellenzahl muss eine Ganzzahl sein.
+- Fehlerkopf der CLI zeigt die deutschen Arten: `[DivisionDurchNullFehler]` statt `[ZeroDivisionError]`,
+  `[RekursionsFehler]` statt `[Fehler]` bei zu tiefer Rekursion.
+- `fange (…)` meldet unbekannte Namen als `NamensFehler`: mit Vorschlag bei Tippfehlern (`meintest du 'WertFehler'?`),
+  sonst mit der Liste der bekannten Arten.
 
 ### Behoben
 - Zeilennummern bei Fehlern in `{…}`-Interpolationen waren falsch; gemeldet wird jetzt die absolute Zeile des `{`.
 - `"{1 2}"` wird als Syntaxfehler gemeldet, statt den Rest des Ausdrucks stillschweigend zu ignorieren.
 - REPL: Bei offener `(` oder `[` wartet sie auf Folgezeilen (bisher nur bei `{`).
 - Deutsche Meldungen für `abs`, `runde`, `logarithmus` (Basis 1), `exponential` (zu große Werte) und `ersetze`.
+- Übersetzte Meldungen behalten die ursprüngliche Fehlerklasse: `fange (UnicodeDecodeError)` greift auch nach der
+  Übersetzung. Deutsche Texte für Unicode-Fehler (mit Kodierung und Position) und häufige Python-Meldungen
+  (z. B. Division durch Null, Rekursionstiefe, Überlauf).
 
 ## [2.7.1]
 
