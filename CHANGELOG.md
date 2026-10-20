@@ -22,6 +22,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - `py -m deutsch` startet das Programm als Modul, mit denselben Optionen wie `main.py`.
 - CI: Tests auf Windows und Linux für Python 3.10 bis 3.14; die Beispiele werden über die CLI ausgeführt,
   nach der Paket-Installation werden Version und Aufruf geprüft.
+- Entpacken mit `*` und `**`: `f(*liste, **wb)` in Aufrufen (auch bei `neu K(…)` und Methoden), `[*a, *b]` in Listen,
+  `{**a, **b}` in Wörterbüchern und `{*a, *b}` in Mengen.
+- `**kwargs`-Parameter: `funktion f(a, **optionen)` sammelt überzählige Keyword-Argumente in einem Wörterbuch.
+- Destrukturierende Zuweisung an bestehende Variablen: `[a, b] = [b, a]`, auch an Attribute und Indizes
+  (`[k.x, liste[0]] = [1, 2]`).
+- Rest- und verschachtelte Muster `[kopf, *rest]` und `[a, [b, c]]` bei `sei`, Zuweisung und `für`
+  (auch in Comprehensions).
+- Kettenzuweisung `a = b = 0`, auch an Attribute und Indizes. `sei a = b = 0` ist ein Syntaxfehler mit Hinweis.
 
 ### Geändert
 - Der REPL-Banner zeigt die Versionsnummer aus `deutsch/__init__.py` statt des festen Texts „Deutsch 2.0“.
