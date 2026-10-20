@@ -179,7 +179,14 @@ class Parser:
             typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
+        self._keine_kette_nach_deklaration('sei')
         return ast.VariableDeklaration(name, wert, typhinweis)
+
+    def _keine_kette_nach_deklaration(self, wort: str):
+        """'sei a = b = 0' gibt es nicht: ein zweites '=' nach dem Wert ist ein Syntaxfehler mit Hinweis."""
+        if self._aktuell().typ == TokenTyp.GLEICH:
+            self._fehler(f"Kettenzuweisung wie '{wort} a = b = 0' gibt es nicht – lege jede Variable "
+                         f"einzeln mit '{wort}' an (z. B. '{wort} a = 0' und '{wort} b = 0')")
 
     def _konstante_deklaration(self):
         self._verbrauche(TokenTyp.KONSTANTE)
@@ -190,28 +197,57 @@ class Parser:
             typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
+        self._keine_kette_nach_deklaration('konstante')
         return ast.VariableDeklaration(name, wert, typhinweis, ist_konstante=True)
 
     def _destrukturierende_deklaration(self):
-        self._verbrauche(TokenTyp.LECKIG)
-        namen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
-        while self._aktuell().typ == TokenTyp.KOMMA:
-            self.pos += 1
-            namen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
-        self._verbrauche(TokenTyp.RECKIG)
+        muster = self._namensmuster_lesen()
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
-        return ast.DestrukturierendeDeklaration(namen, wert)
+        self._keine_kette_nach_deklaration('sei')
+        return ast.DestrukturierendeDeklaration(muster, wert)
+
+    def _namensmuster_lesen(self):
+        """Liest ein Muster aus Namen '[a, *rest, [b, c]]' (das '[' steht noch) für 'sei' und 'für'.
+        Höchstens ein '*'-Eintrag; Muster dürfen verschachtelt sein; ein abschließendes Komma ist erlaubt."""
+        self._verbrauche(TokenTyp.LECKIG)
+        ziele = []
+        rest = None
+        while True:
+            if self._aktuell().typ == TokenTyp.STERN:
+                if rest is not None:
+                    self._fehler("Ein Muster darf höchstens ein '*' (Rest) enthalten")
+                self.pos += 1
+                rest = len(ziele)
+                ziele.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            elif self._aktuell().typ == TokenTyp.LECKIG:
+                ziele.append(self._namensmuster_lesen())
+            else:
+                ziele.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            if self._aktuell().typ != TokenTyp.KOMMA:
+                break
+            self.pos += 1
+            if self._aktuell().typ == TokenTyp.RECKIG:
+                break  # abschließendes Komma: sei [a, b,] = …
+        self._verbrauche(TokenTyp.RECKIG)
+        return ast.Muster(ziele, rest)
 
     def _parameter_lesen(self):
-        """Gibt [(name, default_expr|None, is_variadic, typhinweis|None)] zurück."""
+        """Gibt ([(name, default_expr|None, is_variadic, typhinweis|None), ...], kwargs_parameter|None) zurück.
+        kwargs_parameter ist (name, typhinweis|None) des '**name'-Parameters (wie in Python: nur einer,
+        als letzter Parameter, ohne Standardwert)."""
         params = []
+        kwargs_parameter = None
         if self._aktuell().typ == TokenTyp.RPAREN:
-            return params
+            return params, kwargs_parameter
 
         while True:
             variadic = False
-            if self._aktuell().typ == TokenTyp.STERN:
+            doppelstern = False
+            if self._aktuell().typ == TokenTyp.STERN_STERN:
+                doppelstern = True
+                self.pos += 1
+            elif self._aktuell().typ == TokenTyp.STERN:
                 variadic = True
                 self.pos += 1
 
@@ -227,15 +263,34 @@ class Parser:
             if self._aktuell().typ == TokenTyp.GLEICH:
                 if variadic:
                     self._fehler('Variadische Parameter dürfen keinen Standardwert haben')
+                if doppelstern:
+                    self._fehler('Ein **-Parameter darf keinen Standardwert haben')
                 self.pos += 1
                 default = self._ausdruck()
+
+            if doppelstern:
+                if any(p[0] == name for p in params):
+                    self._fehler(f"Der Parametername '{name}' ist doppelt vergeben")
+                kwargs_parameter = (name, typhinweis)
+                # **name muss letzter Parameter sein; ein abschließendes Komma ist erlaubt
+                if self._aktuell().typ == TokenTyp.KOMMA:
+                    folgt_ende = self._vorschau().typ == TokenTyp.RPAREN
+                    self.pos += 1
+                    if not folgt_ende:
+                        self._fehler('Ein **-Parameter muss der letzte Parameter sein (und es ist nur einer erlaubt)')
+                break
 
             params.append((name, default, variadic, typhinweis))
 
             if variadic:
-                # *args muss letzter Parameter sein; ein abschließendes Komma ist erlaubt
-                if self._aktuell().typ == TokenTyp.KOMMA and self._vorschau().typ == TokenTyp.RPAREN:
-                    self.pos += 1
+                # *args darf nur noch von **kwargs gefolgt werden; ein abschließendes Komma ist erlaubt
+                if self._aktuell().typ == TokenTyp.KOMMA:
+                    folgt = self._vorschau().typ
+                    if folgt == TokenTyp.RPAREN:
+                        self.pos += 1
+                    elif folgt == TokenTyp.STERN_STERN:
+                        self.pos += 1
+                        continue
                 break
 
             if self._aktuell().typ != TokenTyp.KOMMA:
@@ -244,7 +299,7 @@ class Parser:
             if self._aktuell().typ == TokenTyp.RPAREN:
                 break  # abschließendes Komma: funktion f(a, b,)
 
-        return params
+        return params, kwargs_parameter
 
     def _funktion_definition(self):
         # Anweisungsform — Name Pflicht
@@ -262,7 +317,7 @@ class Parser:
 
     def _funktion_rumpf(self, name):
         self._verbrauche(TokenTyp.LPAREN)
-        parameter = self._in_klammern(self._parameter_lesen)
+        parameter, kwargs_parameter = self._in_klammern(self._parameter_lesen)
 
         # '->' leitet entweder einen Rückgabetyp ein ('-> Typ { … }') oder die Kurzform
         # ('-> ausdruck', gleichbedeutend mit '{ zurück ausdruck }').  Unterschied: ein Typname
@@ -273,12 +328,12 @@ class Parser:
             if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.LGESCHWEIFTE:
                 typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
             else:
-                return self._kurzform_rumpf(name, parameter)
+                return self._kurzform_rumpf(name, parameter, kwargs_parameter)
 
         koerper = self._block()
-        return ast.FunktionDefinition(name, parameter, koerper, typhinweis)
+        return ast.FunktionDefinition(name, parameter, koerper, typhinweis, kwargs_parameter)
 
-    def _kurzform_rumpf(self, name, parameter):
+    def _kurzform_rumpf(self, name, parameter, kwargs_parameter=None):
         """Rumpf der Kurzform 'funktion(x) -> ausdruck' (das '->' ist schon verbraucht).
         Der Ausdruck reicht so weit wie möglich (wie Pythons lambda) und endet erst an einem
         Token, das ihn nicht fortsetzt, z. B. ',' oder ')' eines umgebenden Aufrufs."""
@@ -291,7 +346,7 @@ class Parser:
         ausdruck = self._ausdruck()
         zurueck = ast.ZurueckAnweisung(ausdruck)
         zurueck.zeile = t.zeile
-        return ast.FunktionDefinition(name, parameter, ast.Block([zurueck]), None)
+        return ast.FunktionDefinition(name, parameter, ast.Block([zurueck]), None, kwargs_parameter)
 
     def _klassen_definition(self):
         self._verbrauche(TokenTyp.KLASSE)
@@ -373,15 +428,9 @@ class Parser:
         return ast.SolangeAnweisung(bedingung, koerper)
 
     def _schleifenvariable_lesen(self):
-        """Liest 'name' oder '[name, name, ...]' (Destrukturierung) als Schleifenvariable."""
+        """Liest 'name' oder ein Destrukturierungs-Muster '[a, *rest, [b, c]]' als Schleifenvariable."""
         if self._aktuell().typ == TokenTyp.LECKIG:
-            self.pos += 1
-            namen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
-            while self._aktuell().typ == TokenTyp.KOMMA:
-                self.pos += 1
-                namen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
-            self._verbrauche(TokenTyp.RECKIG)
-            return namen
+            return self._namensmuster_lesen()
         return self._verbrauche(TokenTyp.BEZEICHNER).wert
 
     def _fuer_anweisung(self):
@@ -487,6 +536,7 @@ class Parser:
     # ------------------------------------------------------- Ausdr.-Anweis.
 
     def _ausdrucks_anweisung(self):
+        zeile = self._aktuell().zeile
         ausdruck = self._ausdruck()
 
         # Verbund-Zuweisung: x += 1, liste[i] -= 2, obj.attr *= 3
@@ -498,15 +548,55 @@ class Parser:
                 self._fehler('Ungültige Verbund-Zuweisung')
             return ast.VerbundZuweisung(ausdruck, op, wert)
 
-        # Normale Zuweisung: x = ..., obj.attr = ..., liste[i] = ...
+        # Zuweisung: x = ..., obj.attr = ..., liste[i] = ..., [a, *r] = ..., Kette a = b = ...
         if self._aktuell().typ == TokenTyp.GLEICH:
-            self.pos += 1
-            wert = self._ausdruck()
-            if isinstance(ausdruck, (ast.Bezeichner, ast.AttributZugriff, ast.IndexZugriff)):
-                return ast.Zuweisung(ausdruck, wert)
-            self._fehler('Ungültige Zuweisung')
+            teile = [ausdruck]
+            while self._aktuell().typ == TokenTyp.GLEICH:
+                self.pos += 1
+                teile.append(self._ausdruck())
+            wert = teile.pop()
+            ziele = [self._zuweisungsziel(z, zeile) for z in teile]
+            if len(ziele) == 1:
+                return ast.Zuweisung(ziele[0], wert)
+            return ast.KettenZuweisung(ziele, wert)
 
         return ausdruck
+
+    def _zuweisungsziel(self, knoten, zeile):
+        """Prüft ein Zuweisungsziel; eine Listen-Schreibweise '[a, b]' wird zum Muster.
+        zeile: Zeile, in der die Anweisung beginnt (für die Fehlermeldung)."""
+        if isinstance(knoten, (ast.Bezeichner, ast.AttributZugriff, ast.IndexZugriff)):
+            return knoten
+        if isinstance(knoten, ast.Liste):
+            return self._muster_aus_liste(knoten, zeile)
+        self._fehler('Ungültige Zuweisung')
+
+    @staticmethod
+    def _muster_aus_liste(liste, zeile):
+        """Wandelt die als Liste geparste linke Seite '[a, *rest, [b, c]]' in ein Muster um."""
+        def fehler(msg):
+            raise SyntaxError(f'Zeile {zeile}: Ungültige Zuweisung: {msg}')
+
+        einfach = (ast.Bezeichner, ast.AttributZugriff, ast.IndexZugriff)
+        ziele = []
+        rest = None
+        for element in liste.elemente:
+            if isinstance(element, ast.Entpacken):
+                if rest is not None:
+                    fehler("Ein Muster darf höchstens ein '*' (Rest) enthalten")
+                if not isinstance(element.ausdruck, einfach):
+                    fehler("Hinter '*' muss ein Name, Attribut oder Index stehen")
+                rest = len(ziele)
+                ziele.append(element.ausdruck)
+            elif isinstance(element, ast.Liste):
+                ziele.append(Parser._muster_aus_liste(element, zeile))
+            elif isinstance(element, einfach):
+                ziele.append(element)
+            else:
+                fehler('Im Muster sind nur Namen, Attribute, Indizes und verschachtelte Listen erlaubt')
+        if not ziele:
+            fehler('Das Muster ist leer')
+        return ast.Muster(ziele, rest)
 
     # ---------------------------------------------------------------- Ausdr.
 
@@ -657,13 +747,22 @@ class Parser:
 
     def _argumente_lesen(self):
         """Liest Aufruf-Argumente. Gibt (positionale_args, [(name, wert), ...]) zurück.
-        Positionale Argumente müssen vor Keyword-Argumenten stehen (wie in Python)."""
+        Positionale Argumente (auch '*liste', als ast.Entpacken) müssen vor Keyword-Argumenten stehen;
+        '**woerterbuch' steht unter den Keyword-Argumenten als (None, ausdruck)."""
         args = []
         kwargs = []
         if self._aktuell().typ == TokenTyp.RPAREN:
             return args, kwargs
         while True:
-            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
+            if self._aktuell().typ == TokenTyp.STERN_STERN:
+                self.pos += 1
+                kwargs.append((None, self._ausdruck()))
+            elif self._aktuell().typ == TokenTyp.STERN:
+                if kwargs:
+                    self._fehler("Entpackte Argumente ('*') müssen vor Keyword-Argumenten stehen")
+                self.pos += 1
+                args.append(ast.Entpacken(self._ausdruck()))
+            elif self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.GLEICH:
                 name = self._aktuell().wert
                 if any(n == name for n, _ in kwargs):
                     self._fehler(f"Keyword-Argument '{name}' mehrfach angegeben")
@@ -803,6 +902,13 @@ class Parser:
             f"nach dem Ausdruck folgt unerwartet '{gefunden}'"
         )
 
+    def _listen_element(self):
+        """Ein Listenelement: ein Ausdruck oder '*ausdruck' (Entpacken)."""
+        if self._aktuell().typ == TokenTyp.STERN:
+            self.pos += 1
+            return ast.Entpacken(self._ausdruck())
+        return self._ausdruck()
+
     def _listen_literal(self):
         self._verbrauche(TokenTyp.LECKIG)
         self._ueberspringen_leerzeilen()
@@ -811,10 +917,12 @@ class Parser:
             self.pos += 1
             return ast.Liste([])
 
-        erster = self._ausdruck()
+        erster = self._listen_element()
 
         # List comprehension: [ausdruck für var in iterable wenn bed]
         if self._aktuell().typ == TokenTyp.FUER:
+            if isinstance(erster, ast.Entpacken):
+                self._fehler("Entpacken mit '*' ist in einer Listen-Comprehension nicht möglich")
             self.pos += 1
             variable = self._schleifenvariable_lesen()
             self._verbrauche(TokenTyp.IN)
@@ -836,10 +944,25 @@ class Parser:
             self._ueberspringen_leerzeilen()
             if self._aktuell().typ == TokenTyp.RECKIG:
                 break
-            elemente.append(self._ausdruck())
+            elemente.append(self._listen_element())
         self._ueberspringen_leerzeilen()
         self._verbrauche(TokenTyp.RECKIG)
         return ast.Liste(elemente)
+
+    def _geschweifter_eintrag(self):
+        """Ein Eintrag in '{ … }': ('wb_entpacken', ausdruck) für '**x', ('m_entpacken', ausdruck) für '*x',
+        ('paar', schluessel, wert) für 'k: v' oder ('element', ausdruck)."""
+        if self._aktuell().typ == TokenTyp.STERN_STERN:
+            self.pos += 1
+            return ('wb_entpacken', self._ausdruck())
+        if self._aktuell().typ == TokenTyp.STERN:
+            self.pos += 1
+            return ('m_entpacken', self._ausdruck())
+        schluessel = self._ausdruck()
+        if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
+            self.pos += 1
+            return ('paar', schluessel, self._ausdruck())
+        return ('element', schluessel)
 
     def _woerterbuch_literal(self):
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
@@ -848,37 +971,27 @@ class Parser:
             self.pos += 1
             return ast.Woerterbuch([])  # {} ist ein leeres Wörterbuch (wie in Python)
 
-        erster = self._ausdruck()
-
-        if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
-            # Wörterbuch: {schlüssel: wert, ...}
-            self.pos += 1
-            v = self._ausdruck()
-            paare = [(erster, v)]
-            while self._aktuell().typ == TokenTyp.KOMMA:
-                self.pos += 1
-                self._ueberspringen_leerzeilen()
-                if self._aktuell().typ == TokenTyp.RGESCHWEIFTE:
-                    break
-                k = self._ausdruck()
-                self._verbrauche(TokenTyp.DOPPELPUNKT)
-                v = self._ausdruck()
-                paare.append((k, v))
-            self._ueberspringen_leerzeilen()
-            self._verbrauche(TokenTyp.RGESCHWEIFTE)
-            return ast.Woerterbuch(paare)
-
-        # Menge: {elem, elem, ...}
-        elemente = [erster]
+        # Der erste Eintrag bestimmt die Art: {k: v, **x} Wörterbuch, {a, b, *x} Menge
+        eintraege = [self._geschweifter_eintrag()]
+        ist_woerterbuch = eintraege[0][0] in ('paar', 'wb_entpacken')
         while self._aktuell().typ == TokenTyp.KOMMA:
             self.pos += 1
             self._ueberspringen_leerzeilen()
             if self._aktuell().typ == TokenTyp.RGESCHWEIFTE:
                 break
-            elemente.append(self._ausdruck())
+            eintrag = self._geschweifter_eintrag()
+            if (eintrag[0] in ('paar', 'wb_entpacken')) != ist_woerterbuch:
+                if ist_woerterbuch:
+                    self._fehler("In einem Wörterbuch sind nur 'schlüssel: wert' und '**ausdruck' erlaubt")
+                self._fehler("In einer Menge sind nur einzelne Elemente und '*ausdruck' erlaubt")
+            eintraege.append(eintrag)
         self._ueberspringen_leerzeilen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
-        return ast.MengenLiteral(elemente)
+
+        if ist_woerterbuch:
+            # '**x' steht als (None, x) zwischen den Paaren
+            return ast.Woerterbuch([(None, e[1]) if e[0] == 'wb_entpacken' else (e[1], e[2]) for e in eintraege])
+        return ast.MengenLiteral([ast.Entpacken(e[1]) if e[0] == 'm_entpacken' else e[1] for e in eintraege])
 
     def _neu_instanz(self):
         self._verbrauche(TokenTyp.NEU)
