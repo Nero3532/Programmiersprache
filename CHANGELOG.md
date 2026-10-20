@@ -92,8 +92,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - `datum_formatieren` meldet Zeitstempel, die keine Zahl, unendlich, NaN oder außerhalb des Datumsbereichs sind, sowie
   ungültige Formate auf Deutsch (immer als `WertFehler`), statt Python-Texte wie „argument must be int or float“ durchzureichen.
 - Überlauf-Meldungen werden unabhängig vom Plattform-Wortlaut übersetzt (Linux: „Numerical result out of range“).
-- Strg+C direkt nach dem Start einer Ausführung stoppt den Ausführungs-Thread zuverlässig (vorher lief er weiter).
-- 840 neue Regressionstests (1171 gesamt).
+- Strg+C direkt nach dem Start oder kurz vor dem Ende einer Ausführung stoppt den Ausführungs-Thread zuverlässig
+  (vorher lief er weiter oder es erschien „Exception in thread"); robust auch gegen den CPython-3.13-Fehler
+  python/cpython#139622, bei dem eine Unterbrechung den `except`-Block einer `while`-Schleife überspringt.
+- 841 neue Regressionstests (1172 gesamt).
 
 ## [2.7.1]
 
