@@ -164,7 +164,7 @@ class VariableDeklaration(Knoten):
     __slots__ = ('name', 'typhinweis', 'wert', 'ist_konstante')
     def __init__(self, name, wert, typhinweis=None, ist_konstante=False):
         self.name = name
-        self.typhinweis = typhinweis  # str | None – nur zur Info
+        self.typhinweis = typhinweis  # str | None – Name oder Punktpfad ('modul.Klasse')
         self.wert = wert
         self.ist_konstante = ist_konstante
 
@@ -229,7 +229,7 @@ class FuerAnweisung(Knoten):
 class FunktionDefinition(Knoten):
     """
     parameter: [(name, default_expr|None, is_variadic, typhinweis|None), ...]
-    typhinweis: str | None  (Rückgabetyp, ignoriert zur Laufzeit)
+    typhinweis: str | None  (Rückgabetyp: Name oder Punktpfad 'modul.Klasse'; Parameter-Hinweise ebenso)
     kwargs_parameter: (name, typhinweis|None) | None  – der '**name'-Parameter (sammelt überzählige Keywords)
     """
     __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter')
@@ -254,7 +254,7 @@ class KlassenDefinition(Knoten):
     __slots__ = ('name', 'eltern', 'methoden', 'statische_methoden', 'klassenattribute')
     def __init__(self, name, eltern, methoden, statische_methoden=None, klassenattribute=None):
         self.name = name
-        self.eltern = eltern                                   # Elternklassen-Namen (list[str])
+        self.eltern = eltern                                   # Basisklassen: Namen oder Punktpfade 'modul.Basis' (list[str])
         self.methoden = methoden                                # [FunktionDefinition, ...]
         self.statische_methoden = statische_methoden or []      # [FunktionDefinition, ...]
         self.klassenattribute = klassenattribute or []          # [VariableDeklaration | DestrukturierendeDeklaration, ...]

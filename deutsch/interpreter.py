@@ -13,6 +13,7 @@ import base64
 import builtins
 import difflib
 from datetime import datetime
+from typing import NamedTuple
 from decimal import Decimal, ROUND_HALF_UP, localcontext
 from . import ast_knoten as ast
 from .umgebung import Umgebung
@@ -255,6 +256,14 @@ def _klasse_mit_meldung(basis):
 
 # ---------------------------------------------------------- Laufzeit-Typen
 
+class AufrufEintrag(NamedTuple):
+    """Ein Eintrag der Aufrufkette: die Funktion 'name' wurde in 'zeile' der Datei 'datei' aufgerufen.
+    datei: absoluter Pfad der Datei, in der die Aufrufstelle steht (None = Hauptskript/REPL)."""
+    name: str
+    zeile: int | None
+    datei: str | None
+
+
 class DeutschFunktion:
     def __init__(self, definition: ast.FunktionDefinition, umgebung: Umgebung, datei: str | None = None):
         self.definition = definition
@@ -368,7 +377,7 @@ class Interpreter:
         self._ladepfad = ladepfad or os.getcwd()
         self._cli_argumente = list(argumente) if argumente else []
         self._aktuelle_zeile: int | None = None
-        self._aufruf_stack: list[tuple[str, int]] = []
+        self._aufruf_stack: list[AufrufEintrag] = []
         self._letzter_aufruf_stack: list = []
         self._lade_stack: list[str] = []
         # Datei, deren Code gerade läuft (absoluter Pfad); None = Hauptskript bzw. REPL.
@@ -1910,13 +1919,29 @@ class Interpreter:
         }
         if typhinweis in primitive:
             ok = primitive[typhinweis](wert)
-        elif u.existiert(typhinweis) and isinstance(u.hole(typhinweis), DeutschKlasse):
-            ziel = u.hole(typhinweis)
-            ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
         else:
-            raise TypeError(f"Unbekannter Typ-Hinweis: '{typhinweis}'")
+            ziel = self._typ_klasse(typhinweis, u)
+            if ziel is None:
+                raise TypeError(f"Unbekannter Typ-Hinweis: '{typhinweis}'")
+            ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
         if not ok:
             raise TypeError(f"{kontext_msg}: erwartet Typ '{typhinweis}', bekam {self._typname(wert)}")
+
+    def _punktpfad_holen(self, pfad: str, u):
+        """Wert eines Namens oder Punktpfads ('modul.Basis') ab dem Scope u; Fehler wie bei 'a.b'."""
+        teile = pfad.split('.')
+        wert = u.hole(teile[0])
+        for teil in teile[1:]:
+            wert = self._hole_attribut(wert, teil)
+        return wert
+
+    def _typ_klasse(self, typhinweis: str, u):
+        """Die Klasse, die ein Typ-Hinweis (Name oder Punktpfad 'modul.Klasse') benennt, sonst None."""
+        try:
+            wert = self._punktpfad_holen(typhinweis, u)
+        except (NameError, AttributeError):
+            return None
+        return wert if isinstance(wert, DeutschKlasse) else None
 
     def _ist_instanz_von(self, klasse, ziel):
         if klasse is ziel:
@@ -1939,6 +1964,9 @@ class Interpreter:
         wert = self._besuche(k.wert, u)
         paare = []
         self._muster_zerlegen(k.muster, wert, paare)
+        for name, _ in paare:  # erst alles prüfen, dann binden: bei einem Verstoß bleibt der Scope unverändert
+            if name in u.konstanten:
+                raise TypeError(f"'{name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
         for name, einzelwert in paare:
             u.setze(name, einzelwert)
         return wert
@@ -2157,7 +2185,31 @@ class Interpreter:
         raise _ZurueckSignal(wert, getattr(k, 'zeile', None))
 
     def _besuche_WerfeAnweisung(self, k, u):
-        raise AusnahmeFehler(self._besuche(k.wert, u))
+        wert = self._besuche(k.wert, u)
+        if isinstance(k.wert, ast.Bezeichner):
+            herkunft = self._fange_herkunft(k.wert.name, wert, u)
+            if herkunft is not None:
+                # Erneutes Werfen der unveränderten Fehlervariable: Meldung, Datei und Zeile des
+                # ursprünglichen Fehlers bleiben erhalten (die CLI zeigt weiter dessen Quellzeile)
+                meldung, datei, zeile = herkunft
+                fehler = AusnahmeFehler(wert, nachricht=meldung)
+                fehler.datei = datei
+                fehler.zeile = zeile
+                raise fehler
+        raise AusnahmeFehler(wert)
+
+    @staticmethod
+    def _fange_herkunft(name: str, wert, u):
+        """(Meldung, Datei, Zeile) des Fehlers, den die Variable 'name' aus einem 'fange'-Block hält,
+        solange sie noch den dort gebundenen Wert trägt; sonst None."""
+        while u is not None:
+            if name in u.variablen:
+                gefangen = u.gefangen
+                if gefangen is not None and gefangen[0] == name and u.variablen[name] is gefangen[1]:
+                    return gefangen[2]
+                return None
+            u = u.eltern
+        return None
 
     def _besuche_PruefeAnweisung(self, k, u):
         if not self._ist_wahr(self._besuche(k.bedingung, u)):
@@ -2180,6 +2232,9 @@ class Interpreter:
                 if k.fange_name:
                     wert = e.wert if isinstance(e, AusnahmeFehler) else str(e)
                     fange_u.setze(k.fange_name, wert)
+                    if getattr(e, 'zeile', None) is not None:  # Herkunft für ein erneutes 'werfe name'
+                        fange_u.gefangen = (k.fange_name, wert,
+                                            (str(e), getattr(e, 'datei', None), e.zeile))
                 self._besuche(k.fange_koerper, fange_u)
             else:
                 raise
@@ -2417,6 +2472,7 @@ class Interpreter:
             )
 
         fn_u = Umgebung(fn.umgebung)
+        fn_u.typ_kontext = fn.umgebung  # Parameter-Hinweise gelten für Namen der Definitionsumgebung
         fehlende = []
         for i, (p_name, p_default, p_variadic, p_typ) in enumerate(params):
             if p_variadic:
@@ -2436,17 +2492,19 @@ class Interpreter:
                 fehlende.append(p_name)
                 continue
             self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
-            fn_u.setze(p_name, wert)
+            fn_u.setze(p_name, wert, p_typ)  # der Hinweis gilt auch für spätere Zuweisungen im Körper
 
         if kwargs_parameter is not None:
             self._pruefe_typ(ueberzaehlige, kwargs_parameter[1], f"Parameter '{kwargs_parameter[0]}'", fn.umgebung)
-            fn_u.setze(kwargs_parameter[0], ueberzaehlige)
+            fn_u.setze(kwargs_parameter[0], ueberzaehlige, kwargs_parameter[1])
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
-        self._aufruf_stack.append((fname, self._aktuelle_zeile))
+        # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
+        aufruf_zeile = self._aktuelle_zeile
         vorherige_datei = self._aktuelle_datei
+        self._aufruf_stack.append(AufrufEintrag(fname, aufruf_zeile, vorherige_datei))
         self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
         try:
             kontext = f"Rückgabewert von '{fname}'"
@@ -2463,13 +2521,14 @@ class Interpreter:
             return None
         finally:
             self._aktuelle_datei = vorherige_datei
+            self._aktuelle_zeile = aufruf_zeile  # weitere Aufrufe derselben Anweisung: wieder die Zeile des Aufrufers
             self._aufruf_stack.pop()
 
     # Klassen
     def _besuche_KlassenDefinition(self, k, u):
         eltern = []
-        for eltern_name in k.eltern:
-            eltern_klasse = u.hole(eltern_name)
+        for eltern_name in k.eltern:  # Name oder Punktpfad ('modul.Basis')
+            eltern_klasse = self._punktpfad_holen(eltern_name, u)
             if not isinstance(eltern_klasse, DeutschKlasse):
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
@@ -2500,53 +2559,55 @@ class Interpreter:
 
     # Attribut- und Index-Zugriff
     def _besuche_AttributZugriff(self, k, u):
-        obj = self._besuche(k.objekt, u)
+        return self._hole_attribut(self._besuche(k.objekt, u), k.attribut)
 
+    def _hole_attribut(self, obj, attribut):
+        """Wert von 'obj.attribut' (Instanz, Namensraum, Klasse oder eingebaute Sammlung)."""
         if isinstance(obj, DeutschInstanz):
-            return obj.hole_attribut(k.attribut)
+            return obj.hole_attribut(attribut)
 
         if isinstance(obj, DeutschNamensraum):
-            if k.attribut in obj.bindungen:
-                return obj.bindungen[k.attribut]
-            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{k.attribut}'")
+            if attribut in obj.bindungen:
+                return obj.bindungen[attribut]
+            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{attribut}'")
 
         if isinstance(obj, DeutschKlasse):
-            m = obj.suche_methode(k.attribut)
+            m = obj.suche_methode(attribut)
             if m: return m
-            sm = obj.suche_statische_methode(k.attribut)
+            sm = obj.suche_statische_methode(attribut)
             if sm: return sm
-            wert = obj.suche_klassenattribut(k.attribut)
+            wert = obj.suche_klassenattribut(attribut)
             if wert is not _NICHT_GEFUNDEN:
                 return wert
-            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{k.attribut}'")
+            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{attribut}'")
 
         # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
         # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.
         if isinstance(obj, list):
-            fn = self._listen_methoden.get(k.attribut)
+            fn = self._listen_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Liste hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Liste hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, str):
-            fn = self._string_methoden.get(k.attribut)
+            fn = self._string_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Zeichenkette hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Zeichenkette hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, dict):
-            fn = self._woerterbuch_methoden.get(k.attribut)
+            fn = self._woerterbuch_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Wörterbuch hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, set):
-            fn = self._menge_methoden.get(k.attribut)
+            fn = self._menge_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Menge hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
-        raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
+        raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{attribut}'")
 
     def _eb_zusammenfuehren(self, *args):
         if not args:

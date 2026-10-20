@@ -9,6 +9,13 @@ class Umgebung:
         self.variablen: dict = {}
         self.konstanten: set = set()
         self.typhinweise: dict = {}  # name -> Typ-Hinweis (nur für Bindungen mit Hinweis)
+        # Scope, in dem die Typ-Hinweise dieses Scopes aufgelöst werden (None = dieser Scope selbst).
+        # Bei Funktionsaufrufen die Definitionsumgebung: Parameter-Hinweise wie 'k: modul.Klasse'
+        # meinen Namen dort, nicht gleichnamige Parameter oder Variablen im Körper.
+        self.typ_kontext: 'Umgebung | None' = None
+        # (Name, Wert, Herkunft) der Fehlervariable eines 'fange'-Blocks; 'werfe name' wirft sie
+        # mit der Herkunft (Meldung, Datei, Zeile) des ursprünglichen Fehlers erneut
+        self.gefangen = None
         self.eltern: 'Umgebung | None' = eltern
 
     def setze(self, name: str, wert, typhinweis=None):
@@ -56,7 +63,7 @@ class Umgebung:
                     raise TypeError(f"'{name}' ist eine Konstante und kann nicht neu zugewiesen werden")
                 hinweis = u.typhinweise.get(name)
                 if hinweis is not None and typpruefer is not None:
-                    typpruefer(wert, hinweis, u)
+                    typpruefer(wert, hinweis, u.typ_kontext if u.typ_kontext is not None else u)
                 u.variablen[name] = wert
                 return
             u = u.eltern
