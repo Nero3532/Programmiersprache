@@ -36,6 +36,13 @@ SCHLUESSELWOERTER = {
     'als':       TokenTyp.ALS,
 }
 
+# Zahlen mit Präfix: 0x.. / 0b.. / 0o..  ->  (Name für Fehlermeldungen, Basis, erlaubte Ziffern)
+_ZAHL_BASEN = {
+    'x': ('Hexadezimalzahl', 16, '0123456789abcdefABCDEF'),
+    'b': ('Binärzahl', 2, '01'),
+    'o': ('Oktalzahl', 8, '01234567'),
+}
+
 _ESCAPES = {'n': '\n', 't': '\t', 'r': '\r', '\\': '\\',
             '"': '"', "'": "'", '{': '{', '}': '}'}
 
@@ -53,10 +60,10 @@ class Token:
 
 
 class Lexer:
-    def __init__(self, quelltext: str):
+    def __init__(self, quelltext: str, start_zeile: int = 1):
         self.quelltext = quelltext
         self.pos = 0
-        self.zeile = 1
+        self.zeile = start_zeile  # >1 für Teilausdrücke (Interpolation) mitten in einer Datei
         self.tokens: list[Token] = []
 
     # ---------------------------------------------------------------- Hilfsm.
@@ -86,34 +93,68 @@ class Lexer:
 
     # ------------------------------------------------------------------ Zahlen
 
+    def _ziffernfolge(self, ist_ziffer) -> str:
+        """Liest eine Ziffernfolge und gibt sie ohne Unterstriche zurück ('' wenn keine Ziffer folgt).
+
+        Ein einzelner '_' ist nur zwischen zwei Ziffern erlaubt (1_000)."""
+        ziffern = []
+        while True:
+            c = self._aktuell()
+            if c is not None and ist_ziffer(c):
+                ziffern.append(c)
+                self._weiter()
+            elif c == '_' and ziffern:
+                naechstes = self._vorschau()
+                if naechstes is None or not ist_ziffer(naechstes):
+                    self._fehler("Ungültiger Unterstrich in Zahl: '_' darf nur "
+                                 "einzeln zwischen zwei Ziffern stehen (z. B. 1_000)")
+                self._weiter()
+            else:
+                break
+        return ''.join(ziffern)
+
+    def _zahl_mit_basis(self):
+        self._weiter()  # '0'
+        kennung = self._aktuell().lower()
+        self._weiter()  # x / b / o
+        name, basis, erlaubt = _ZAHL_BASEN[kennung]
+        ziffern = self._ziffernfolge(lambda c: c in erlaubt)
+        if not ziffern:
+            self._fehler(f"Ungültiges Zahlenliteral '0{kennung}': {name} braucht mindestens eine Ziffer")
+        c = self._aktuell()
+        if c is not None and (c.isalnum() or c == '_'):
+            self._fehler(f"Ungültiges Zeichen {c!r} in {name}")
+        return Token(TokenTyp.GANZZAHL, int(ziffern, basis), self.zeile)
+
     def _zahl(self):
-        start = self.pos
-        while self._aktuell() and self._aktuell().isdigit():
-            self._weiter()
+        if self._aktuell() == '0' and self._vorschau() is not None                 and self._vorschau().lower() in _ZAHL_BASEN:
+            return self._zahl_mit_basis()
+        text = self._ziffernfolge(str.isdecimal)
         ist_kommazahl = False
-        if self._aktuell() == '.' and self._vorschau() and self._vorschau().isdigit():
+        if self._aktuell() == '.' and self._vorschau() and self._vorschau().isdecimal():
             ist_kommazahl = True
             self._weiter()
-            while self._aktuell() and self._aktuell().isdigit():
-                self._weiter()
+            text += '.' + self._ziffernfolge(str.isdecimal)
         if self._aktuell() in ('e', 'E'):
             offset = 1
             if self._vorschau(offset) in ('+', '-'):
                 offset += 1
-            if self._vorschau(offset) and self._vorschau(offset).isdigit():
+            if self._vorschau(offset) and self._vorschau(offset).isdecimal():
                 ist_kommazahl = True
+                vorzeichen = self._vorschau(1) if offset == 2 else ''
                 for _ in range(offset):
                     self._weiter()
-                while self._aktuell() and self._aktuell().isdigit():
-                    self._weiter()
+                text += 'e' + vorzeichen + self._ziffernfolge(str.isdecimal)
         if ist_kommazahl:
-            return Token(TokenTyp.KOMMAZAHL, float(self.quelltext[start:self.pos]), self.zeile)
-        return Token(TokenTyp.GANZZAHL, int(self.quelltext[start:self.pos]), self.zeile)
+            return Token(TokenTyp.KOMMAZAHL, float(text), self.zeile)
+        return Token(TokenTyp.GANZZAHL, int(text), self.zeile)
 
     # --------------------------------------------------------------- Strings
 
     def _lese_string_inhalt(self, anf: str, dreifach: bool) -> list:
-        """Liest String-Inhalt und gibt Teile zurück: [('text', str) | ('code', str)]."""
+        """Liest String-Inhalt und gibt Teile zurück: [('text', str) | ('code', str, zeile)].
+
+        zeile = absolute Zeile, in der der Code-Text beginnt (für Fehler im Teilausdruck)."""
         teile = []
         aktueller_text = []
         hat_interp = False
@@ -151,6 +192,7 @@ class Lexer:
                 if aktueller_text:
                     teile.append(('text', ''.join(aktueller_text)))
                     aktueller_text = []
+                zeile_klammer = self.zeile
                 self._weiter()  # {
                 tiefe = 1
                 code = []
@@ -164,15 +206,17 @@ class Lexer:
                     code.append(self._aktuell())
                     self._weiter()
                 if not self._aktuell():
-                    self._fehler("Nicht abgeschlossene Interpolation '{...}'")
+                    # Zeile des '{' nennen, nicht die des String-Endes
+                    raise SyntaxError(f"Zeile {zeile_klammer}: Nicht abgeschlossene Interpolation '{{...}}'")
                 self._weiter()  # }
-                teile.append(('code', ''.join(code).strip()))
+                roh = ''.join(code)
+                # führende Leerzeilen im Code verschieben den Beginn des Ausdrucks
+                zeile_code = zeile_klammer + roh[:len(roh) - len(roh.lstrip())].count('\n')
+                teile.append(('code', roh.strip(), zeile_code))
                 continue
 
-            if c == '\n':
-                self.zeile += 1
             aktueller_text.append(c)
-            self._weiter()
+            self._weiter()  # zählt Zeilenumbrüche selbst mit – nicht zusätzlich zählen
 
         if aktueller_text:
             teile.append(('text', ''.join(aktueller_text)))
@@ -240,7 +284,7 @@ class Lexer:
                 self._weiter()
                 continue
 
-            if c.isdigit():
+            if c.isdecimal():
                 self.tokens.append(self._zahl())
                 continue
 
@@ -298,19 +342,49 @@ class Lexer:
                 else:
                     self._fehler("'!' alleine ist ungültig – meintest du '!='?")
             elif c == '<':
-                if self._vorschau() == '=':
-                    self._weiter()
-                    self.tokens.append(Token(TokenTyp.KLEINERGLEICH, '<=', self.zeile))
+                if self._vorschau() == '<':
+                    self._weiter(); self._weiter()
+                    if self._aktuell() == '=':
+                        self._weiter()
+                        self.tokens.append(Token(TokenTyp.KLEINER_KLEINER_GLEICH, '<<=', self.zeile))
+                    else:
+                        self.tokens.append(Token(TokenTyp.KLEINER_KLEINER, '<<', self.zeile))
                 else:
-                    self.tokens.append(Token(TokenTyp.KLEINER, '<', self.zeile))
-                self._weiter()
+                    if self._vorschau() == '=':
+                        self._weiter()
+                        self.tokens.append(Token(TokenTyp.KLEINERGLEICH, '<=', self.zeile))
+                    else:
+                        self.tokens.append(Token(TokenTyp.KLEINER, '<', self.zeile))
+                    self._weiter()
             elif c == '>':
-                if self._vorschau() == '=':
-                    self._weiter()
-                    self.tokens.append(Token(TokenTyp.GROESSERGLEICH, '>=', self.zeile))
+                if self._vorschau() == '>':
+                    self._weiter(); self._weiter()
+                    if self._aktuell() == '=':
+                        self._weiter()
+                        self.tokens.append(Token(TokenTyp.GROESSER_GROESSER_GLEICH, '>>=', self.zeile))
+                    else:
+                        self.tokens.append(Token(TokenTyp.GROESSER_GROESSER, '>>', self.zeile))
                 else:
-                    self.tokens.append(Token(TokenTyp.GROESSER, '>', self.zeile))
-                self._weiter()
+                    if self._vorschau() == '=':
+                        self._weiter()
+                        self.tokens.append(Token(TokenTyp.GROESSERGLEICH, '>=', self.zeile))
+                    else:
+                        self.tokens.append(Token(TokenTyp.GROESSER, '>', self.zeile))
+                    self._weiter()
+            elif c == '&':
+                self.tokens.append(self._op_mit_gleich(TokenTyp.KAUFMANNSUND, TokenTyp.KAUFMANNSUND_GLEICH, '&'))
+            elif c == '|':
+                self.tokens.append(self._op_mit_gleich(TokenTyp.SENKRECHT, TokenTyp.SENKRECHT_GLEICH, '|'))
+            elif c == '^':
+                self.tokens.append(self._op_mit_gleich(TokenTyp.HUT, TokenTyp.HUT_GLEICH, '^'))
+            elif c == '~':
+                self.tokens.append(Token(TokenTyp.TILDE, '~', self.zeile)); self._weiter()
+            elif c == '?':
+                if self._vorschau() == '?':
+                    self._weiter(); self._weiter()
+                    self.tokens.append(Token(TokenTyp.FRAGE_FRAGE, '??', self.zeile))
+                else:
+                    self._fehler("'?' alleine ist ungültig – meintest du '??' (Null-Koaleszenz)?")
             # ---- Trennzeichen ----
             elif c == '(':
                 self.tokens.append(Token(TokenTyp.LPAREN, '(', self.zeile)); self._weiter()
