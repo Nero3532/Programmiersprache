@@ -426,6 +426,13 @@ class TestFehlerNeuerzeugung(unittest.TestCase):
             with self.subTest(meldung=str(ausnahme)):
                 self.assertIn(erwartet, _meldung_deutsch(ausnahme))
 
+    def test_ueberlauf_unabhaengig_vom_wortlaut_deutsch(self):
+        # Linux meldet Gleitkomma-Überlauf als errno-Tupel, Windows als 'Result too large'
+        for ausnahme in (OverflowError(34, 'Numerical result out of range'),
+                         OverflowError(34, 'Result too large')):
+            with self.subTest(meldung=str(ausnahme)):
+                self.assertEqual(_meldung_deutsch(ausnahme), 'Ergebnis ist zu groß für eine Kommazahl')
+
     def test_deutsche_meldungen_bleiben_unveraendert(self):
         for ausnahme in (ZeroDivisionError('Ganzzahldivision durch Null'),
                          OverflowError("'exponential' ergibt für 1000 eine zu große Zahl"),

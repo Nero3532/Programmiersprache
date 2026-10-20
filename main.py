@@ -95,10 +95,14 @@ _LIMIT_OHNE_THREAD = 10000                  # wie früher, falls kein Thread sta
 _STOPP_WARTEZEIT = 1.0                      # Sekunden, die ein Strg+C auf das Ende wartet
 
 
-def _thread_starten(ziel):
+def _thread_starten(ziel, ablage=None):
     """Startet ziel in einem Thread mit dem größten möglichen Stack und setzt das
     dazu passende Rekursionslimit. Gibt den Thread zurück, oder None, wenn
-    keine Stackgröße ging."""
+    keine Stackgröße ging.
+
+    ablage (optionale Liste) bekommt den Thread schon vor dem Start eingetragen und
+    wieder geleert, falls der Start scheitert. So findet der Aufrufer den Thread auch
+    dann, wenn ein Strg+C den Start unterbricht, bevor diese Funktion zurückkehrt."""
     alter_stack = threading.stack_size()
     try:
         for mb in _STACK_STUFEN_MB:
@@ -109,9 +113,13 @@ def _thread_starten(ziel):
                 continue
             sys.setrecursionlimit(groesse // _STACK_BYTES_PRO_FRAME)
             thread = threading.Thread(target=ziel, name='deutsch-ausfuehrung', daemon=True)
+            if ablage is not None:
+                ablage[:] = [thread]
             try:
                 thread.start()
             except RuntimeError:  # Stack nicht reservierbar -> kleinere Stufe
+                if ablage is not None:
+                    del ablage[:]
                 continue
             return thread
         return None
@@ -125,20 +133,32 @@ def _thread_starten(ziel):
 def _thread_unterbrechen(thread, fertig) -> bool:
     """Löst im Thread ein KeyboardInterrupt aus (Strg+C) und wartet kurz.
     Gibt True zurück, wenn der Thread danach beendet ist."""
+    if fertig.is_set():
+        # Schon fertig: nichts zu unterbrechen. Vor allem keine Ausnahme an eine
+        # Thread-ID schicken, die das Betriebssystem inzwischen neu vergeben haben kann.
+        return True
     # ctypes erst hier laden (kostet beim Start ~60 ms). Der Thread rechnet
     # eventuell in einer Endlosschleife und hält die GIL; mit kurzem
     # Umschaltintervall kommt dieser Thread trotzdem schnell zum Zug.
     altes_intervall = sys.getswitchinterval()
     try:
         sys.setswitchinterval(1e-5)
-        import ctypes
-        ctypes.pythonapi.PyThreadState_SetAsyncExc(
-            ctypes.c_ulong(thread.ident), ctypes.py_object(KeyboardInterrupt))
+        if thread.ident is not None:  # None: Thread ist noch nicht richtig gestartet
+            import ctypes
+            ctypes.pythonapi.PyThreadState_SetAsyncExc(
+                ctypes.c_ulong(thread.ident), ctypes.py_object(KeyboardInterrupt))
     except Exception:
         pass
     finally:
         sys.setswitchinterval(altes_intervall)
     return fertig.wait(_STOPP_WARTEZEIT)
+
+
+def _auf_ende_warten(fertig):
+    """Wartet, bis die Ausführung beendet ist. Mit Zeitlimit statt blockierend:
+    ein blockierendes Warten ließe sich unter Windows nicht per Strg+C unterbrechen."""
+    while not fertig.wait(0.1):
+        pass
 
 
 def im_grossen_stack(funktion, *args):
@@ -147,35 +167,44 @@ def im_grossen_stack(funktion, *args):
     aufrufenden Thread erneut ausgelöst."""
     ergebnis = {}
     fertig = threading.Event()  # zuverlässiger als Thread.is_alive() nach Strg+C
+    abbruch = threading.Event()  # Strg+C kam schon, bevor der Thread loslief
+    angelegt = []  # der Thread, sobald er angelegt ist (auch bei Strg+C mitten im Start)
 
     def arbeit():
         try:
-            ergebnis['wert'] = funktion(*args)
+            if not abbruch.is_set():
+                ergebnis['wert'] = funktion(*args)
         except BaseException as e:
             ergebnis['fehler'] = e
         finally:
             fertig.set()
 
     altes_limit = sys.getrecursionlimit()
-    thread = _thread_starten(arbeit)
-    if thread is None:
-        sys.setrecursionlimit(_LIMIT_OHNE_THREAD)
-        return funktion(*args)
-
+    ohne_thread = False
     try:
         try:
-            # Mit Zeitlimit warten: ein blockierendes Warten ließe sich unter
-            # Windows nicht per Strg+C unterbrechen.
-            while not fertig.wait(0.1):
-                pass
+            # Schon der Start steht unter Strg+C-Schutz: kommt die Unterbrechung, bevor
+            # der Wartebereich erreicht ist, darf der Thread nicht verwaist weiterrechnen
+            # (in der REPL liefe er neben dem nächsten Eingabe-Prompt weiter).
+            if _thread_starten(arbeit, angelegt) is None:
+                ohne_thread = True
+            else:
+                _auf_ende_warten(fertig)
         except KeyboardInterrupt:
-            if not _thread_unterbrechen(thread, fertig):
+            if not angelegt:
+                raise  # kein Thread: Strg+C vor dem Start oder im Rückfall ohne Thread
+            abbruch.set()  # vor dem Lesen von thread.ident (siehe _thread_unterbrechen)
+            if not _thread_unterbrechen(angelegt[0], fertig):
                 # Thread steckt fest (z. B. in eingabe()): Prozess beenden,
                 # der Daemon-Thread wird dabei verworfen.
                 raise SystemExit(130)
             raise
     finally:
         sys.setrecursionlimit(altes_limit)
+
+    if ohne_thread:
+        sys.setrecursionlimit(_LIMIT_OHNE_THREAD)
+        return funktion(*args)
 
     if 'fehler' in ergebnis:
         raise ergebnis['fehler']
