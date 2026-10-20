@@ -31,6 +31,8 @@
   - QA (haiku): NICHT bestanden — mehrzeilige `sei`/`für`-Muster, englische Token-Namen in Syntaxfehlern, `f(a, a)`, Parameter nach `*rest`, `datum_formatieren`
   - Nachbesserung QA-Funde (sonnet) → 60 Tests; Chef-Nachprüfung: 1168 Tests grün (3.14 + 3.12), alle 5 Funde behoben, kein Tempoverlust (Benchmark 1,05 s → 1,11 s); Suite dauert wegen Unterprozess-Tests ~80 s
 
+- [x] 2026-10-20 PR #1 (Draft) + CI-Fixes: Überlauf-Text Linux (haiku), Strg+C-Wettlauf (sonnet), 3.13-Strg+C nach 2 Fehlversuchen an Architekt (opus) → Ursache python/cpython#139622, Lösung ohne Interpreter-Änderung
+
 ## Entscheidungen
 - 2026-10-19 Team als Projekt-Agenten in `.claude/agents/sprache-*.md`, Einstieg über `/sprache`.
 - 2026-10-19 Nutzer: `nicht` bindet wie in Python schwächer als Vergleiche (`nicht a == b` = `nicht (a == b)`).
