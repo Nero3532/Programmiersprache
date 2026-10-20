@@ -263,7 +263,7 @@ class TestStacktrace(unittest.TestCase):
             lauf(code, interpreter)
         self.assertEqual(len(interpreter._letzter_aufruf_stack), 2)
         # Gespeichert in Aufrufreihenfolge (äußerste zuerst) – main.py dreht für die Anzeige um
-        namen = [n for n, _ in interpreter._letzter_aufruf_stack]
+        namen = [eintrag.name for eintrag in interpreter._letzter_aufruf_stack]
         self.assertEqual(namen, ['aussen', 'innen'])
 
     def test_leerer_stack_ohne_funktionsaufruf(self):

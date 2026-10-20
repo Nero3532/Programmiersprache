@@ -321,8 +321,13 @@ def _fehler_anzeigen(fehler: Exception, quelltext: str = '', dateiname: str = '<
         ausgabe.insert(2, f'    {"^" * max(1, len(zeile_text.strip()))}')
 
     if aufruf_stack:
-        for name, zeile in reversed(aufruf_stack):
-            ausgabe.append(f"  in Funktion '{name}' (Zeile {zeile})")
+        # Jeder Eintrag nennt die Aufrufstelle; liegt sie in einer geladenen Datei, steht deren Name
+        # davor: "(hilfe.deu, Zeile 3)", im Hauptskript wie bisher nur "(Zeile 3)"
+        for eintrag in reversed(aufruf_stack):
+            ort = f'Zeile {eintrag.zeile}'
+            if eintrag.datei:
+                ort = f'{_anzeigename(eintrag.datei, ladepfad)}, {ort}'
+            ausgabe.append(f"  in Funktion '{eintrag.name}' ({ort})")
 
     return '\n'.join(ausgabe)
 

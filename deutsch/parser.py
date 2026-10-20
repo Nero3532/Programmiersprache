@@ -98,6 +98,23 @@ class Parser:
         self.pos += 1
         return t
 
+    def _punktpfad_lesen(self) -> str:
+        """Liest einen Namen oder Punktpfad 'modul.Klasse' (Typ-Hinweis, Basisklasse) als Text."""
+        name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        while self._aktuell().typ == TokenTyp.PUNKT:
+            self.pos += 1
+            name += '.' + self._verbrauche(TokenTyp.BEZEICHNER).wert
+        return name
+
+    def _punktpfad_vor_block(self) -> bool:
+        """True, wenn ab hier ein Name oder Punktpfad ('Typ', 'modul.Klasse') direkt vor einem '{' steht."""
+        if self._aktuell().typ != TokenTyp.BEZEICHNER:
+            return False
+        offset = 1
+        while self._vorschau(offset).typ == TokenTyp.PUNKT and self._vorschau(offset + 1).typ == TokenTyp.BEZEICHNER:
+            offset += 2
+        return self._vorschau(offset).typ == TokenTyp.LGESCHWEIFTE
+
     def _ueberspringen_leerzeilen(self):
         while self._aktuell().typ == TokenTyp.ZEILENENDE:
             self.pos += 1
@@ -172,11 +189,11 @@ class Parser:
         if self._aktuell().typ == TokenTyp.LECKIG:
             return self._destrukturierende_deklaration()
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
-        # Optionaler Typ-Hinweis: sei x: Ganzzahl = ...
+        # Optionaler Typ-Hinweis: sei x: Ganzzahl = ...  (auch mit Punktpfad: sei k: modul.Klasse = ...)
         typhinweis = None
         if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
             self.pos += 1
-            typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            typhinweis = self._punktpfad_lesen()
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
         self._keine_kette_nach_deklaration('sei')
@@ -194,7 +211,7 @@ class Parser:
         typhinweis = None
         if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
             self.pos += 1
-            typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            typhinweis = self._punktpfad_lesen()
         self._verbrauche(TokenTyp.GLEICH)
         wert = self._ausdruck()
         self._keine_kette_nach_deklaration('konstante')
@@ -253,11 +270,11 @@ class Parser:
 
             name = self._verbrauche(TokenTyp.BEZEICHNER).wert
 
-            # Optionaler Typ-Hinweis: name: Typ
+            # Optionaler Typ-Hinweis: name: Typ  (auch mit Punktpfad: name: modul.Klasse)
             typhinweis = None
             if self._aktuell().typ == TokenTyp.DOPPELPUNKT:
                 self.pos += 1
-                typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+                typhinweis = self._punktpfad_lesen()
 
             default = None
             if self._aktuell().typ == TokenTyp.GLEICH:
@@ -321,12 +338,13 @@ class Parser:
 
         # '->' leitet entweder einen Rückgabetyp ein ('-> Typ { … }') oder die Kurzform
         # ('-> ausdruck', gleichbedeutend mit '{ zurück ausdruck }').  Unterschied: ein Typname
-        # steht direkt vor dem '{' des Rumpfs; ein Ausdruck wird nie von '{' gefolgt.
+        # (auch Punktpfad 'modul.Klasse') steht direkt vor dem '{' des Rumpfs; ein Ausdruck wird
+        # nie von '{' gefolgt.
         typhinweis = None
         if self._aktuell().typ == TokenTyp.PFEIL:
             self.pos += 1
-            if self._aktuell().typ == TokenTyp.BEZEICHNER and self._vorschau().typ == TokenTyp.LGESCHWEIFTE:
-                typhinweis = self._verbrauche(TokenTyp.BEZEICHNER).wert
+            if self._punktpfad_vor_block():
+                typhinweis = self._punktpfad_lesen()
             else:
                 return self._kurzform_rumpf(name, parameter, kwargs_parameter)
 
@@ -354,10 +372,10 @@ class Parser:
         eltern = []
         if self._aktuell().typ == TokenTyp.LPAREN:
             self.pos += 1
-            eltern.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+            eltern.append(self._punktpfad_lesen())  # Name oder Punktpfad 'modul.Basis'
             while self._aktuell().typ == TokenTyp.KOMMA:
                 self.pos += 1
-                eltern.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+                eltern.append(self._punktpfad_lesen())
             self._verbrauche(TokenTyp.RPAREN)
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
         self._optionale_trennzeichen()
