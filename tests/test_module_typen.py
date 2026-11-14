@@ -342,11 +342,11 @@ class TestParameterHinweisBeiZuweisung(ModulTestCase):
         self.assertEqual(ergebnis, 5)
 
     def test_kwargs_parameter_hinweis(self):
-        code = 'funktion f(**opt: Woerterbuch) { opt = %s\n zurück opt }\n'
-        ergebnis, _ = self.laufe((code % '{"a": 1}') + 'f(x=1)')
-        self.assertEqual(ergebnis, {'a': 1})
-        e = self.fehler((code % '5') + 'f(x=1)', TypeError)
-        self.assertIn("Variable 'opt': erwartet Typ 'Woerterbuch', bekam Ganzzahl", str(e))
+        code = 'funktion f(**opt: Ganzzahl) { zurück opt }\n'
+        ergebnis, _ = self.laufe(code + 'f(x=1)')
+        self.assertEqual(ergebnis, {'x': 1})
+        e = self.fehler(code + 'f(x="a")', TypeError)
+        self.assertIn("Parameter 'opt': erwartet Typ 'Ganzzahl', bekam Zeichenkette", str(e))
 
     def test_parameter_ohne_hinweis_bleibt_frei(self):
         ergebnis, _ = self.laufe('funktion f(a) { a = "x"\n zurück a }\nf(1)')

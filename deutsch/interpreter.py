@@ -66,6 +66,11 @@ _OPERATOR_METHODEN = {
     '//': '__ganzdividiere__',
     '%':  '__modulo__',
     '**': '__potenziere__',
+    '&':  '__bitund__',
+    '|':  '__bitoder__',
+    '^':  '__bitxoder__',
+    '<<': '__links__',
+    '>>': '__rechts__',
     '==': '__gleich__',
     '!=': '__ungleich__',
     '<':  '__kleiner__',
@@ -987,11 +992,11 @@ class Interpreter:
 
     def _hof_elemente(self, name, sammlung):
         """Elemente einer Liste, Menge (sortiert, damit das Ergebnis stabil ist) oder Zeichenkette als neue Liste."""
-        if isinstance(sammlung, (list, str)):
+        if isinstance(sammlung, (list, str, dict)):  # Wörterbuch: Schlüssel, wie bei 'für'
             return list(sammlung)
         if isinstance(sammlung, set):
             return self._sortiert(list(sammlung))
-        raise TypeError(f"'{name}' erwartet als erstes eine Liste, Menge oder Zeichenkette, "
+        raise TypeError(f"'{name}' erwartet als erstes eine Liste, Menge, Wörterbuch oder Zeichenkette, "
                         f"bekam {self._typname(sammlung)}")
 
     @staticmethod
@@ -1733,7 +1738,7 @@ class Interpreter:
         except SyntaxError:
             raise
         except Exception as e:
-            if zeile is not None and 'Zeile' not in str(e):
+            if zeile is not None and getattr(e, 'zeile', None) is None:  # .zeile: schon mit Ort versehen
                 self._letzter_aufruf_stack = list(self._aufruf_stack)
                 nachricht = f'{self._ort(zeile)}: {_meldung_deutsch(e)}'
                 if isinstance(e, AusnahmeFehler):
@@ -2022,6 +2027,12 @@ class Interpreter:
         if isinstance(k.ziel, ast.Bezeichner) and not u.existiert(k.ziel.name):
             raise NameError(u.nicht_deklariert_meldung(k.ziel.name))
         alter_wert = self._besuche(k.ziel, u)
+        if k.operator == '??':  # nur zuweisen, wenn das Ziel 'nichts' ist; rechts sonst nicht auswerten
+            if alter_wert is not None:
+                return alter_wert
+            neuer_wert = self._besuche(k.wert, u)
+            self._ziel_setzen(k.ziel, neuer_wert, u)
+            return neuer_wert
         delta = self._besuche(k.wert, u)
         neuer_wert = self._binaerer_operator(k.operator, alter_wert, delta)
         self._ziel_setzen(k.ziel, neuer_wert, u)
@@ -2153,6 +2164,10 @@ class Interpreter:
             except TypeError:
                 raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
         if k.operator == '~':
+            if isinstance(val, DeutschInstanz):
+                m = val.klasse.suche_methode('__bitnicht__')
+                if m is not None:
+                    return self._funktion_aufrufen(m, [val])
             if isinstance(val, int):
                 return ~val
             raise TypeError(f"Operator '~' nicht unterstützt für {self._typname(val)}")
@@ -2499,6 +2514,8 @@ class Interpreter:
         fehlende = []
         for i, (p_name, p_default, p_variadic, p_typ) in enumerate(params):
             if p_variadic:
+                for e in args[i:]:
+                    self._pruefe_typ(e, p_typ, f"Parameter '{p_name}'", fn.umgebung)
                 fn_u.setze(p_name, list(args[i:]))
                 break
             if i < len(args):
@@ -2518,8 +2535,9 @@ class Interpreter:
             fn_u.setze(p_name, wert, p_typ)  # der Hinweis gilt auch für spätere Zuweisungen im Körper
 
         if kwargs_parameter is not None:
-            self._pruefe_typ(ueberzaehlige, kwargs_parameter[1], f"Parameter '{kwargs_parameter[0]}'", fn.umgebung)
-            fn_u.setze(kwargs_parameter[0], ueberzaehlige, kwargs_parameter[1])
+            for e in ueberzaehlige.values():
+                self._pruefe_typ(e, kwargs_parameter[1], f"Parameter '{kwargs_parameter[0]}'", fn.umgebung)
+            fn_u.setze(kwargs_parameter[0], ueberzaehlige)  # Hinweis gilt je Element, nicht für das Wörterbuch
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")

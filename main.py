@@ -243,6 +243,56 @@ def im_grossen_stack(funktion, *args):
 _PAARE = {')': '(', ']': '[', '}': '{'}
 
 
+def _zeichenkette_ende(text: str, i: int):
+    """Index hinter der Zeichenkette, die bei text[i] beginnt, oder None (ungeschlossen).
+    Verschachtelte Interpolationen werden übersprungen, damit ihre Anführungszeichen nicht zählen."""
+    c = text[i]
+    dreifach = text.startswith(c * 3, i)
+    j = i + (3 if dreifach else 1)
+    n = len(text)
+    while j < n:
+        ch = text[j]
+        if ch == '\\':
+            j += 2
+            continue
+        if dreifach:
+            if text.startswith(c * 3, j):
+                return j + 3
+        elif ch == c:
+            return j + 1
+        elif ch == '\n':
+            return None
+        if ch == '{':
+            ende = _interpolation_ende(text, j + 1)
+            if ende is not None:
+                j = ende
+                continue
+        j += 1
+    return None
+
+
+def _interpolation_ende(text: str, i: int):
+    """Index hinter dem '}' der Interpolation, deren Inhalt bei text[i] beginnt, oder None
+    (dann ist '{' gewöhnlicher Text). Im Ausdruck gelten verschachtelte Zeichenketten als Code."""
+    tiefe = 0
+    n = len(text)
+    while i < n:
+        c = text[i]
+        if c in ('"', "'"):
+            i = _zeichenkette_ende(text, i)
+            if i is None:
+                return None
+            continue
+        if c == '{':
+            tiefe += 1
+        elif c == '}':
+            if tiefe == 0:
+                return i + 1
+            tiefe -= 1
+        i += 1
+    return None
+
+
 def _eingabe_abtasten(text: str):
     """Tastet Quelltext ab und gibt (saldo, in_dreifach_string, ungueltig) zurück.
 
@@ -289,6 +339,11 @@ def _eingabe_abtasten(text: str):
         if c == '\\':
             i += 2
             continue
+        if c == '{':              # Interpolation: ihr Inhalt ist Code und wird übersprungen
+            ende = _interpolation_ende(text, i + 1)
+            if ende is not None:
+                i = ende
+                continue
         if dreifach:
             if text.startswith(quote * 3, i):
                 quote = None

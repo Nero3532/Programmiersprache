@@ -81,6 +81,7 @@ class TokenTyp(Enum):
     HUT_GLEICH = auto()           # ^=
     KLEINER_KLEINER_GLEICH = auto()    # <<=
     GROESSER_GROESSER_GLEICH = auto()  # >>=
+    FRAGE_FRAGE_GLEICH = auto()   # ??=
 
     # Trennzeichen
     LPAREN = auto()

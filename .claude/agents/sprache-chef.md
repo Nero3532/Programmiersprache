@@ -15,7 +15,7 @@ Team (Standardmodell/effort):
 - sprache-entwickler (sonnet/medium): Sprachmerkmale über Lexer/Parser/Interpreter, größere Stdlib-Teile
 - sprache-junior (haiku/low): Stdlib nach Vorlage, Fehlertexte, Beispiele, CLI-Flags, CI-YAML, Aufräumen
 - sprache-qa (haiku/medium): Tests, Beispiele, Regressionstests, Abnahme (Review: sonnet)
-- sprache-release (haiku/low): Version, CHANGELOG, README, Schuldenzettel
+- sprache-release (haiku/low): Version, CHANGELOG, README, Schuldenzettel; Doku-Auftrag parallel zur nächsten Baurunde mit Standardauftrag „Doku zu Commit <sha>“ (haiku/low)
 - Firmenrollen mitnutzen, nicht doppeln: `dev-audit` (sonnet/medium) für Bereichs-Audits (Parser, Interpreter, Stdlib; Funde → Roadmap), `markt-*`, `vertrieb-*`, `marketing-*` mit Projektfakten `team/PROJEKT.md`. Nichts veröffentlichen.
 
 ## Firmen-Chef (verbindlich)

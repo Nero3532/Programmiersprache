@@ -124,6 +124,25 @@ class TestKlammerzaehlung(unittest.TestCase):
         self.assertEqual(klammer_saldo(r"drucke('a\'{')"), 0)
         self.assertEqual(klammer_saldo(r'drucke("\\") {'), 1)
 
+    def test_interpolation_mit_innerem_string(self):
+        self.assertEqual(klammer_saldo('drucke("Name: {wb["name"]}")'), 0)
+        self.assertFalse(eingabe_unvollstaendig('drucke("Name: {wb["name"]}")'))
+        self.assertEqual(klammer_saldo("drucke('{wb['x']}')"), 0)
+
+    def test_interpolation_mit_klammern_im_inneren_string(self):
+        self.assertEqual(klammer_saldo('drucke("{f("{")}")'), 0)
+        self.assertEqual(klammer_saldo('drucke("{wb["}"]}")'), 0)
+        self.assertFalse(eingabe_unvollstaendig('drucke("{wb["}"]}")'))
+
+    def test_mehrfach_verschachtelte_interpolation(self):
+        self.assertEqual(klammer_saldo('drucke("a {f("b {g("c")}")}")'), 0)
+        self.assertFalse(eingabe_unvollstaendig('drucke("a {f("b {g("c")}")}")'))
+
+    def test_offene_klammer_nach_interpolation_wartet(self):
+        self.assertTrue(eingabe_unvollstaendig('wenn wb["name"] == "x" {'))
+        self.assertTrue(eingabe_unvollstaendig('drucke("Name: {wb["name"]}") {'))
+        self.assertEqual(klammer_saldo('drucke("Name: {wb["name"]}") {'), 1)
+
     def test_echter_block_nach_string(self):
         self.assertEqual(klammer_saldo('wenn x == "}" {'), 1)
         self.assertEqual(klammer_saldo('wenn x == "{" {'), 1)

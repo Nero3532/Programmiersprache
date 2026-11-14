@@ -299,7 +299,7 @@ abbilden([1, 2, 3], (neu K(3)).mal)
 
     def test_fehler_falsche_sammlung(self):
         text = self.fehler('abbilden(5, funktion(x) -> x)', TypeError)
-        self.assertIn("'abbilden' erwartet als erstes eine Liste, Menge oder Zeichenkette, bekam Ganzzahl", text)
+        self.assertIn("'abbilden' erwartet als erstes eine Liste, Menge, Wörterbuch oder Zeichenkette, bekam Ganzzahl", text)
 
     def test_fehler_falsche_argumentzahl(self):
         self.assertIn("'abbilden' erwartet 2 Argument(e), bekam 1", self.fehler('abbilden([1])', TypeError))

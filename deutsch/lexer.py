@@ -381,8 +381,8 @@ class Lexer:
                 self.tokens.append(Token(TokenTyp.TILDE, '~', self.zeile)); self._weiter()
             elif c == '?':
                 if self._vorschau() == '?':
-                    self._weiter(); self._weiter()
-                    self.tokens.append(Token(TokenTyp.FRAGE_FRAGE, '??', self.zeile))
+                    self._weiter()
+                    self.tokens.append(self._op_mit_gleich(TokenTyp.FRAGE_FRAGE, TokenTyp.FRAGE_FRAGE_GLEICH, '??'))
                 else:
                     self._fehler("'?' alleine ist ungültig – meintest du '??' (Null-Koaleszenz)?")
             # ---- Trennzeichen ----
