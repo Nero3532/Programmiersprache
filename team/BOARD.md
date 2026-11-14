@@ -45,4 +45,4 @@
 - 2026-10-19 Nutzer: `runde` rundet kaufmännisch (ab ,5 vom Nullpunkt weg, per `decimal` auf der Dezimaldarstellung).
 - 2026-10-19 Neue Stdlib-Namen mit Umlaut immer in beiden Schreibweisen (wie `laenge`/`länge`).
 - 2026-10-19 Thread-Stack 128 MB statt 255 MB: Windows setzt den Stack voll als Commit-Speicher an; reicht für ~5900 Aufrufe.
-- 2026-10-19 Beispiele starten mit `uv run --no-project python main.py <datei>`; `py main.py` scheitert hier an der Shebang-Zeile.
+- 2026-10-19 Beispiele starten mit `uv run --no-project python main.py <datei>`; `py main.py` scheitert hier an der Shebang-Zeile. Seit 2.8.0: `py -m deutsch <datei>` (2026-11-14).
