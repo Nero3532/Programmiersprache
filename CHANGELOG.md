@@ -4,6 +4,20 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Verbund-Zuweisung `??=`: `a ??= b` wertet `b` nur aus, wenn `a` gleich `nichts` ist.
+- Bit-Operatoren `& | ^ << >>` und unäres `~` sind für Klassen überladbar (`__bitund__`, `__bitoder__`,
+  `__bitxoder__`, `__links__`, `__rechts__`, `__bitnicht__`).
+- `abbilden`, `filtere`, `reduziere` und `gruppiere` nehmen Wörterbücher (Schlüssel, wie bei `für`).
+- VS-Code-Syntaxhervorhebung für `.deu` in `editor/vscode` (siehe dort).
+
+### Geändert
+- `**kw: T` prüft jetzt jeden Wert statt des ganzen Wörterbuchs; `*args: T` prüft jedes Element einzeln.
+- Fehlerort wird über ein Attribut statt über Textsuche in der Meldung gesetzt.
+
+### Behoben
+- REPL erkennt Interpolationen mit inneren Zeichenketten (`"{a["x"]}"`).
+
 ## [2.8.0]
 
 ### Hinzugefügt

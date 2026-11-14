@@ -71,7 +71,8 @@ konstante PI = 3.14159        # unveränderlich — Neuzuweisung wirft TypFehler
 
 Neue Variablen entstehen nur durch `sei`; eine Zuweisung an einen nicht deklarierten Namen wirft `NamensFehler`.
 Typ-Hinweise werden bei jeder Zuweisung und bei `+=` geprüft, nicht nur bei der Deklaration. Das gilt auch für
-Parameter: Ein Parameter mit Typ-Hinweis wird bei Neuzuweisung im Funktionskörper geprüft.
+Parameter: Ein Parameter mit Typ-Hinweis wird bei Neuzuweisung im Funktionskörper geprüft. Bei `*args: T` und
+`**kw: T` prüft der Hinweis jedes Element bzw. jeden Wert einzeln.
 
 Verfügbare Typ-Hinweise: `Ganzzahl`, `Kommazahl` (akzeptiert auch Ganzzahl), `Zeichenkette`,
 `Wahrheitswert`, `Liste`, `Woerterbuch`/`Wörterbuch`, `Menge`, `Nichts`, `Funktion`, oder ein
@@ -97,7 +98,7 @@ Vergleich: `== != < > <= >=` — auch verkettet: `1 < x < 10` (jeder Operand nur
 Logisch: `und oder nicht`
 Bitweise: `& | ^ ~` und Schieben `<< >>` für Ganzzahlen; Verbund-Zuweisung `&= |= ^= <<= >>=`
 Mitgliedschaft: `in`, `nicht in`
-Null-Koaleszenz: `a ?? b` (liefert `b` nur, wenn `a` gleich `nichts` ist)
+Null-Koaleszenz: `a ?? b` (liefert `b` nur, wenn `a` gleich `nichts` ist), Verbund-Zuweisung `a ??= b`
 Ternär: `dann_wert wenn bedingung sonst sonst_wert`
 
 ```
@@ -173,7 +174,7 @@ reduziere([1, 2, 3, 4], funktion(a, b) -> a + b)    # 10 (Startwert optional als
 sortiere(["bb", "a", "ccc"], schluessel=laenge)     # [a, bb, ccc]
 ```
 
-`abbilden`, `filtere` und `reduziere` nehmen Listen, Mengen (in sortierter Reihenfolge) und Zeichenketten;
+`abbilden`, `filtere` und `reduziere` nehmen Listen, Mengen (in sortierter Reihenfolge), Wörterbücher (Schlüssel) und Zeichenketten;
 `abbilden` und `filtere` liefern immer eine Liste. Die Methodenform gibt es für Listen. `sortiere`, `max` und
 `min` nehmen `schluessel=f` (auch `schlüssel=`), `sortiere` zusätzlich `umgekehrt=wahr`.
 
@@ -205,10 +206,11 @@ die kein `dies` deklarieren; sie sind sowohl über die Klasse (`Klasse.methode()
 eine Instanz (`instanz.methode()`, ohne automatische `dies`-Bindung) aufrufbar. Klassenattribute
 werden vererbt (links-nach-rechts, wie Methoden).
 
-**Operator-Überladung:** Klassen können `+ - * / // % **` und `== != < > <= >=` selbst definieren
+**Operator-Überladung:** Klassen können `+ - * / // % **`, `& | ^ << >>` und `== != < > <= >=` selbst definieren
 über `__addiere__`, `__subtrahiere__`, `__multipliziere__`, `__dividiere__`, `__ganzdividiere__`,
-`__modulo__`, `__potenziere__`, `__gleich__`, `__ungleich__`, `__kleiner__`, `__groesser__`,
-`__kleinergleich__`, `__groessergleich__` (jeweils `(dies, andere)`). Nur der linke Operand wird
+`__modulo__`, `__potenziere__`, `__bitund__`, `__bitoder__`, `__bitxoder__`, `__links__`, `__rechts__`,
+`__gleich__`, `__ungleich__`, `__kleiner__`, `__groesser__`, `__kleinergleich__`, `__groessergleich__`
+(jeweils `(dies, andere)`); unäres `~` über `__bitnicht__(dies)`. Nur der linke Operand wird
 geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
 
 ### Fehlerbehandlung
@@ -387,12 +389,15 @@ für eine vollständige Demonstration.
 
 - Kein Bytecode-Compiler — reiner Baum-Interpreter (bewusste Design-Entscheidung, siehe unten).
 - Mehrfachvererbung nutzt einfache links-nach-rechts-Tiefensuche, keine echte C3-Linearisierung.
-- Variadische Parameter (`*args`) werden nicht einzeln typgeprüft.
 - `(-8) ** 0.5` liefert eine Python-`complex`-Zahl ohne dedizierte Formatierung.
 - Rekursionstiefe: ca. 5950 Deutsch-Aufrufe bei einfacher Rekursion (Ausführung in einem Thread mit 128-MB-Stack;
   fällt der Stack kleiner aus, sinkt die Grenze entsprechend). Darüber bricht das Programm mit einem Rekursionsfehler ab.
 - Die Version in `pyproject.toml` wird manuell parallel zu `deutsch/__init__.py`s `__version__`
   gepflegt (kein dynamisches Versioning-Setup).
+
+## Editor
+
+Syntax-Hervorhebung für VS Code (`.deu`): siehe [editor/vscode/README.md](editor/vscode/README.md).
 
 ## Projektstruktur
 
