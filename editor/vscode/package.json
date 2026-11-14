@@ -1,0 +1,22 @@
+{
+  "name": "deutsch-sprache",
+  "displayName": "Deutsch (.deu)",
+  "description": "Syntax-Hervorhebung für die Programmiersprache Deutsch",
+  "version": "0.1.0",
+  "publisher": "lokal",
+  "engines": { "vscode": "^1.60.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [{
+      "id": "deutsch",
+      "aliases": ["Deutsch", "deutsch"],
+      "extensions": [".deu"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "deutsch",
+      "scopeName": "source.deutsch",
+      "path": "./syntaxes/deutsch.tmLanguage.json"
+    }]
+  }
+}

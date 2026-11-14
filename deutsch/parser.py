@@ -21,6 +21,7 @@ _VERBUND_OPS = {
     TokenTyp.HUT_GLEICH:           '^',
     TokenTyp.KLEINER_KLEINER_GLEICH:   '<<',
     TokenTyp.GROESSER_GROESSER_GLEICH: '>>',
+    TokenTyp.FRAGE_FRAGE_GLEICH:   '??',
 }
 
 # Lesbare Namen der Token-Arten für Syntaxfehler: Symbole und Schlüsselwörter in Anführungszeichen,

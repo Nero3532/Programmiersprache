@@ -334,7 +334,7 @@ f()
         self.assertEqual(auswerten(code), {'n': 1})
 
     def test_typ_hinweis(self):
-        self.assertEqual(auswerten('funktion f(**k: Woerterbuch) { zurück k }\nf(a = 1)'), {'a': 1})
+        self.assertEqual(auswerten('funktion f(**k: Ganzzahl) { zurück k }\nf(a = 1)'), {'a': 1})
         self.assertIn("Parameter 'k'", self.fehler('funktion f(**k: Liste) { zurück k }\nf(a = 1)', TypeError))
 
     def test_parameter_struktur_im_ast(self):

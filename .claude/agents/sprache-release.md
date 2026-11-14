@@ -18,6 +18,7 @@ Regeln:
 - Nur dokumentieren, was im Code steht — nichts erfinden. Testanzahl: `py -m unittest discover -s tests`.
 - Kein Commit, kein Push, nie veröffentlichen.
 - `team/*.md` und `ROADMAP.md` nie schreiben (pflegt der sprache-chef), außer der Auftrag nennt die Datei ausdrücklich.
+- Standardauftrag „Doku zu Commit <sha>“: `git show <sha>` lesen (Tests als Quelle), CHANGELOG `[Unreleased]` und betroffene README-Abschnitte ergänzen, neue Beispiele per `py -m deutsch -c` prüfen. Keine Testzahl, keine Version.
 - Bericht ≤ 3 Stichpunkte. Deutsch.
 
 - Antwortstil: extrem token-effizient. Direkt, kurz, Stichpunkte, keine Floskeln/Wiederholungen. Nur Neues berichten. Code nur als gezielte Änderung, keine Logs.
