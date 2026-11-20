@@ -79,6 +79,20 @@ _OPERATOR_METHODEN = {
     '>=': '__groessergleich__',
 }
 
+class Teilbereich:
+    """Wert für 'x[a:b:c]' bei __hole__/__setze__: .anfang, .ende, .schritt (fehlend = nichts)."""
+    def __init__(self, anfang, ende, schritt):
+        self.anfang, self.ende, self.schritt = anfang, ende, schritt
+
+    def __str__(self):
+        return f"Teilbereich({', '.join('nichts' if v is None else str(v) for v in (self.anfang, self.ende, self.schritt))})"
+
+
+# Weitere Dunder-Hooks (Sammlungs-/Aufruf-Verhalten):
+# __laenge__(dies) · __hole__(dies, schluessel) · __setze__(dies, schluessel, wert)
+# __enthaelt__(dies, wert) · __aufruf__(dies, ...). Slices kommen
+# als Teilbereich-Objekt (.anfang/.ende/.schritt, nicht angegebene Teile = nichts).
+
 # Bit-Operatoren (nur Ganzzahlen bzw. Mengen, keine Überladung durch Klassen)
 _BIT_OPERATOREN = ('&', '|', '^', '<<', '>>')
 
@@ -727,6 +741,13 @@ class Interpreter:
         obj = args[0]
         if isinstance(obj, (list, dict, str, set)):
             return len(obj)
+        if isinstance(obj, DeutschInstanz):
+            m = obj.klasse.suche_methode('__laenge__')
+            if m is not None:
+                n = self._funktion_aufrufen(m, [obj])
+                if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+                    raise TypeError(f"'__laenge__' muss eine Ganzzahl ≥ 0 liefern, bekam {self._zu_text(n)}")
+                return n
         raise TypeError(f"'länge' nicht unterstützt für {self._typname(obj)}")
 
     def _eb_typ(self, *args):
@@ -2169,9 +2190,17 @@ class Interpreter:
             else:
                 raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
         elif isinstance(ziel, ast.IndexZugriff):
+            obj = self._besuche(ziel.objekt, u)
+            if isinstance(obj, DeutschInstanz):
+                m = obj.klasse.suche_methode('__setze__')
+                if m is None:
+                    raise TypeError(f"'{obj.klasse.name}' unterstützt keine Index-Zuweisung (Methode '__setze__' fehlt)")
+                idx = (self._teilbereich_bauen(ziel.index, u) if isinstance(ziel.index, ast.SliceAusdruck)
+                       else self._besuche(ziel.index, u))
+                self._funktion_aufrufen(m, [obj, idx, wert])
+                return
             if isinstance(ziel.index, ast.SliceAusdruck):
                 raise TypeError('Slice-Zuweisung wird nicht unterstützt')
-            obj = self._besuche(ziel.objekt, u)
             idx = self._besuche(ziel.index, u)
             try:
                 obj[idx] = wert
@@ -2205,6 +2234,13 @@ class Interpreter:
                 m = l.klasse.suche_methode(methoden_name)
                 if m is not None:
                     return self._funktion_aufrufen(m, [l, r])
+        if op in ('in', 'nicht in') and isinstance(r, DeutschInstanz):
+            m = r.klasse.suche_methode('__enthaelt__')
+            if m is not None:
+                b = self._funktion_aufrufen(m, [r, l])
+                if not isinstance(b, bool):
+                    raise TypeError(f"'__enthaelt__' muss einen Wahrheitswert liefern, bekam {self._typname(b)}")
+                return b if op == 'in' else not b
         try:
             if op == '+':
                 if isinstance(l, str) or isinstance(r, str):
@@ -2601,6 +2637,10 @@ class Interpreter:
                     raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
                 return fn(*args, **kwargs)
             return fn(*args)
+        if isinstance(fn, DeutschInstanz):
+            m = fn.klasse.suche_methode('__aufruf__')
+            if m is not None:
+                return self._funktion_aufrufen(m, [fn] + args, kwargs)
         if isinstance(fn, DeutschKlasse):
             if fn.python_fehlerklasse() is None:
                 raise TypeError(f"'{fn.name}' ist eine Klasse und nicht aufrufbar – nutze 'neu {fn.name}(...)'")
@@ -2750,6 +2790,9 @@ class Interpreter:
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(attribut)
 
+        if isinstance(obj, Teilbereich) and attribut in ('anfang', 'ende', 'schritt'):
+            return getattr(obj, attribut)
+
         if isinstance(obj, DeutschFehler) and attribut in ('nachricht', 'art', 'zeile', 'datei'):
             return getattr(obj, attribut)
 
@@ -2833,9 +2876,19 @@ class Interpreter:
         step = self._besuche(slice_knoten.step, u) if slice_knoten.step is not None else None
         return slice(start, stop, step)
 
+    def _teilbereich_bauen(self, slice_knoten, u):
+        t = self._slice_bauen(slice_knoten, u)
+        return Teilbereich(t.start, t.stop, t.step)
+
     def _besuche_IndexZugriff(self, k, u):
         obj = self._besuche(k.objekt, u)
         ist_slice = isinstance(k.index, ast.SliceAusdruck)
+        if isinstance(obj, DeutschInstanz):
+            m = obj.klasse.suche_methode('__hole__')
+            if m is None:
+                raise TypeError(f"'{obj.klasse.name}' unterstützt keinen Index-Zugriff (Methode '__hole__' fehlt)")
+            return self._funktion_aufrufen(m, [obj, self._teilbereich_bauen(k.index, u) if ist_slice
+                                               else self._besuche(k.index, u)])
         if ist_slice:
             if isinstance(obj, dict):
                 raise TypeError('Wörterbücher unterstützen kein Slicing')
