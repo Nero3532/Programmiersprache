@@ -700,5 +700,37 @@ class TestUebersetzteFehlermeldungen(unittest.TestCase):
             auswerten('runde(nichts)')
 
 
+class TestMaxMinIterierbar(unittest.TestCase):
+    """max/min mit einem einzelnen iterierbaren Argument: Menge, Zeichenkette, Generator, Instanz mit __iter__."""
+    GEN = 'funktion g(n) { für i in bereich(n) { ergib i * 3 % 7 } }\n'
+    ITER = ('klasse Z { funktion __init__(dies) { dies.i = 0 }\n funktion __iter__(dies) { zurück dies }\n'
+            ' funktion __naechstes__(dies) { wenn dies.i >= 4 { werfe IterationsEnde() }\n dies.i += 1\n zurück dies.i * 10 } }\n')
+
+    def test_menge_und_zeichenkette(self):
+        self.assertEqual(auswerten('max({3, 9, 4})'), 9)
+        self.assertEqual(auswerten('min({3, 9, 4})'), 3)
+        self.assertEqual(auswerten('max("hallo")'), 'o')
+        self.assertEqual(auswerten('min("hallo")'), 'a')
+
+    def test_generator(self):
+        self.assertEqual(auswerten(self.GEN + 'max(g(5))'), 6)
+        self.assertEqual(auswerten(self.GEN + 'min(g(5))'), 0)
+
+    def test_generator_mit_schluessel(self):
+        self.assertEqual(auswerten(self.GEN + 'max(g(5), schlüssel=funktion(x) -> -x)'), 0)
+
+    def test_iterator_instanz(self):
+        self.assertEqual(auswerten(self.ITER + 'max(neu Z())'), 40)
+        self.assertEqual(auswerten(self.ITER + 'min(neu Z())'), 10)
+
+    def test_einzelner_wert_bleibt(self):
+        self.assertEqual(auswerten('max(7)'), 7)
+
+    def test_leere_sammlungen_sind_wertfehler(self):
+        for code in ('max(menge())', 'min("")', 'max(g(0))', 'min(g(0))'):
+            with self.assertRaises(ValueError, msg=code):
+                auswerten(self.GEN + code)
+
+
 if __name__ == '__main__':
     unittest.main()

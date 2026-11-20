@@ -362,13 +362,24 @@ class DeutschGenerator:
     def __repr__(self):
         return f'<Generator {self.name}>'
 
+    def _betreten(self):
+        ip = self._interpreter
+        zeile, datei = ip._aktuelle_zeile, ip._aktuelle_datei
+        ip._aufruf_stack.append(AufrufEintrag(self.name, zeile, datei))
+        ip._aktuelle_datei = self._datei
+        return zeile, datei
+
+    def _verlassen(self, zeile, datei):
+        ip = self._interpreter
+        ip._aktuelle_datei = datei
+        ip._aktuelle_zeile = zeile
+        ip._aufruf_stack.pop()
+
     def __next__(self):
         ip = self._interpreter
         if self._laeuft:
             raise ValueError(f"Generator '{self.name}' läuft bereits (Aufruf aus seinem eigenen Rumpf)")
-        zeile, datei = ip._aktuelle_zeile, ip._aktuelle_datei
-        ip._aufruf_stack.append(AufrufEintrag(self.name, zeile, datei))
-        ip._aktuelle_datei = self._datei
+        zeile, datei = self._betreten()
         self._laeuft = True
         try:
             return next(self._rumpf)
@@ -379,13 +390,22 @@ class DeutschGenerator:
             raise ip._signal_fehler_hier(signal) from None
         finally:
             self._laeuft = False
-            ip._aktuelle_datei = datei
-            ip._aktuelle_zeile = zeile
-            ip._aufruf_stack.pop()
+            self._verlassen(zeile, datei)
 
     def close(self):
-        """Beendet den Generator vorzeitig; 'endlich'-Blöcke laufen dabei (sonst erst, wenn er verworfen wird)."""
-        self._rumpf.close()
+        """Beendet den Generator vorzeitig: 'endlich'-Blöcke laufen (mit Ort wie bei einem Aufruf), ihre Fehler gehen weiter."""
+        zeile, datei = self._betreten()
+        try:
+            self._rumpf.close()
+        finally:
+            self._verlassen(zeile, datei)
+
+    def __del__(self):
+        # Verworfen ohne Schleife: 'endlich' läuft noch; ein Fehler darin geht verloren (keine rohe Python-Ausgabe)
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class GebundeneMethode:
@@ -1126,11 +1146,20 @@ class Interpreter:
             raise TypeError("Erstes Argument von 'verbinde' muss eine Liste sein")
         return trenn.join(self._zu_text(e) for e in liste)
 
+    def _extremum_werte(self, args):
+        """Werte für max/min: ein einzelnes iterierbares Argument (Liste, Menge, Zeichenkette, Generator, Instanz
+        mit __iter__) wird entpackt; sonst sind die Argumente selbst die Werte."""
+        if len(args) == 1:
+            w = self._instanz_zu_liste(args[0])
+            if isinstance(w, (list, set, str)):
+                return list(w)
+        return list(args)
+
     @_mit_keywords
     def _eb_max(self, /, *args, **kwargs):
         schluessel, _ = self._sortier_optionen('max', kwargs)
         if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+        werte = self._extremum_werte(args)
         if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
         return self._vergleichs_extremum(max, werte, 'max', schluessel)
 
@@ -1138,7 +1167,7 @@ class Interpreter:
     def _eb_min(self, /, *args, **kwargs):
         schluessel, _ = self._sortier_optionen('min', kwargs)
         if not args: raise TypeError("'min' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+        werte = self._extremum_werte(args)
         if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
         return self._vergleichs_extremum(min, werte, 'min', schluessel)
 
@@ -2486,13 +2515,33 @@ class Interpreter:
     def _besuche_FuerAnweisung(self, k, u):
         iterable = self._iterable_auswerten(k.iterable, u)
         schleifen_u = Umgebung(u)
-        for elem in self._iteriere(iterable):
-            self._schleifenvariable_binden(k.variable, elem, schleifen_u)
-            try:
-                self._besuche(k.koerper, schleifen_u)
-            except _AbbrechenSignal: break
-            except _WeiterSignal:    continue
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                self._schleifenvariable_binden(k.variable, elem, schleifen_u)
+                try:
+                    self._besuche(k.koerper, schleifen_u)
+                except _AbbrechenSignal: break
+                except _WeiterSignal:    continue
+        except _KONTROLLSIGNALE:
+            self._iterator_schliessen(iterator, False)
+            raise
+        except BaseException:
+            self._iterator_schliessen(iterator, True)
+            raise
+        self._iterator_schliessen(iterator, False)
         return None
+
+    @staticmethod
+    def _iterator_schliessen(iterator, fehler_laeuft):
+        """Beendet einen Generator, den die Schleife vorzeitig verlässt, sofort (sein 'endlich' läuft jetzt).
+        Ein Fehler daraus geht weiter – außer es läuft schon einer: der ursprüngliche bleibt der gemeldete."""
+        if isinstance(iterator, DeutschGenerator):
+            try:
+                iterator.close()
+            except Exception:
+                if not fehler_laeuft:
+                    raise
 
     def _besuche_ZurueckAnweisung(self, k, u):
         wert = self._besuche(k.wert, u)
@@ -2910,12 +2959,21 @@ class Interpreter:
     def _gen_Fuer(self, k, u):
         iterable = self._iterable_auswerten(k.iterable, u)
         schleifen_u = Umgebung(u)
-        for elem in self._iteriere(iterable):
-            self._schleifenvariable_binden(k.variable, elem, schleifen_u)
-            try:
-                yield from self._gen_Block(k.koerper, schleifen_u)
-            except _AbbrechenSignal: break
-            except _WeiterSignal:    continue
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                self._schleifenvariable_binden(k.variable, elem, schleifen_u)
+                try:
+                    yield from self._gen_Block(k.koerper, schleifen_u)
+                except _AbbrechenSignal: break
+                except _WeiterSignal:    continue
+        except _KONTROLLSIGNALE:
+            self._iterator_schliessen(iterator, False)
+            raise
+        except BaseException:
+            self._iterator_schliessen(iterator, True)
+            raise
+        self._iterator_schliessen(iterator, False)
         return None
 
     def _gen_Passe(self, k, u):
