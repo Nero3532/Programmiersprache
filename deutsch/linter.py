@@ -28,23 +28,14 @@ def _kinder(k):
             stapel.extend(e)
 
 
-def _muster_namen(m):
-    """Gebundene Namen (str) eines Musters bzw. einer einfachen Variable."""
-    if isinstance(m, str):
-        yield m
-    elif isinstance(m, ast.Muster):
-        for z in m.ziele:
-            yield from _muster_namen(z)
-
-
 def _gebunden(k):
     """Namen, die dieser Knoten selbst bindet."""
     if isinstance(k, ast.VariableDeklaration):
         yield k.name
     elif isinstance(k, ast.DestrukturierendeDeklaration):
-        yield from _muster_namen(k.muster)
+        yield from ast.muster_namen(k.muster)
     elif isinstance(k, (ast.FuerAnweisung, ast.ListenAusdruck)):
-        yield from _muster_namen(k.variable)
+        yield from ast.muster_namen(k.variable)
     elif isinstance(k, ast.FunktionDefinition):
         if k.name:
             yield k.name
@@ -60,6 +51,10 @@ def _gebunden(k):
     elif isinstance(k, ast.LadeAnweisung):
         if k.als_name:
             yield k.als_name
+    elif isinstance(k, ast.PasseAnweisung):
+        for alternativen, _, _ in k.faelle:
+            for m in alternativen:
+                yield from ast.muster_namen(m)
 
 
 def _lesende_bezeichner(k):
