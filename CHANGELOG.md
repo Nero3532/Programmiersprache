@@ -16,6 +16,9 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   von unten nach oben angewendet.
 - Optional-Chaining `a?.b` und `a?.m()`: ergibt `nichts`, wenn `a` gleich `nichts` ist; die restliche Kette wird übersprungen.
   Linter und VS-Code-Grammatik kennen `@` und `?.`.
+- Mustervergleich in `passe`: `fall sei [a, *rest]` und `fall sei {"k": m}` (Bindung nur im Arm), Typmuster
+  `fall Ganzzahl n`, Platzhalter `fall _`, Wächter `fall muster wenn bedingung`.
+- `passe` als Ausdruck: der Wert des Arms ist das Ergebnis; ohne Treffer und ohne `sonst` ein `WertFehler`.
 
 ## [2.9.0]
 

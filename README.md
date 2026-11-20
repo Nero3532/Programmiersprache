@@ -162,6 +162,32 @@ passe wert {
 `abbrechen` (break) und `weiter` (continue) funktionieren in Schleifen, auch aus einem `fall`-Block heraus.
 Außerhalb einer Schleife ist beides ein Fehler, auch innerhalb einer Funktion, die aus einer Schleife aufgerufen wird.
 
+#### Mustervergleich in `passe` / `fall`
+
+```
+passe wert {
+    fall sei [kopf, *rest]: { ... }      # Liste mit Rest: rest ist die Restliste
+    fall sei {"typ": t, "r": r}: { ... } # Wörterbuch: Schlüssel prüfen und binden
+    fall Ganzzahl n: { ... }             # Typmuster: nur wenn Typ passt
+    fall Ganzzahl n wenn n > 5: { ... } # Wächter: zusätzliche Bedingung nach "wenn"
+    fall _: { ... }                      # Platzhalter: passt auf alles, bindet nichts
+    sonst: { ... }
+}
+```
+
+- `sei` vor dem Muster bindet Namen. Die Bindungen sind nur im zugehörigen Arm sichtbar.
+- Ohne `sei` bleibt `fall [a, b]` ein Vergleich: Namen werden nicht gebunden, `fall [1, 2]` prüft Gleichheit.
+- Ein einzelner Name ohne `sei` ist ebenfalls ein Wertvergleich; `fall sei x` bindet alles.
+- Mehrere Alternativen mit Komma: `fall 1, 2, 3: { ... }` (mit `sei` müssen alle Alternativen dieselben Namen binden).
+- `passe` ist auch ein Ausdruck: der Wert des Arms ist das Ergebnis. Passt kein Arm und fehlt `sonst`, gibt es einen `WertFehler` (fangbar mit `fange`).
+
+```
+sei r = passe 2 { fall 1: { "eins" } fall 2: { "zwei" } }
+drucke(r)                                   # zwei
+sei [kopf, *rest] = [1, 2, 3]
+passe [1, 2, 3] { fall sei [kopf, *rest]: { drucke(rest) } }   # [2, 3]
+```
+
 ### Funktionen
 
 ```
