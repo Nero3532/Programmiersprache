@@ -346,5 +346,132 @@ class TestKeineHaenger(unittest.TestCase):
         self.assertEqual(ip._aufruf_stack, [])
 
 
+class TestZusammenspielMerkmale(unittest.TestCase):
+    """Generatoren zusammen mit __iter__/__laenge__, Dekoratoren, Mustervergleich, ?., Fehlerklassen und 'lade'."""
+
+    def test_generator_als_iter_einer_klasse_mit_laenge(self):
+        code = ('klasse Kasten {\n funktion __init__(dies, n) { dies.n = n }\n'
+                ' funktion __iter__(dies) { für i in bereich(dies.n) { ergib i * 10 } }\n'
+                ' funktion __laenge__(dies) { zurück dies.n }\n}\n'
+                'sei k = neu Kasten(3)\ndrucke(laenge(k), liste(k), summe(k))\n'
+                'sei [a, b, c] = k\ndrucke(a, b, c)\nfür v in k { drucke(v) }')
+        self.assertEqual(ausgabe(code), ['3 [0, 10, 20] 30', '0 10 20', '0', '10', '20'])
+
+    def test_dekorator_umhuellt_generator_mit_generator(self):
+        code = ('funktion zwei(f) { zurück funktion(n) { für x in f(n) { ergib x * 2 } } }\n'
+                '@zwei\nfunktion zaehle(n) { für i in bereich(n) { ergib i } }\n'
+                'drucke(typ(zaehle(3)), liste(zaehle(3)))')
+        self.assertEqual(ausgabe(code), ['Generator [0, 2, 4]'])
+
+    def test_dekorator_reicht_generator_unveraendert_durch(self):
+        code = ('funktion wickel(f) -> funktion(n) -> f(n)\n'
+                '@wickel\nfunktion g(n) { für i in bereich(n) { ergib i } }\n'
+                'sei h = g(3)\ndrucke(typ(h), naechstes(h), liste(h))')
+        self.assertEqual(ausgabe(code), ['Generator 0 [1, 2]'])
+
+    def test_passe_ueber_generatorwerte_mit_sei_mustern(self):
+        code = ('funktion g() { ergib 1\n ergib [1, 2]\n ergib {"a": 5}\n ergib "text"\n ergib nichts\n ergib 7 }\n'
+                'für v in g() { passe v {\n fall 1: { drucke("eins") }\n fall sei [a, b]: { drucke("paar", a, b) }\n'
+                ' fall sei {"a": x}: { drucke("dict", x) }\n fall nichts: { drucke("nichts") }\n'
+                ' fall Ganzzahl n wenn n > 5: { drucke("gross", n) }\n sonst: { drucke("?") } } }')
+        self.assertEqual(ausgabe(code), ['eins', 'paar 1 2', 'dict 5', '?', 'nichts', 'gross 7'])
+
+    def test_optional_chaining_auf_iterator_instanz(self):
+        code = ('klasse Z {\n funktion __init__(dies, n) { dies.i = 0\n dies.n = n }\n'
+                ' funktion __iter__(dies) { zurück dies }\n'
+                ' funktion __naechstes__(dies) { wenn dies.i >= dies.n { werfe IterationsEnde() }\n dies.i += 1\n zurück dies.i }\n'
+                ' funktion name(dies) { zurück "z" }\n}\n'
+                'sei z = neu Z(2)\nsei q = nichts\n'
+                'drucke(z?.name(), z?.n, q?.name(), q?.n)\ndrucke(naechstes(z), z?.i)\ndrucke(liste(z), z?.i)')
+        self.assertEqual(ausgabe(code), ['z 2 nichts nichts', '1 1', '[2] 2'])
+
+    def test_eigene_fehlerklasse_aus_generator_aussen_und_innen_gefangen(self):
+        code = ('klasse MeinFehler(Fehler) { funktion __init__(dies, msg, code) { dies.nachricht = msg\n dies.code = code } }\n'
+                'funktion g() { ergib 1\n versuche { werfe neu MeinFehler("innen", 5) } fange (MeinFehler) e { ergib e.code }\n'
+                ' werfe neu MeinFehler("aus gen", 7)\n ergib "nie" }\n'
+                'versuche { für x in g() { drucke("x", x) } } fange (MeinFehler) e { drucke("aussen", e.nachricht, e.code, e.art) }\n'
+                'sei h = g()\nnaechstes(h)\nnaechstes(h)\nversuche { naechstes(h) } fange (MeinFehler) e { drucke("gefangen", e.code) }\n'
+                'versuche { naechstes(h) } fange (IterationsEnde) e { drucke("danach zu Ende") }')
+        self.assertEqual(ausgabe(code), ['x 1', 'x 5', 'aussen aus gen 7 MeinFehler', 'gefangen 7', 'danach zu Ende'])
+
+    def test_generator_aus_geladenem_modul(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as ordner:
+            with open(os.path.join(ordner, 'm.deu'), 'w', encoding='utf-8') as f:
+                f.write('funktion zaehle(n) { sei i = 0\n solange i < n { i += 1\n ergib i } }\n'
+                        'funktion kaputt() { ergib 1\n sei z = 1 / 0\n ergib 2 }\n')
+            code = ('lade "m.deu" als m\ndrucke(typ(m.zaehle(2)), liste(m.zaehle(3)))\n'
+                    'sei g = m.zaehle(2)\ndrucke(naechstes(g))\n'
+                    'versuche { für x in m.kaputt() { drucke(x) } } fange e { drucke(e.art, e.zeile) }')
+            puffer = io.StringIO()
+            with contextlib.redirect_stdout(puffer):
+                Interpreter(ladepfad=ordner).ausfuehren(parse(code))
+        self.assertEqual(puffer.getvalue().splitlines(), ['Generator [1, 2, 3]', '1', '1', 'DivisionDurchNullFehler 5'])
+
+
+class TestVorzeitigesSchliessen(unittest.TestCase):
+    """Schleifen schließen einen Generator beim vorzeitigen Ende sofort; Fehler aus 'endlich' werden gemeldet."""
+    G = ('funktion g() { versuche { ergib 1\n ergib 2 } endlich { drucke("endlich") } }\n'
+         'funktion k() { versuche { ergib 1\n ergib 2 } endlich { werfe WertFehler("aus endlich") } }\n')
+
+    def test_abbrechen_schliesst_sofort(self):
+        self.assertEqual(ausgabe(self.G + 'für x in g() { drucke(x)\n abbrechen }\ndrucke("danach")'),
+                         ['1', 'endlich', 'danach'])
+
+    def test_fehler_aus_endlich_bei_abbrechen_mit_ort(self):
+        msg = fehler(self.G + 'für x in k() { abbrechen }', ValueError)
+        self.assertIn('Zeile 4', msg)
+        self.assertIn('aus endlich', msg)
+
+    def test_fehler_aus_endlich_ist_fangbar(self):
+        code = self.G + 'versuche { für x in k() { abbrechen } } fange (WertFehler) e { drucke("gefangen", e.nachricht, e.zeile) }'
+        self.assertEqual(ausgabe(code), ['gefangen aus endlich 4'])
+
+    def test_fehler_aus_endlich_bei_zurueck_in_funktion(self):
+        code = self.G + ('funktion f() { für x in k() { zurück x } }\n'
+                         'versuche { f() } fange (WertFehler) e { drucke("gefangen", e.nachricht) }')
+        self.assertEqual(ausgabe(code), ['gefangen aus endlich'])
+
+    def test_laufender_fehler_bleibt_der_gemeldete(self):
+        code = self.G + ('versuche { für x in k() { werfe TypFehler("original") } } '
+                         'fange e { drucke(e.art, e.nachricht) }')
+        self.assertEqual(ausgabe(code), ['TypFehler original'])
+
+    def test_in_generator_schleife(self):
+        code = self.G + ('funktion h() { für x in k() { ergib x\n abbrechen }\n ergib "fertig" }\n'
+                         'sei q = h()\ndrucke(naechstes(q))\n'
+                         'versuche { naechstes(q) } fange (WertFehler) e { drucke("gefangen", e.nachricht) }')
+        self.assertEqual(ausgabe(code), ['1', 'gefangen aus endlich'])
+
+    def test_in_generator_schleife_ohne_fehler(self):
+        code = self.G + ('funktion h() { für x in g() { ergib x\n abbrechen }\n ergib "fertig" }\ndrucke(liste(h()))')
+        self.assertEqual(ausgabe(code), ['endlich', '[1, fertig]'])
+
+    def test_voll_durchlaufen_laeuft_endlich_einmal(self):
+        self.assertEqual(ausgabe(self.G + 'für x in g() { drucke(x) }'), ['1', '2', 'endlich'])
+
+    def test_verwerfen_ohne_schleife_keine_rohe_ausgabe(self):
+        gemeldet = []
+        code = self.G + 'sei q = k()\nnaechstes(q)\nq = nichts'
+        with mock.patch.object(sys, 'unraisablehook', gemeldet.append):
+            ausgabe(code)
+            gc.collect()
+        self.assertEqual(gemeldet, [])
+
+    def test_verwerfen_ohne_fehler_fuehrt_endlich_aus(self):
+        self.assertEqual(ausgabe(self.G + 'sei q = g()\nnaechstes(q)\nq = nichts\ndrucke("danach")'),
+                         ['endlich', 'danach'])
+
+    def test_cli_meldet_fehler_mit_exitcode(self):
+        import subprocess
+        wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        code = self.G + 'für x in k() { abbrechen }'
+        ergebnis = subprocess.run([sys.executable, '-m', 'deutsch', '-c', code], cwd=wurzel,
+                                  capture_output=True, text=True, encoding='utf-8', timeout=60)
+        self.assertNotEqual(ergebnis.returncode, 0)
+        self.assertIn('aus endlich', ergebnis.stderr)
+        self.assertNotIn('Exception ignored', ergebnis.stderr)
+
+
 if __name__ == '__main__':
     unittest.main()
