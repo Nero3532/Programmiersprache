@@ -13,15 +13,13 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 
 ### P3 — größere Vorhaben
 - Mustervergleich ausbauen: Guards (`fall x wenn …`), Listen-/Dict-/Typmuster mit Bindung, als Ausdruck — M — architekt/opus (Entwurf) → entwickler/sonnet
-- Eigene Fehlerklassen: `fange (MeinFehler)` erkennt heute keine Nutzerklassen, `werfe f` verliert den Typ; `werfe WertFehler("Text")` (deutsche Fehlerarten als aufrufbare Builtins, `_besuche_WerfeAnweisung` umbauen); Fehlerobjekt mit Typ/Nachricht/Zeile; `ist_instanz`; erneutes `werfe f` verliert die Fehlerart (Kopf `[AusnahmeFehler]`) — M — architekt/opus (Entwurf) → entwickler/sonnet
 - Iterator-Protokoll (`__iter__`/`__naechstes__`), lazy `bereich`; später Generatoren `ergib` (L, braucht Umbau der Auswertung) — M/L — architekt/opus
 - Weitere Dunder-Hooks: `__laenge__`, `__hole__`/`__setze__`, `__enthaelt__`, `__aufruf__` — M — entwickler/sonnet
 - Eigenschaften (Getter/Setter) und abstrakte Methoden/Schnittstellen — M — entwickler/sonnet
-- Aufzählungstypen `aufzaehlung Farbe { rot, gruen }` — M — entwickler/sonnet
 - Dekoratoren `@name` (nach Funktionen höherer Ordnung) — S — entwickler/sonnet
 - Optional-Chaining `?.`, Schleifen-`sonst`, Label-`abbrechen` — S/M — entwickler/sonnet
 - Stdlib CSV und HTTP-Abruf (urllib), wählbare Zeichenkodierung — M — entwickler/sonnet
-- Linter (auf `--pruefen` aufbauend), Formatierer (L) — M/L — entwickler/sonnet
+- Formatierer; Linter ausbauen (scope-genaue Namensprüfung, Regel b auf oberster Ebene, `konstante`/Destrukturierung) — M/L — entwickler/sonnet
 - Debugger/Schrittmodus — L — architekt/opus
 - Performance: Namensauflösung zur Parse-Zeit oder Bytecode-VM — L — architekt/opus
 - REPL-Verlauf unter Windows — S — junior/haiku ❓ (braucht `pyreadline3` = neue Abhängigkeit)
@@ -64,3 +62,6 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 - [nach 2.8.0] Orts-Anreicherung über Textsuche `'Zeile' not in str(e)` (interpreter `_besuche_anweisung`) unterdrückt den Ort bei Meldungen mit „Zeile"; auf Attribut `.zeile` umstellen
 - [nach 2.8.0] Bit-Operatoren für Klassen überladbar (`__bitund__` …), `??=`
 - [nach 2.8.0] Syntax-Hervorhebung für VS Code (TextMate-Grammatik aus SCHLUESSELWOERTER)
+- [2.9.0] Eigene Fehlerklassen: `fange (MeinFehler)` erkennt heute keine Nutzerklassen, `werfe f` verliert den Typ; `werfe WertFehler("Text")` (deutsche Fehlerarten als aufrufbare Builtins, `_besuche_WerfeAnweisung` umbauen); Fehlerobjekt mit Typ/Nachricht/Zeile; `ist_instanz`; erneutes `werfe f` verliert die Fehlerart (Kopf `[AusnahmeFehler]`)
+- [2.9.0] Aufzählungstypen `aufzaehlung Farbe { rot, gruen }`
+- [2.9.0] Linter v1 in `--pruefen` (unbekannte Namen, unbenutzte Variablen, unerreichbarer Code)

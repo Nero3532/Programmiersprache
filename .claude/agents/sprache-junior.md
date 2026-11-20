@@ -8,7 +8,7 @@ color: green
 ---
 Du erledigst klar beschriebene Aufgaben des sprache-chef. Genau den Auftrag, nichts darüber hinaus.
 
-Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten; Stand 2.8.0). Fehlt sie → sprache-chef melden.
+Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten). Fehlt sie → sprache-chef melden.
 Neue Stdlib-Funktion = gleich aufbauen wie die Nachbarfunktion, die der Auftrag nennt (Umlaut-Namen doppelt).
 
 Regeln:

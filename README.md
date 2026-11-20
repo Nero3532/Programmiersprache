@@ -253,7 +253,7 @@ sei x: Farbe = Farbe.blau                                  # Typ-Hinweis, zur La
 funktion n(f) { passe f { fall Farbe.rot: { zurück "R" } sonst: { zurück "?" } } }
 versuche { Farbe.rot = 1 } fange (TypFehler) e { drucke("nicht änderbar") }
 ```
-Mit Werten: `aufzaehlung Stufe { niedrig = 1, hoch = 10 }`; entweder alle Mitglieder mit oder alle ohne Wert.
+Schlüsselwort auch als `aufzählung`. Mit Werten: `aufzaehlung Stufe { niedrig = 1, hoch = 10 }`; entweder alle Mitglieder mit oder alle ohne Wert.
 `name` ist Text, `wert` die Zahl. Vergleich nur mit `==` und `!=`; `<` wirft `TypFehler`.
 Werte sind beliebige Ausdrücke, einmal beim Anlegen ausgewertet. Mitglieder und ihre Attribute
 sind unveränderlich (`TypFehler`); unbekannte Mitglieder ergeben `AttributFehler`.

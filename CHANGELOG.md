@@ -4,17 +4,20 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.9.0]
+
 ### Hinzugefügt
 - Aufzählungstypen: `aufzaehlung Farbe { rot, gruen = 5, blau }` (auch `aufzählung`). Mitglieder mit `name` und `wert`
   (ohne Wert ab 0, sonst Vorgänger + 1), unveränderlich, iterierbar mit `für`, als Typ-Hinweis und in `passe`/`fall`.
-- Eigene Fehlerklassen: `klasse MeinFehler(WertFehler) { … }` erbt von einer deutschen Fehlerart. Werfen mit
-  `werfe neu MeinFehler("…")`; Fehlerklassen auch ohne `neu` als `werfe WertFehler("…")`.
-- Fehlerobjekt aus `fange f` mit `nachricht`, `art`, `zeile`, `datei`; bleibt als Zeichenkette verwendbar.
-- `ist_instanz(wert, Klasse)` prüft die Art, auch über Vererbung; `fange (m.Klasse)` mit Punktpfad.
 - Verbund-Zuweisung `??=`: `a ??= b` wertet `b` nur aus, wenn `a` gleich `nichts` ist.
 - Bit-Operatoren `& | ^ << >>` und unäres `~` sind für Klassen überladbar (`__bitund__`, `__bitoder__`,
   `__bitxoder__`, `__links__`, `__rechts__`, `__bitnicht__`).
+- `ist_instanz(wert, Klasse)` prüft die Art, auch über Vererbung.
 - `abbilden`, `filtere`, `reduziere` und `gruppiere` nehmen Wörterbücher (Schlüssel, wie bei `für`).
+- Eigene Fehlerklassen: `klasse MeinFehler(WertFehler) { … }` erbt von einer deutschen Fehlerart. Werfen mit
+  `werfe neu MeinFehler("…")`; Fehlerklassen auch ohne `neu` als `werfe WertFehler("…")`.
+- Fehlerobjekt aus `fange f` mit `nachricht`, `art`, `zeile`, `datei`; bleibt als Zeichenkette verwendbar.
+- `fange (m.Klasse)` mit Punktpfad.
 - VS-Code-Syntaxhervorhebung für `.deu` in `editor/vscode` (siehe dort).
 - Linter in `--pruefen`: meldet unbekannte Namen (mit Vorschlag), unbenutzte `sei`-Variablen in Funktionen und
   unerreichbaren Code, jeweils mit Zeile. Exitcode bleibt `0`, außer bei Syntaxfehler.
@@ -30,6 +33,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ### Behoben
 - REPL erkennt Interpolationen mit inneren Zeichenketten (`"{a["x"]}"`).
+
+98 neue Regressionstests (1270 gesamt).
 
 ## [2.8.0]
 

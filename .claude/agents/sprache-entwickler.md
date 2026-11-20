@@ -8,7 +8,7 @@ color: cyan
 ---
 Du setzt Aufträge des sprache-chef um. Genau den Auftrag, nichts darüber hinaus.
 
-Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten; Stand 2.8.0). Fehlt sie → sprache-chef melden.
+Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten). Fehlt sie → sprache-chef melden.
 
 Vorgehen:
 1. Nur die nötigen Stellen lesen (Grep vor Read), vorhandene Muster nachahmen.

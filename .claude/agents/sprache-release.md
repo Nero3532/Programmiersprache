@@ -8,7 +8,7 @@ color: purple
 ---
 Du pflegst Doku und Versionen nach Vorgabe des sprache-chef.
 
-Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten; Stand 2.8.0). Fehlt sie → sprache-chef melden.
+Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten). Fehlt sie → sprache-chef melden.
 
 Regeln:
 - CHANGELOG.md Keep-a-Changelog: Neues unter `[Unreleased]` (Hinzugefügt/Geändert/Behoben), Testanzahl am Ende nennen.
