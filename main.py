@@ -42,7 +42,7 @@ from deutsch import __version__
 from deutsch.lexer import Lexer
 from deutsch.parser import Parser
 from deutsch import linter
-from deutsch.interpreter import Interpreter, fehlerart_name
+from deutsch.interpreter import AusnahmeFehler, Interpreter, fehlerart_name
 
 _BANNER_INNEN = 58  # Breite zwischen den Rahmenzeichen
 
@@ -450,9 +450,10 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
         baum = Parser(tokens).parse()
         ergebnis = interpreter.ausfuehren(baum)
         return ergebnis, None
-    except RecursionError:
-        return None, '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
     except Exception as e:
+        # echter Überlauf: feste Meldung; ein per 'werfe RekursionsFehler(...)' geworfener behält seine
+        if isinstance(e, RecursionError) and not isinstance(e, AusnahmeFehler):
+            return None, '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
         return None, _fehler_anzeigen(e, quelltext, dateiname,
                                       getattr(interpreter, '_letzter_aufruf_stack', None), ladepfad)
 

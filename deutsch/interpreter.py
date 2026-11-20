@@ -96,7 +96,39 @@ class AusnahmeFehler(Exception):
         self.nachricht = nachricht
 
     def __str__(self):
-        return self.nachricht if self.nachricht is not None else str(self.wert)
+        if self.nachricht is not None:
+            return self.nachricht
+        if isinstance(self.wert, DeutschInstanz) and 'nachricht' in self.wert.attribute:
+            return str(self.wert.attribute['nachricht'])
+        return str(self.wert)
+
+
+class DeutschFehler(str):
+    """Wert der Fehlervariable aus 'fange f': der Fehlertext (wie bisher eine Zeichenkette) samt
+    Attributen nachricht (ohne Ortsangabe), art, zeile, datei (None = Hauptskript) und der Ausnahme."""
+    def __new__(cls, text, nachricht=None, art='Fehler', zeile=None, datei=None, ausnahme=None):
+        self = super().__new__(cls, text)
+        self.nachricht = text if nachricht is None else nachricht
+        self.art = art
+        self.zeile = zeile
+        self.datei = datei
+        self._ausnahme = ausnahme
+        return self
+
+
+_AUSNAHME_KLASSEN = {}
+
+
+def _ausnahme_klasse(python_fehler):
+    """AusnahmeFehler, der zugleich die Python-Fehlerklasse ist (None = nur AusnahmeFehler), damit
+    'fange (WertFehler)' und 'fange (ValueError)' eine geworfene Fehlerklassen-Instanz per isinstance fängt."""
+    if python_fehler is None:
+        return AusnahmeFehler
+    klasse = _AUSNAHME_KLASSEN.get(python_fehler)
+    if klasse is None:
+        klasse = type(f'AusnahmeFehler_{python_fehler.__name__}', (AusnahmeFehler, python_fehler), {})
+        _AUSNAHME_KLASSEN[python_fehler] = klasse
+    return klasse
 
 
 # ------------------------------------------------------- Deutsche Fehlerarten
@@ -131,6 +163,8 @@ def fehlerart_name(fehler) -> str:
     ZeroDivisionError, 'DateiFehler' für FileNotFoundError, 'WertFehler' für UnicodeDecodeError.
     Unbekannte Python-Typen heißen 'Fehler'; ein per 'werfe' geworfener Wert 'AusnahmeFehler'."""
     if isinstance(fehler, AusnahmeFehler):
+        if isinstance(fehler.wert, DeutschInstanz):
+            return fehler.wert.klasse.name
         return 'AusnahmeFehler'
     for klasse in type(fehler).__mro__:
         name = _FEHLERART_NAMEN.get(klasse)
@@ -242,6 +276,8 @@ def _ist_deutsch(text: str) -> bool:
 def _meldung_deutsch(e) -> str:
     """Meldung von e; bekannte englische Python-Texte (und Unicode-Fehler) auf Deutsch."""
     text = str(e)
+    if isinstance(e, AusnahmeFehler):  # eigene Meldung des Programms, nie umschreiben
+        return text
     if isinstance(e, (UnicodeDecodeError, UnicodeEncodeError)):
         return _unicode_meldung(e) or text
     for klasse, muster, ersatz in _MELDUNGS_REGELN:
@@ -328,6 +364,7 @@ class DeutschKlasse:
         self.statische_methoden = statische_methoden or {}  # {name: DeutschFunktion}, kein 'dies'
         self.klassenattribute: dict = {}      # gesetzt nach __init__ in _besuche_KlassenDefinition
         self.konstante_attribute: set = set()  # Teilmenge von klassenattribute-Schlüsseln
+        self.python_fehler = None  # nur bei den eingebauten Fehlerklassen: die Python-Fehlerklasse
 
     def suche_methode(self, name: str):
         if name in self.methoden:
@@ -355,6 +392,16 @@ class DeutschKlasse:
             if wert is not _NICHT_GEFUNDEN:
                 return wert
         return _NICHT_GEFUNDEN
+
+    def python_fehlerklasse(self):
+        """Python-Fehlerklasse der ersten Fehler-Elternklasse (Tiefensuche wie suche_methode), sonst None."""
+        if self.python_fehler is not None:
+            return self.python_fehler
+        for e in self.eltern:
+            py = e.python_fehlerklasse()
+            if py is not None:
+                return py
+        return None
 
     def __repr__(self):
         return f'<Klasse {self.name}>'
@@ -643,6 +690,27 @@ class Interpreter:
         g.setze('arctan2',           self._eb_arctan2)
         g.setze('warte',             self._eb_warte)
         g.setze('datum_lesen',       self._eb_datum_lesen)
+        g.setze('ist_instanz',       self._eb_ist_instanz)
+        # Fehlerarten als Klassen: Oberklasse 'Fehler', alle anderen erben von ihr
+        fehler = DeutschKlasse('Fehler', [], {})
+        for name, py in FEHLERARTEN.items():
+            klasse = fehler if name == 'Fehler' else DeutschKlasse(name, [fehler], {})
+            klasse.python_fehler = py
+            g.setze(name, klasse)
+
+    def _eb_ist_instanz(self, *args):
+        self._pruefe_args('ist_instanz', args, 2)
+        wert, klasse = args
+        if isinstance(klasse, DeutschAufzaehlung):
+            return isinstance(wert, AufzaehlungsWert) and wert.aufzaehlung is klasse
+        if not isinstance(klasse, DeutschKlasse):
+            raise TypeError(f"'ist_instanz' erwartet als zweites Argument eine Klasse oder Aufzählung, "
+                            f"bekam {self._typname(klasse)}")
+        if isinstance(wert, DeutschInstanz):
+            return self._ist_instanz_von(wert.klasse, klasse)
+        if isinstance(wert, DeutschFehler):  # gefangener Python-Fehler: nur eingebaute Fehlerarten passen
+            return klasse.python_fehler is not None and isinstance(wert._ausnahme, klasse.python_fehler)
+        return False
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
@@ -1711,6 +1779,8 @@ class Interpreter:
             m = wert.klasse.suche_methode('__text__')
             if m:
                 return str(self._funktion_aufrufen(m, [wert]))
+            if wert.klasse.python_fehlerklasse() is not None and 'nachricht' in wert.attribute:
+                return self._zu_text(wert.attribute['nachricht'])
             return repr(wert)
         return str(wert)
 
@@ -1762,16 +1832,19 @@ class Interpreter:
             return self._besuche(anw, u)
         except _KONTROLLSIGNALE:
             raise
-        except SyntaxError:
-            raise
         except Exception as e:
+            # Syntaxfehler aus 'lade' tragen ihren Ort schon; 'werfe SyntaxFehler(…)' (AusnahmeFehler) bekommt einen
+            if isinstance(e, SyntaxError) and not isinstance(e, AusnahmeFehler):
+                raise
             if zeile is not None and getattr(e, 'zeile', None) is None:  # .zeile: schon mit Ort versehen
                 self._letzter_aufruf_stack = list(self._aufruf_stack)
-                nachricht = f'{self._ort(zeile)}: {_meldung_deutsch(e)}'
+                kern = _meldung_deutsch(e)
+                nachricht = f'{self._ort(zeile)}: {kern}'
                 if isinstance(e, AusnahmeFehler):
-                    neu = AusnahmeFehler(e.wert, nachricht=nachricht)
+                    neu = type(e)(e.wert, nachricht=nachricht)
                 else:
                     neu = self._fehler_neu_mit_meldung(e, nachricht)
+                neu.kern = kern  # Meldung ohne Ortsangabe (für 'nachricht' der Fehlervariable)
                 # Fundort als Attribute: Datei (absoluter Pfad, None = Hauptskript/REPL) und Zeile
                 neu.datei = self._aktuelle_datei
                 neu.zeile = zeile
@@ -2255,21 +2328,21 @@ class Interpreter:
     def _besuche_WerfeAnweisung(self, k, u):
         wert = self._besuche(k.wert, u)
         if isinstance(k.wert, ast.Bezeichner):
-            herkunft = self._fange_herkunft(k.wert.name, wert, u)
-            if herkunft is not None:
-                # Erneutes Werfen der unveränderten Fehlervariable: Meldung, Datei und Zeile des
-                # ursprünglichen Fehlers bleiben erhalten (die CLI zeigt weiter dessen Quellzeile)
-                meldung, datei, zeile = herkunft
-                fehler = AusnahmeFehler(wert, nachricht=meldung)
-                fehler.datei = datei
-                fehler.zeile = zeile
-                raise fehler
+            original = self._fange_herkunft(k.wert.name, wert, u)
+            if original is not None:
+                # Erneutes Werfen der unveränderten Fehlervariable: derselbe Fehler (Art, Meldung, Datei,
+                # Zeile und Aufrufkette bleiben; die CLI zeigt weiter dessen Quellzeile)
+                raise original
+        if isinstance(wert, DeutschInstanz):
+            py = wert.klasse.python_fehlerklasse()
+            if py is not None:
+                raise _ausnahme_klasse(py)(wert)
         raise AusnahmeFehler(wert)
 
     @staticmethod
     def _fange_herkunft(name: str, wert, u):
-        """(Meldung, Datei, Zeile) des Fehlers, den die Variable 'name' aus einem 'fange'-Block hält,
-        solange sie noch den dort gebundenen Wert trägt; sonst None."""
+        """Die Ausnahme, die die Variable 'name' aus einem 'fange'-Block hält, solange sie noch den
+        dort gebundenen Wert trägt; sonst None."""
         while u is not None:
             if name in u.variablen:
                 gefangen = u.gefangen
@@ -2295,14 +2368,13 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise  # Kontrollfluss-Signale niemals abfangen
         except Exception as e:
-            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen):
+            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen, u):
                 fange_u = Umgebung(u)
                 if k.fange_name:
-                    wert = e.wert if isinstance(e, AusnahmeFehler) else str(e)
+                    wert = self._fehlerwert(e)
                     fange_u.setze(k.fange_name, wert)
                     if getattr(e, 'zeile', None) is not None:  # Herkunft für ein erneutes 'werfe name'
-                        fange_u.gefangen = (k.fange_name, wert,
-                                            (str(e), getattr(e, 'datei', None), e.zeile))
+                        fange_u.gefangen = (k.fange_name, wert, e)
                 self._besuche(k.fange_koerper, fange_u)
             else:
                 raise
@@ -2312,18 +2384,42 @@ class Interpreter:
         return None
 
     @staticmethod
-    def _fehlertyp_passt(e, fange_typen):
-        """Prüft ob fange_typen (Namen, z.B. 'WertFehler' oder 'ValueError') den Fehler oder eine seiner
-        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten). Ein Name, der weder eine
-        deutsche Fehlerart noch eine Python-Fehlerklasse ist, löst einen NameError aus."""
+    def _fehlerwert(e):
+        """Wert der Fehlervariable: geworfene Instanz (mit art/zeile/datei), Text als DeutschFehler,
+        sonstige geworfene Werte (42, Liste …) unverändert."""
+        zeile, datei = getattr(e, 'zeile', None), getattr(e, 'datei', None)
+        if isinstance(e, AusnahmeFehler):
+            wert = e.wert
+            if isinstance(wert, DeutschInstanz):
+                wert.attribute.update(art=fehlerart_name(e), zeile=zeile, datei=datei)  # reserviert
+                return wert
+            if not isinstance(wert, str):
+                return wert
+            return DeutschFehler(wert, art=fehlerart_name(e), zeile=zeile, datei=datei, ausnahme=e)
+        return DeutschFehler(str(e), getattr(e, 'kern', None), fehlerart_name(e), zeile, datei, e)
+
+    def _fehlertyp_passt(self, e, fange_typen, u):
+        """Prüft ob fange_typen (Namen, z.B. 'WertFehler', 'ValueError' oder eine eigene Fehlerklasse,
+        auch 'modul.Klasse') den Fehler oder eine seiner Basisklassen matcht. None bedeutet: alles fangen
+        (Standardverhalten). Ein unbekannter Name löst einen NameError aus."""
         if fange_typen is None:
             return True
         klassennamen = {klasse.__name__ for klasse in type(e).__mro__}
+        ziele = {}
         for name in fange_typen:
+            if name not in FEHLERARTEN and name not in _ENGLISCHE_FEHLERNAMEN:
+                ziel = self._typ_klasse(name, u)
+                if isinstance(ziel, DeutschKlasse):
+                    ziele[name] = ziel
+                    continue
             _fehlerart_pruefen(name, klassennamen)
+        wert = e.wert if isinstance(e, AusnahmeFehler) else None
         for name in fange_typen:
             klasse = FEHLERARTEN.get(name)
-            if klasse is not None:
+            if name in ziele:
+                if isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziele[name]):
+                    return True
+            elif klasse is not None:
                 if isinstance(e, klasse):
                     return True
             elif name in klassennamen:
@@ -2505,6 +2601,10 @@ class Interpreter:
                     raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
                 return fn(*args, **kwargs)
             return fn(*args)
+        if isinstance(fn, DeutschKlasse):
+            if fn.python_fehlerklasse() is None:
+                raise TypeError(f"'{fn.name}' ist eine Klasse und nicht aufrufbar – nutze 'neu {fn.name}(...)'")
+            return self._instanziieren(fn, args, kwargs)  # Fehlerklassen: 'werfe WertFehler("Text")' ohne 'neu'
         raise TypeError(f"'{self._zu_text(fn)}' ist nicht aufrufbar")
 
     def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
@@ -2629,8 +2729,13 @@ class Interpreter:
         klasse = self._besuche(k.klasse, u)  # Bezeichner oder Punktpfad (modul.Klasse)
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
-        instanz = DeutschInstanz(klasse)
         args, kwargs = self._argumente_auswerten(k, u)
+        return self._instanziieren(klasse, args, kwargs)
+
+    def _instanziieren(self, klasse, args, kwargs):
+        instanz = DeutschInstanz(klasse)
+        if klasse.python_fehlerklasse() is not None:  # Fehlerklassen: 'nachricht' schon vor __init__ gesetzt
+            instanz.attribute['nachricht'] = self._zu_text(args[0]) if args else ''
         init = klasse.suche_methode('__init__')
         if init:
             self._funktion_aufrufen(init, [instanz] + args, kwargs)
@@ -2644,6 +2749,9 @@ class Interpreter:
         """Wert von 'obj.attribut' (Instanz, Namensraum, Klasse oder eingebaute Sammlung)."""
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(attribut)
+
+        if isinstance(obj, DeutschFehler) and attribut in ('nachricht', 'art', 'zeile', 'datei'):
+            return getattr(obj, attribut)
 
         if isinstance(obj, DeutschAufzaehlung):
             if attribut in obj.mitglieder:
