@@ -147,6 +147,10 @@ def _ausnahme_klasse(python_fehler):
 
 # ------------------------------------------------------- Deutsche Fehlerarten
 
+class _IterationsEndeFehler(Exception):
+    """Ende eines Iterators ('werfe IterationsEnde()'); bewusst nicht StopIteration (PEP 479 in Generatoren)."""
+
+
 # Deutscher Name -> Python-Klasse. Gilt in 'fange (...)' (mit Vererbung: WertFehler fängt auch
 # UnicodeDecodeError) und im Fehlerkopf der CLI. 'Fehler' ist der Oberbegriff und fängt alles.
 FEHLERARTEN = {
@@ -166,6 +170,7 @@ FEHLERARTEN = {
     'EingabeEndeFehler': EOFError,
     'DivisionDurchNullFehler': ZeroDivisionError,
     'UeberlaufFehler': OverflowError,
+    'IterationsEnde': _IterationsEndeFehler,
 }
 
 # Umkehrung für den Fehlerkopf; 'Fehler' (Exception) ist nur der Auffangname für alles Übrige
@@ -637,6 +642,8 @@ class Interpreter:
         g.setze('abs',          self._eb_abs)
         g.setze('runde',        self._eb_runde)
         g.setze('liste',        self._eb_liste)
+        g.setze('naechstes',    self._eb_naechstes)
+        g.setze('nächstes',     self._eb_naechstes)
         g.setze('woerterbuch',  self._eb_woerterbuch)
         g.setze('wörterbuch',   self._eb_woerterbuch)
         g.setze('menge',        self._eb_menge)
@@ -781,15 +788,27 @@ class Interpreter:
         return self._ist_wahr(args[0])
 
     def _eb_bereich(self, *args):
-        if len(args) == 1:   return list(range(int(args[0])))
-        if len(args) == 2:   return list(range(int(args[0]), int(args[1])))
-        if len(args) == 3:   return list(range(int(args[0]), int(args[1]), int(args[2])))
-        raise TypeError("'bereich' erwartet 1–3 Argumente")
+        return list(self._bereich_range(args))
+
+    @staticmethod
+    def _bereich_range(args):
+        if not 1 <= len(args) <= 3:
+            raise TypeError("'bereich' erwartet 1–3 Argumente")
+        return range(*(int(a) for a in args))
+
+    def _iterable_auswerten(self, knoten, u):
+        """Wie _besuche, aber 'bereich(...)' in für/Comprehension bleibt ein lazy range (keine Liste im Speicher)."""
+        if (isinstance(knoten, ast.FunktionAufruf) and isinstance(knoten.funktion, ast.Bezeichner)
+                and knoten.funktion.name == 'bereich' and not knoten.keyword_argumente
+                and not knoten.mit_entpacken and u.hole('bereich') == self._eb_bereich):
+            return self._bereich_range([self._besuche(a, u) for a in knoten.argumente])
+        return self._besuche(knoten, u)
 
     @_mit_keywords
     def _eb_sortiere(self, /, *args, **kwargs):
         schluessel, umgekehrt = self._sortier_optionen('sortiere', kwargs)
         self._pruefe_args('sortiere', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'sortiere' erwartet eine Liste oder Menge")
         return self._sortiere_mit(list(args[0]), schluessel, umgekehrt)
@@ -940,11 +959,53 @@ class Interpreter:
             raise TypeError(f"'{name}' kann Werte dieser Typen nicht vergleichen: {', '.join(typen)}")
 
     def _iteriere(self, wert):
-        """Wie iter(), aber mit deutscher Meldung für nicht iterierbare Werte (z. B. Klasseninstanzen)."""
+        """Wie iter(), aber mit deutscher Meldung für nicht iterierbare Werte; Instanzen über __iter__/__naechstes__."""
+        if isinstance(wert, DeutschInstanz) and wert.klasse.suche_methode('__iter__') is not None:
+            return self._instanz_iterator(wert)
         try:
             return iter(wert)
         except TypeError:
             raise TypeError(f"'{self._typname(wert)}' ist nicht iterierbar") from None
+
+    def _instanz_iterator(self, inst):
+        """__iter__ liefert einen Iterator (Instanz mit __naechstes__, Ende per 'werfe IterationsEnde()')
+        oder eine Sammlung."""
+        it = self._funktion_aufrufen(inst.klasse.suche_methode('__iter__'), [inst])
+        if not isinstance(it, DeutschInstanz):
+            return self._iteriere(it)
+        naechstes = it.klasse.suche_methode('__naechstes__')
+        if naechstes is None:
+            raise TypeError(f"'__iter__' von '{inst.klasse.name}' muss eine Sammlung oder ein Objekt "
+                            f"mit '__naechstes__' liefern")
+        return self._naechstes_schleife(it, naechstes)
+
+    def _naechstes_schleife(self, it, naechstes):
+        while True:
+            try:
+                wert = self._funktion_aufrufen(naechstes, [it])
+            except _IterationsEndeFehler:
+                return
+            yield wert
+
+    def _instanz_zu_liste(self, wert):
+        """Instanzen mit __iter__ werden zur Liste; alles andere bleibt unverändert."""
+        if isinstance(wert, DeutschInstanz) and wert.klasse.suche_methode('__iter__') is not None:
+            return list(self._iteriere(wert))
+        return wert
+
+    def _eb_naechstes(self, *args):
+        self._pruefe_args('nächstes', args, 1)
+        x = args[0]
+        if isinstance(x, DeutschInstanz):
+            m = x.klasse.suche_methode('__naechstes__')
+            if m is not None:
+                return self._funktion_aufrufen(m, [x])
+        try:
+            return next(x)
+        except StopIteration:
+            raise _IterationsEndeFehler('Iterator ist zu Ende') from None
+        except TypeError:
+            raise TypeError(f"'{self._typname(x)}' ist kein Iterator") from None
 
     def _liste_einfuegen(self, obj, index, wert):
         try:
@@ -1110,6 +1171,7 @@ class Interpreter:
 
     def _hof_elemente(self, name, sammlung):
         """Elemente einer Liste, Menge (sortiert, damit das Ergebnis stabil ist) oder Zeichenkette als neue Liste."""
+        sammlung = self._instanz_zu_liste(sammlung)
         if isinstance(sammlung, (list, str, dict)):  # Wörterbuch: Schlüssel, wie bei 'für'
             return list(sammlung)
         if isinstance(sammlung, set):
@@ -1216,7 +1278,7 @@ class Interpreter:
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
         try:
-            return list(args[0])
+            return list(self._instanz_zu_liste(args[0]))
         except TypeError:
             raise TypeError(f"'{self._typname(args[0])}' kann nicht in Liste umgewandelt werden")
 
@@ -1477,6 +1539,8 @@ class Interpreter:
         return None
 
     def _eb_summe(self, *args):
+        if len(args) == 1:
+            args = (self._instanz_zu_liste(args[0]),)
         werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
         try:
             return sum(werte)
@@ -1485,12 +1549,14 @@ class Interpreter:
 
     def _eb_alle(self, *args):
         self._pruefe_args('alle', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'alle' erwartet eine Liste oder Menge")
         return all(self._ist_wahr(e) for e in args[0])
 
     def _eb_einige(self, *args):
         self._pruefe_args('einige', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'einige' erwartet eine Liste oder Menge")
         return any(self._ist_wahr(e) for e in args[0])
@@ -1498,6 +1564,7 @@ class Interpreter:
     def _eb_aufzaehlen(self, *args):
         if len(args) not in (1, 2):
             raise TypeError("'aufzaehlen' erwartet 1–2 Argumente")
+        args = (self._instanz_zu_liste(args[0]),) + args[1:]
         if not isinstance(args[0], (list, set)):
             raise TypeError("'aufzaehlen' erwartet eine Liste oder Menge")
         start = int(args[1]) if len(args) == 2 else 0
@@ -1506,6 +1573,7 @@ class Interpreter:
     def _eb_zippe(self, *args):
         if len(args) < 1:
             raise TypeError("'zippe' erwartet mindestens 1 Argument")
+        args = tuple(self._instanz_zu_liste(a) for a in args)
         for a in args:
             if not isinstance(a, (list, str)):
                 raise TypeError("'zippe' erwartet Listen oder Zeichenketten")
@@ -1733,7 +1801,7 @@ class Interpreter:
             return set()
         self._pruefe_args('menge', args, 1)
         try:
-            return set(args[0])
+            return set(self._instanz_zu_liste(args[0]))
         except TypeError:
             raise TypeError(f"'{self._typname(args[0])}' kann nicht in Menge umgewandelt werden")
 
@@ -1956,7 +2024,7 @@ class Interpreter:
 
     def _entpackte_elemente(self, knoten, u):
         """Wert von '*ausdruck' (ast.Entpacken): eine Sammlung, deren Elemente eingesetzt werden."""
-        wert = self._besuche(knoten.ausdruck, u)
+        wert = self._instanz_zu_liste(self._besuche(knoten.ausdruck, u))
         if not isinstance(wert, self._ENTPACKBAR):
             raise TypeError(f"Entpacken mit '*' erwartet eine Liste, Menge, Zeichenkette oder ein "
                             f"Wörterbuch, bekam {self._typname(wert)}")
@@ -2006,7 +2074,7 @@ class Interpreter:
             raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
     def _besuche_ListenAusdruck(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._iterable_auswerten(k.iterable, u)
         ergebnis = []
         for elem in self._iteriere(iterable):
             iter_u = Umgebung(u)
@@ -2033,6 +2101,7 @@ class Interpreter:
         """Verteilt wert auf die Ziele des Musters und hängt (ziel, teilwert) für jedes Blatt an paare an.
         Prüft zuerst alles (Typ, Anzahl, verschachtelte Muster); erst danach darf jemand binden/zuweisen.
         Ein Rest-Ziel ('*r') bekommt eine Liste; Blätter sind Namen (str) oder Zuweisungsziele (Knoten)."""
+        wert = self._instanz_zu_liste(wert)
         if not isinstance(wert, (list, tuple)):
             raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
         ziele = muster.ziele
@@ -2351,7 +2420,7 @@ class Interpreter:
         return None
 
     def _besuche_FuerAnweisung(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._iterable_auswerten(k.iterable, u)
         schleifen_u = Umgebung(u)
         for elem in self._iteriere(iterable):
             self._schleifenvariable_binden(k.variable, elem, schleifen_u)

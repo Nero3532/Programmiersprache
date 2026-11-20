@@ -18,7 +18,7 @@ sys.path.insert(0, PROJEKT_WURZEL)
 from deutsch.lexer import Lexer
 from deutsch.parser import Parser
 from deutsch.interpreter import (FEHLERARTEN, AusnahmeFehler, Interpreter, SchluesselFehler,
-                                 _meldung_deutsch, fehlerart_name)
+                                 _IterationsEndeFehler, _meldung_deutsch, fehlerart_name)
 from main import _fehler_anzeigen
 
 
@@ -112,7 +112,7 @@ class TestFehlerartName(unittest.TestCase):
             'RekursionsFehler': RecursionError, 'ZusicherungsFehler': AssertionError,
             'ImportFehler': ImportError, 'EingabeEndeFehler': EOFError,
             'DivisionDurchNullFehler': ZeroDivisionError, 'UeberlaufFehler': OverflowError,
-            'Fehler': Exception,
+            'Fehler': Exception, 'IterationsEnde': _IterationsEndeFehler,
         }
         self.assertEqual(FEHLERARTEN, erwartet)
         for name, klasse in erwartet.items():
