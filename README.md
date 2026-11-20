@@ -24,7 +24,7 @@ python main.py              # interaktive REPL
 python main.py datei.deu    # Datei ausführen
 python main.py datei.deu a b        # Argumente: kommandozeilen_argumente() → ["a", "b"]
 python main.py -c "drucke(1 + 2)"   # Code direkt ausführen
-python main.py --pruefen datei.deu  # nur auf Syntaxfehler prüfen, nichts ausführen
+python main.py --pruefen datei.deu  # auf Syntaxfehler und Hinweise prüfen, nichts ausführen
 python main.py --version            # Version (auch -V)
 python main.py --hilfe              # alle Optionen (auch -h, --help)
 ```
@@ -44,6 +44,36 @@ py -m deutsch -c "drucke(2 ** 10)"
 ```
 
 In der REPL zeigt `hilfe` die Befehle, `beenden` verlässt sie.
+
+### `--pruefen`: Prüfung ohne Ausführung
+
+`python main.py --pruefen datei.deu` führt Lexer, Parser und einen Linter aus, das Programm läuft nicht. Der Linter meldet drei Hinweise (lieber auslassen als falsch melden):
+
+- **unbekannter Name**: Name wird gelesen, aber nirgends angelegt; bei Tippfehlern mit Vorschlag
+- **unbenutzte Variable**: `sei`-Variable in einer Funktion oder Methode wird nie gelesen (Namen mit `_` am Anfang und Konstanten ausgenommen)
+- **unerreichbarer Code**: Anweisung direkt nach `zurück`, `abbrechen`, `weiter` oder `werfe` im selben Block
+
+Ausgabe je Hinweis `Datei:Zeile: Hinweis: Text`, am Ende eine Zusammenfassung. Exitcode `0`, außer bei einem Syntaxfehler (dann Exitcode `1`, Meldung auf stderr).
+
+```
+$ python main.py --pruefen beispiel.deu
+beispiel.deu:2: Hinweis: unbekannter Name 'anzal' – meintest du 'anzahl'?
+beispiel.deu:4: Hinweis: Variable 'x' wird angelegt, aber nie gelesen
+beispiel.deu:6: Hinweis: unerreichbarer Code
+beispiel.deu: keine Syntaxfehler, 3 Hinweise
+```
+
+Dazu passende `beispiel.deu`:
+
+```
+sei anzahl = 1
+drucke(anzal)
+funktion f() {
+    sei x = 2
+    zurück 1
+    drucke(3)
+}
+```
 
 ## Sprachüberblick
 
