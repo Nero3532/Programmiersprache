@@ -244,9 +244,10 @@ class FunktionDefinition(Knoten):
     typhinweis: str | None  (Rückgabetyp: Name oder Punktpfad 'modul.Klasse'; Parameter-Hinweise ebenso)
     kwargs_parameter: (name, typhinweis|None) | None  – der '**name'-Parameter (sammelt überzählige Keywords)
     """
-    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter', 'dekoratoren')
-    def __init__(self, name, parameter, koerper, typhinweis=None, kwargs_parameter=None):
+    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter', 'dekoratoren', 'ist_generator')
+    def __init__(self, name, parameter, koerper, typhinweis=None, kwargs_parameter=None, ist_generator=False):
         self.dekoratoren = []   # Ausdrücke der '@…'-Zeilen, von oben nach unten
+        self.ist_generator = ist_generator  # 'ergib' im eigenen Körper: Aufruf liefert einen Generator
         self.name = name
         self.parameter = parameter
         self.koerper = koerper
@@ -254,6 +255,10 @@ class FunktionDefinition(Knoten):
         self.kwargs_parameter = kwargs_parameter
 
 class ZurueckAnweisung(Knoten):
+    __slots__ = ('wert',)
+    def __init__(self, wert): self.wert = wert
+
+class ErgibAnweisung(Knoten):
     __slots__ = ('wert',)
     def __init__(self, wert): self.wert = wert
 

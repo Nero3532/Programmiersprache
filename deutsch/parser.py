@@ -101,6 +101,10 @@ class Parser:
         # Oberstes Element True: Zeilenumbrüche werden ignoriert (innerhalb von '( … )').
         # Ein '{ … }'-Block darin schaltet auf False zurück: dort trennen Zeilenumbrüche Anweisungen.
         self._umbrueche_ignorieren = [False]
+        # 'ergib' gilt nur im Rumpf der innersten Funktion (nicht in 'passe' als Ausdruck); _ergib_gesehen
+        # merkt, ob dieser Rumpf eines enthält (dann ist die Funktion ein Generator)
+        self._ergib_erlaubt = False
+        self._ergib_gesehen = False
 
     # ---------------------------------------------------------------- Hilfsm.
 
@@ -223,6 +227,7 @@ class Parser:
         elif typ == TokenTyp.LADE:      anw = self._lade_anweisung()
         elif typ == TokenTyp.PASSE:     anw = self._passe_anweisung()
         elif typ == TokenTyp.WERFE:     anw = self._werfe_anweisung()
+        elif typ == TokenTyp.ERGIB:     anw = self._ergib_anweisung()
         elif typ == TokenTyp.PRUEFE:    anw = self._pruefe_anweisung()
         elif typ == TokenTyp.ABBRECHEN:
             self.pos += 1; anw = ast.AbbrechenAnweisung()
@@ -429,8 +434,12 @@ class Parser:
             else:
                 return self._kurzform_rumpf(name, parameter, kwargs_parameter)
 
+        vorher = (self._ergib_erlaubt, self._ergib_gesehen)
+        self._ergib_erlaubt, self._ergib_gesehen = True, False
         koerper = self._block()
-        return ast.FunktionDefinition(name, parameter, koerper, typhinweis, kwargs_parameter)
+        ist_generator = self._ergib_gesehen
+        self._ergib_erlaubt, self._ergib_gesehen = vorher
+        return ast.FunktionDefinition(name, parameter, koerper, typhinweis, kwargs_parameter, ist_generator)
 
     def _kurzform_rumpf(self, name, parameter, kwargs_parameter=None):
         """Rumpf der Kurzform 'funktion(x) -> ausdruck' (das '->' ist schon verbraucht).
@@ -572,6 +581,13 @@ class Parser:
             return ast.ZurueckAnweisung(ast.Nichts())
         return ast.ZurueckAnweisung(self._ausdruck())
 
+    def _ergib_anweisung(self):
+        self._verbrauche(TokenTyp.ERGIB)
+        if not self._ergib_erlaubt:
+            self._fehler("'ergib' ist nur im Rumpf einer Funktion erlaubt (nicht in 'passe' als Ausdruck)", False)
+        self._ergib_gesehen = True
+        return ast.ErgibAnweisung(self._ausdruck())
+
     def _werfe_anweisung(self):
         self._verbrauche(TokenTyp.WERFE)
         return ast.WerfeAnweisung(self._ausdruck())
@@ -631,6 +647,15 @@ class Parser:
         return ast.LadeAnweisung(pfad, als_name)
 
     def _passe_anweisung(self, ist_ausdruck=False):
+        erlaubt = self._ergib_erlaubt
+        if ist_ausdruck:
+            self._ergib_erlaubt = False  # die Arme sind Teil eines Ausdrucks: dort kann nichts geliefert werden
+        try:
+            return self._passe_lesen(ist_ausdruck)
+        finally:
+            self._ergib_erlaubt = erlaubt
+
+    def _passe_lesen(self, ist_ausdruck):
         self._verbrauche(TokenTyp.PASSE)
         ausdruck = self._ausdruck()
         self._verbrauche(TokenTyp.LGESCHWEIFTE)

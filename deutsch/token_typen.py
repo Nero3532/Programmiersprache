@@ -38,6 +38,7 @@ class TokenTyp(Enum):
     FALL = auto()         # case
     WERFE = auto()        # throw
     PRUEFE = auto()       # assert
+    ERGIB = auto()        # yield
     KONSTANTE = auto()    # const
     STATISCH = auto()     # static
     ALS = auto()          # as (lade ... als)

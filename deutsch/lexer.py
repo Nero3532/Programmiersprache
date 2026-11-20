@@ -31,6 +31,7 @@ SCHLUESSELWOERTER = {
     'fall':      TokenTyp.FALL,
     'werfe':     TokenTyp.WERFE,
     'pruefe':    TokenTyp.PRUEFE,
+    'ergib':     TokenTyp.ERGIB,
     'konstante': TokenTyp.KONSTANTE,
     'statisch':  TokenTyp.STATISCH,
     'als':       TokenTyp.ALS,

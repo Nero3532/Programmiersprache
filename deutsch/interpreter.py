@@ -346,6 +346,48 @@ class DeutschFunktion:
         return f'<Funktion {self.definition.name or "anonym"}>'
 
 
+class DeutschGenerator:
+    """Ergebnis des Aufrufs einer Funktion mit 'ergib': ein Python-Iterator über den Rumpf (ohne Thread).
+    Jede Fortsetzung setzt Aufrufkette, Datei und Zeile wie ein Funktionsaufruf und stellt sie danach zurück."""
+    def __init__(self, interpreter, rumpf, name: str, datei: str | None):
+        self._interpreter = interpreter
+        self._rumpf = rumpf  # Python-Generator aus Interpreter._gen_Block
+        self.name = name
+        self._datei = datei  # Datei der Definition (None = Hauptskript/REPL)
+        self._laeuft = False
+
+    def __iter__(self):
+        return self
+
+    def __repr__(self):
+        return f'<Generator {self.name}>'
+
+    def __next__(self):
+        ip = self._interpreter
+        if self._laeuft:
+            raise ValueError(f"Generator '{self.name}' läuft bereits (Aufruf aus seinem eigenen Rumpf)")
+        zeile, datei = ip._aktuelle_zeile, ip._aktuelle_datei
+        ip._aufruf_stack.append(AufrufEintrag(self.name, zeile, datei))
+        ip._aktuelle_datei = self._datei
+        self._laeuft = True
+        try:
+            return next(self._rumpf)
+        except _ZurueckSignal:
+            raise StopIteration from None  # 'zurück' beendet den Generator (ein Wert dahinter entfällt)
+        except (_AbbrechenSignal, _WeiterSignal) as signal:
+            ip._letzter_aufruf_stack = list(ip._aufruf_stack)
+            raise ip._signal_fehler_hier(signal) from None
+        finally:
+            self._laeuft = False
+            ip._aktuelle_datei = datei
+            ip._aktuelle_zeile = zeile
+            ip._aufruf_stack.pop()
+
+    def close(self):
+        """Beendet den Generator vorzeitig; 'endlich'-Blöcke laufen dabei (sonst erst, wenn er verworfen wird)."""
+        self._rumpf.close()
+
+
 class GebundeneMethode:
     def __init__(self, instanz, funktion: DeutschFunktion):
         self.instanz = instanz
@@ -496,6 +538,11 @@ class Interpreter:
         # Wechselt bei 'lade' und beim Aufruf einer Funktion aus einer geladenen Datei.
         self._aktuelle_datei: str | None = None
         self._dispatch = self._dispatch_aufbauen()
+        self._gen_dispatch = {  # Anweisungen, die 'ergib' enthalten können (siehe 'Generatoren')
+            ast.WennAnweisung: self._gen_Wenn, ast.SolangeAnweisung: self._gen_Solange,
+            ast.FuerAnweisung: self._gen_Fuer, ast.PasseAnweisung: self._gen_Passe,
+            ast.VersucheAnweisung: self._gen_Versuche, ast.ErgibAnweisung: self._gen_Ergib,
+        }
         self._listen_methoden = self._listen_methoden_aufbauen()
         self._string_methoden = self._string_methoden_aufbauen()
         self._woerterbuch_methoden = self._woerterbuch_methoden_aufbauen()
@@ -988,7 +1035,9 @@ class Interpreter:
             yield wert
 
     def _instanz_zu_liste(self, wert):
-        """Instanzen mit __iter__ werden zur Liste; alles andere bleibt unverändert."""
+        """Instanzen mit __iter__ und Generatoren werden zur Liste; alles andere bleibt unverändert."""
+        if isinstance(wert, DeutschGenerator):
+            return list(wert)
         if isinstance(wert, DeutschInstanz) and wert.klasse.suche_methode('__iter__') is not None:
             return list(self._iteriere(wert))
         return wert
@@ -1000,12 +1049,12 @@ class Interpreter:
             m = x.klasse.suche_methode('__naechstes__')
             if m is not None:
                 return self._funktion_aufrufen(m, [x])
+        if not hasattr(x, '__next__'):
+            raise TypeError(f"'{self._typname(x)}' ist kein Iterator")
         try:
             return next(x)
         except StopIteration:
             raise _IterationsEndeFehler('Iterator ist zu Ende') from None
-        except TypeError:
-            raise TypeError(f"'{self._typname(x)}' ist kein Iterator") from None
 
     def _liste_einfuegen(self, obj, index, wert):
         try:
@@ -1847,6 +1896,7 @@ class Interpreter:
         if isinstance(wert, DeutschAufzaehlung): return f'Aufzaehlung({wert.name})'
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
+        if isinstance(wert, DeutschGenerator): return 'Generator'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
         if callable(wert):            return 'Funktion'
         return type(wert).__name__
@@ -1926,23 +1976,30 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise
         except Exception as e:
-            # Syntaxfehler aus 'lade' tragen ihren Ort schon; 'werfe SyntaxFehler(…)' (AusnahmeFehler) bekommt einen
-            if isinstance(e, SyntaxError) and not isinstance(e, AusnahmeFehler):
+            neu = self._fehler_mit_ort(e, zeile)
+            if neu is None:
                 raise
-            if zeile is not None and getattr(e, 'zeile', None) is None:  # .zeile: schon mit Ort versehen
-                self._letzter_aufruf_stack = list(self._aufruf_stack)
-                kern = _meldung_deutsch(e)
-                nachricht = f'{self._ort(zeile)}: {kern}'
-                if isinstance(e, AusnahmeFehler):
-                    neu = type(e)(e.wert, nachricht=nachricht)
-                else:
-                    neu = self._fehler_neu_mit_meldung(e, nachricht)
-                neu.kern = kern  # Meldung ohne Ortsangabe (für 'nachricht' der Fehlervariable)
-                # Fundort als Attribute: Datei (absoluter Pfad, None = Hauptskript/REPL) und Zeile
-                neu.datei = self._aktuelle_datei
-                neu.zeile = zeile
-                raise neu from e
-            raise
+            raise neu from e
+
+    def _fehler_mit_ort(self, e, zeile):
+        """Der Fehler e mit Ortsangabe der Anweisung in 'zeile'; None, wenn e unverändert weitergehen soll."""
+        # Syntaxfehler aus 'lade' tragen ihren Ort schon; 'werfe SyntaxFehler(…)' (AusnahmeFehler) bekommt einen
+        if isinstance(e, SyntaxError) and not isinstance(e, AusnahmeFehler):
+            return None
+        if zeile is None or getattr(e, 'zeile', None) is not None:  # .zeile: schon mit Ort versehen
+            return None
+        self._letzter_aufruf_stack = list(self._aufruf_stack)
+        kern = _meldung_deutsch(e)
+        nachricht = f'{self._ort(zeile)}: {kern}'
+        if isinstance(e, AusnahmeFehler):
+            neu = type(e)(e.wert, nachricht=nachricht)
+        else:
+            neu = self._fehler_neu_mit_meldung(e, nachricht)
+        neu.kern = kern  # Meldung ohne Ortsangabe (für 'nachricht' der Fehlervariable)
+        # Fundort als Attribute: Datei (absoluter Pfad, None = Hauptskript/REPL) und Zeile
+        neu.datei = self._aktuelle_datei
+        neu.zeile = zeile
+        return neu
 
     @staticmethod
     def _fehler_neu_mit_meldung(e: Exception, nachricht: str) -> Exception:
@@ -2139,6 +2196,7 @@ class Interpreter:
         'Wörterbuch':    lambda w: isinstance(w, dict),
         'Menge':         lambda w: isinstance(w, set),
         'Nichts':        lambda w: w is None,
+        'Generator':     lambda w: isinstance(w, DeutschGenerator),
         'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
     }
 
@@ -2483,20 +2541,26 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise  # Kontrollfluss-Signale niemals abfangen
         except Exception as e:
-            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen, u):
-                fange_u = Umgebung(u)
-                if k.fange_name:
-                    wert = self._fehlerwert(e)
-                    fange_u.setze(k.fange_name, wert)
-                    if getattr(e, 'zeile', None) is not None:  # Herkunft für ein erneutes 'werfe name'
-                        fange_u.gefangen = (k.fange_name, wert, e)
-                self._besuche(k.fange_koerper, fange_u)
-            else:
+            fange_u = self._fange_umgebung(k, e, u)
+            if fange_u is None:
                 raise
+            self._besuche(k.fange_koerper, fange_u)
         finally:
             if k.endlich_koerper is not None:
                 self._besuche(k.endlich_koerper, u)
         return None
+
+    def _fange_umgebung(self, k, e, u):
+        """Umgebung für den 'fange'-Block, wenn dieser den Fehler e fängt (mit gebundener Fehlervariable); sonst None."""
+        if k.fange_koerper is None or not self._fehlertyp_passt(e, k.fange_typen, u):
+            return None
+        fange_u = Umgebung(u)
+        if k.fange_name:
+            wert = self._fehlerwert(e)
+            fange_u.setze(k.fange_name, wert)
+            if getattr(e, 'zeile', None) is not None:  # Herkunft für ein erneutes 'werfe name'
+                fange_u.gefangen = (k.fange_name, wert, e)
+        return fange_u
 
     @staticmethod
     def _fehlerwert(e):
@@ -2582,6 +2646,11 @@ class Interpreter:
         raise TypeError(f"'{self._typname(wert)}' kann nicht als JSON gespeichert werden")
 
     def _besuche_PasseAnweisung(self, k, u):
+        block, arm_u = self._passe_arm(k, u)
+        return None if block is None else self._besuche(block, arm_u)
+
+    def _passe_arm(self, k, u):
+        """(Block, Umgebung) des ersten passenden 'fall' bzw. von 'sonst'; (None, u) ohne Treffer."""
         subjekt = self._besuche(k.ausdruck, u)
         for alternativen, waechter, block in k.faelle:
             arm_u = Umgebung(u)  # Bindungen und Wächter leben nur im Arm
@@ -2591,13 +2660,13 @@ class Interpreter:
                     for name, wert in paare:
                         arm_u.setze(name, wert)
                     if waechter is None or self._ist_wahr(self._besuche(waechter, arm_u)):
-                        return self._besuche(block, arm_u)
+                        return block, arm_u
                     break  # Alternativen binden dieselben Namen: ein falscher Wächter gilt für alle
         if k.sonst is not None:
-            return self._besuche(k.sonst, u)
+            return k.sonst, u
         if k.ist_ausdruck:
             raise ValueError(f"'passe': kein 'fall' passt auf {self._zu_text(subjekt)}")
-        return None
+        return None, u
 
     def _muster_passt(self, m, wert, paare, u):
         """True, wenn wert auf das Muster passt; Bindungen (name, wert) landen in paare. Wirft nicht bei Nichtpassen."""
@@ -2778,6 +2847,106 @@ class Interpreter:
             return self._instanziieren(fn, args, kwargs)  # Fehlerklassen: 'werfe WertFehler("Text")' ohne 'neu'
         raise TypeError(f"'{self._zu_text(fn)}' ist nicht aufrufbar")
 
+    # ------------------------------------------------------------ Generatoren
+    # Rumpf einer Funktion mit 'ergib': Python-Generatoren statt Thread. Sie bilden den Kontrollfluss von
+    # Block, Wenn, Solange, Für, Passe und Versuche nach (nur dort kann 'ergib' stehen); jede andere Anweisung
+    # läuft unverändert über _besuche_anweisung. Verhalten und _besuche_* müssen übereinstimmen – tests/test_generatoren.py
+    # deckt deshalb jeden Anweisungstyp mit 'ergib' ab.
+
+    def _gen_anweisung(self, anw, u):
+        """Wie _besuche_anweisung (Zeile, Fehler mit Ort), aber Anweisungen mit 'ergib' dürfen liefern."""
+        besucher = self._gen_dispatch.get(type(anw))
+        if besucher is None:
+            return self._besuche_anweisung(anw, u)
+        zeile = getattr(anw, 'zeile', None)
+        if zeile is not None:
+            self._aktuelle_zeile = zeile
+        try:
+            return (yield from besucher(anw, u))
+        except _KONTROLLSIGNALE:
+            raise
+        except Exception as e:
+            neu = self._fehler_mit_ort(e, zeile)
+            if neu is None:
+                raise
+            raise neu from e
+
+    def _gen_Block(self, k, u):
+        block_u = Umgebung(u)
+        ergebnis = None
+        for anw in k.anweisungen:
+            ergebnis = yield from self._gen_anweisung(anw, block_u)
+        return ergebnis
+
+    def _gen_Ergib(self, k, u):
+        wert = self._besuche(k.wert, u)
+        yield wert
+        zeile = getattr(k, 'zeile', None)
+        if zeile is not None:
+            self._aktuelle_zeile = zeile  # beim Fortsetzen steht hier noch die Zeile des Abrufers
+        return None
+
+    def _besuche_ErgibAnweisung(self, k, u):
+        return None  # nur erreichbar, wenn 'endlich' beim vorzeitigen Beenden (close) läuft: nichts mehr zu liefern
+
+    def _gen_Wenn(self, k, u):
+        if self._ist_wahr(self._besuche(k.bedingung, u)):
+            return (yield from self._gen_Block(k.dann, u))
+        for bed, block in k.sonst_wenn:
+            if self._ist_wahr(self._besuche(bed, u)):
+                return (yield from self._gen_Block(block, u))
+        if k.sonst:
+            return (yield from self._gen_Block(k.sonst, u))
+        return None
+
+    def _gen_Solange(self, k, u):
+        while self._ist_wahr(self._besuche(k.bedingung, u)):
+            try:
+                yield from self._gen_Block(k.koerper, u)
+            except _AbbrechenSignal: break
+            except _WeiterSignal:    continue
+        return None
+
+    def _gen_Fuer(self, k, u):
+        iterable = self._iterable_auswerten(k.iterable, u)
+        schleifen_u = Umgebung(u)
+        for elem in self._iteriere(iterable):
+            self._schleifenvariable_binden(k.variable, elem, schleifen_u)
+            try:
+                yield from self._gen_Block(k.koerper, schleifen_u)
+            except _AbbrechenSignal: break
+            except _WeiterSignal:    continue
+        return None
+
+    def _gen_Passe(self, k, u):
+        block, arm_u = self._passe_arm(k, u)
+        if block is None:
+            return None
+        return (yield from self._gen_Block(block, arm_u))
+
+    def _gen_Versuche(self, k, u):
+        schliesst = False  # close() läuft: 'endlich' kann nichts mehr liefern
+        try:
+            try:
+                yield from self._gen_Block(k.koerper, u)
+            except _KONTROLLSIGNALE:
+                raise  # Kontrollfluss-Signale niemals abfangen
+            except Exception as e:
+                fange_u = self._fange_umgebung(k, e, u)
+                if fange_u is None:
+                    raise
+                yield from self._gen_Block(k.fange_koerper, fange_u)
+        except GeneratorExit:
+            schliesst = True
+            raise
+        finally:
+            if k.endlich_koerper is not None:
+                if schliesst:
+                    self._besuche(k.endlich_koerper, u)
+                else:
+                    yield from self._gen_Block(k.endlich_koerper, u)
+        return None
+
     def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
         kwargs = kwargs or {}
         fname = fn.definition.name or '<anonym>'
@@ -2842,6 +3011,9 @@ class Interpreter:
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+
+        if fn.definition.ist_generator:  # der Rumpf läuft erst beim Abrufen (Rückgabetyp-Hinweis entfällt)
+            return DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
 
         # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
         aufruf_zeile = self._aktuelle_zeile
