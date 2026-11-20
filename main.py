@@ -41,6 +41,7 @@ except ImportError:
 from deutsch import __version__
 from deutsch.lexer import Lexer
 from deutsch.parser import Parser
+from deutsch import linter
 from deutsch.interpreter import Interpreter, fehlerart_name
 
 _BANNER_INNEN = 58  # Breite zwischen den Rahmenzeichen
@@ -74,7 +75,7 @@ Verwendung:
   python main.py                       interaktive REPL starten
   python main.py datei.deu [args...]   Datei ausführen; args stehen in kommandozeilen_argumente()
   python main.py -c "code" [args...]   Code direkt ausführen
-  python main.py --pruefen datei.deu   nur auf Syntaxfehler prüfen, nichts ausführen
+  python main.py --pruefen datei.deu   auf Syntaxfehler und Hinweise prüfen, nichts ausführen
   python main.py -V, --version         Version anzeigen
   python main.py -h, --hilfe, --help   diese Hilfe anzeigen
 
@@ -489,24 +490,26 @@ def code_starten(quelltext: str, argumente: list = None):
 
 
 def _pruefen(quelltext: str, dateiname: str):
-    """Nur Lexer und Parser, nichts wird ausgeführt. Gibt den Fehlertext zurück oder None."""
+    """Lexer, Parser und Linter, nichts wird ausgeführt. Gibt (Fehlertext | None, Hinweise) zurück."""
     try:
-        Parser(Lexer(quelltext).tokenisieren()).parse()
-        return None
+        programm = Parser(Lexer(quelltext).tokenisieren()).parse()
+        return None, linter.pruefe(programm)
     except RecursionError:
-        return '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
+        return '[RekursionsFehler] Maximale Rekursionstiefe überschritten', []
     except Exception as e:
-        return _fehler_anzeigen(e, quelltext, dateiname)
+        return _fehler_anzeigen(e, quelltext, dateiname), []
 
 
 def datei_pruefen(pfad: str):
     quelltext = _datei_lesen(pfad)
 
-    fehler = im_grossen_stack(_pruefen, quelltext, pfad)
+    fehler, hinweise = im_grossen_stack(_pruefen, quelltext, pfad)
     if fehler:
         print(fehler, file=sys.stderr)
         sys.exit(1)
-    print(f'{pfad}: keine Syntaxfehler')
+    for zeile, text in hinweise:
+        print(f'{pfad}:{zeile}: Hinweis: {text}')
+    print(f'{pfad}: keine Syntaxfehler, {len(hinweise)} Hinweise')
 
 
 def repl():
