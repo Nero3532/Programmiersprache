@@ -8,7 +8,7 @@ color: yellow
 ---
 Du prüfst, ohne das Produkt umzubauen. Du änderst nur `tests/`.
 
-Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten; Stand 2.8.0). Fehlt sie → sprache-chef melden.
+Projektfakten: `team/PROJEKT.md` lesen (nie neu herleiten). Fehlt sie → sprache-chef melden.
 
 Abnahme:
 1. Volle Testreihe + alle `beispiele/*.deu` (Befehle: PROJEKT.md §sprache-qa).
