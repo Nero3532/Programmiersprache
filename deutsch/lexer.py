@@ -34,6 +34,8 @@ SCHLUESSELWOERTER = {
     'konstante': TokenTyp.KONSTANTE,
     'statisch':  TokenTyp.STATISCH,
     'als':       TokenTyp.ALS,
+    'aufzaehlung': TokenTyp.AUFZAEHLUNG,
+    'aufzählung':  TokenTyp.AUFZAEHLUNG,
 }
 
 # Zahlen mit Präfix: 0x.. / 0b.. / 0o..  ->  (Name für Fehlermeldungen, Basis, erlaubte Ziffern)

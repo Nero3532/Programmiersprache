@@ -52,7 +52,7 @@ def _gebunden(k):
             yield p[0]
         if k.kwargs_parameter:
             yield k.kwargs_parameter[0]
-    elif isinstance(k, ast.KlassenDefinition):
+    elif isinstance(k, (ast.KlassenDefinition, ast.AufzaehlungsDefinition)):
         yield k.name
     elif isinstance(k, ast.VersucheAnweisung):
         if k.fange_name:

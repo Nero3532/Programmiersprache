@@ -259,6 +259,12 @@ class KlassenDefinition(Knoten):
         self.statische_methoden = statische_methoden or []      # [FunktionDefinition, ...]
         self.klassenattribute = klassenattribute or []          # [VariableDeklaration | DestrukturierendeDeklaration, ...]
 
+class AufzaehlungsDefinition(Knoten):
+    __slots__ = ('name', 'mitglieder')
+    def __init__(self, name, mitglieder):
+        self.name = name
+        self.mitglieder = mitglieder                            # [(name, Ausdruck | None), ...]
+
 class VersucheAnweisung(Knoten):
     __slots__ = ('koerper', 'fange_typen', 'fange_name', 'fange_koerper', 'endlich_koerper')
     def __init__(self, koerper, fange_typen, fange_name, fange_koerper, endlich_koerper):
