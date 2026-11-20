@@ -215,6 +215,7 @@ class Parser:
         elif typ == TokenTyp.FUER:      anw = self._fuer_anweisung()
         elif typ == TokenTyp.FUNKTION:  anw = self._funktion_definition()
         elif typ == TokenTyp.KLASSE:    anw = self._klassen_definition()
+        elif typ == TokenTyp.AUFZAEHLUNG: anw = self._aufzaehlung_definition()
         elif typ == TokenTyp.ZURUECK:   anw = self._zurueck_anweisung()
         elif typ == TokenTyp.VERSUCHE:  anw = self._versuche_anweisung()
         elif typ == TokenTyp.LADE:      anw = self._lade_anweisung()
@@ -456,6 +457,32 @@ class Parser:
             self._optionale_trennzeichen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
         return ast.KlassenDefinition(name, eltern, methoden, statische_methoden, klassenattribute)
+
+    def _aufzaehlung_definition(self):
+        self._verbrauche(TokenTyp.AUFZAEHLUNG)
+        name = self._verbrauche(TokenTyp.BEZEICHNER).wert
+        self._verbrauche(TokenTyp.LGESCHWEIFTE)
+        self._optionale_trennzeichen()
+        mitglieder = []
+        while self._aktuell().typ != TokenTyp.RGESCHWEIFTE:
+            t = self._verbrauche(TokenTyp.BEZEICHNER)
+            if any(m[0] == t.wert for m in mitglieder):
+                self._fehler(f"Aufzählung '{name}': Mitglied '{t.wert}' doppelt", False, t.zeile)
+            wert = None
+            if self._aktuell().typ == TokenTyp.GLEICH:
+                self.pos += 1
+                wert = self._ausdruck()
+            if mitglieder and (wert is None) != (mitglieder[0][1] is None):
+                self._fehler(f"Aufzählung '{name}': Mitglieder entweder alle mit oder alle ohne Wert", False, t.zeile)
+            mitglieder.append((t.wert, wert))
+            self._optionale_trennzeichen()
+            if self._aktuell().typ != TokenTyp.RGESCHWEIFTE:
+                self._verbrauche(TokenTyp.KOMMA)
+                self._optionale_trennzeichen()
+        if not mitglieder:
+            self._fehler(f"Aufzählung '{name}' braucht mindestens ein Mitglied", False)
+        self._verbrauche(TokenTyp.RGESCHWEIFTE)
+        return ast.AufzaehlungsDefinition(name, mitglieder)
 
     def _klassenkoerper_fehler(self):
         """Meldet ein Token, das im Klassenkörper nicht erlaubt ist."""

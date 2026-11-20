@@ -360,6 +360,31 @@ class DeutschKlasse:
         return f'<Klasse {self.name}>'
 
 
+class DeutschAufzaehlung:
+    def __init__(self, name: str, mitglieder: dict):
+        self.name = name
+        self.mitglieder = mitglieder  # {name: AufzaehlungsWert}, Definitionsreihenfolge
+
+    def __iter__(self):
+        return iter(self.mitglieder.values())
+
+    def __repr__(self):
+        return f'<Aufzählung {self.name}>'
+
+
+class AufzaehlungsWert:
+    """Mitglied einer Aufzählung; Gleichheit und Hash sind die Objektidentität."""
+    def __init__(self, aufzaehlung: DeutschAufzaehlung, name: str, wert):
+        self.aufzaehlung = aufzaehlung
+        self.name = name
+        self.wert = wert
+
+    def __repr__(self):
+        return f'{self.aufzaehlung.name}.{self.name}'
+
+    __str__ = __repr__
+
+
 class DeutschInstanz:
     def __init__(self, klasse: DeutschKlasse):
         self.klasse = klasse
@@ -1657,6 +1682,8 @@ class Interpreter:
         if isinstance(wert, dict):    return 'Woerterbuch'
         if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
+        if isinstance(wert, AufzaehlungsWert): return wert.aufzaehlung.name
+        if isinstance(wert, DeutschAufzaehlung): return f'Aufzaehlung({wert.name})'
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
@@ -1951,7 +1978,10 @@ class Interpreter:
             ziel = self._typ_klasse(typhinweis, u)
             if ziel is None:
                 raise TypeError(f"Unbekannter Typ-Hinweis: '{typhinweis}'")
-            ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
+            if isinstance(ziel, DeutschAufzaehlung):
+                ok = isinstance(wert, AufzaehlungsWert) and wert.aufzaehlung is ziel
+            else:
+                ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
         if not ok:
             raise TypeError(f"{kontext_msg}: erwartet Typ '{typhinweis}', bekam {self._typname(wert)}")
 
@@ -1969,7 +1999,7 @@ class Interpreter:
             wert = self._punktpfad_holen(typhinweis, u)
         except (NameError, AttributeError):
             return None
-        return wert if isinstance(wert, DeutschKlasse) else None
+        return wert if isinstance(wert, (DeutschKlasse, DeutschAufzaehlung)) else None
 
     def _ist_instanz_von(self, klasse, ziel):
         if klasse is ziel:
@@ -2587,6 +2617,14 @@ class Interpreter:
         klasse.konstante_attribute = set(klassen_u.konstanten)
         return klasse
 
+    def _besuche_AufzaehlungsDefinition(self, k, u):
+        auf = DeutschAufzaehlung(k.name, {})
+        for position, (name, ausdruck) in enumerate(k.mitglieder):
+            wert = position if ausdruck is None else self._besuche(ausdruck, u)
+            auf.mitglieder[name] = AufzaehlungsWert(auf, name, wert)
+        u.setze(k.name, auf)
+        return auf
+
     def _besuche_NeuInstanz(self, k, u):
         klasse = self._besuche(k.klasse, u)  # Bezeichner oder Punktpfad (modul.Klasse)
         if not isinstance(klasse, DeutschKlasse):
@@ -2606,6 +2644,16 @@ class Interpreter:
         """Wert von 'obj.attribut' (Instanz, Namensraum, Klasse oder eingebaute Sammlung)."""
         if isinstance(obj, DeutschInstanz):
             return obj.hole_attribut(attribut)
+
+        if isinstance(obj, DeutschAufzaehlung):
+            if attribut in obj.mitglieder:
+                return obj.mitglieder[attribut]
+            raise AttributeError(f"Aufzählung '{obj.name}' hat kein Mitglied '{attribut}'")
+
+        if isinstance(obj, AufzaehlungsWert):
+            if attribut in ('name', 'wert'):
+                return getattr(obj, attribut)
+            raise AttributeError(f"Mitglied '{obj}' hat kein Attribut '{attribut}'")
 
         if isinstance(obj, DeutschNamensraum):
             if attribut in obj.bindungen:

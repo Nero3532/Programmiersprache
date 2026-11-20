@@ -25,7 +25,7 @@
     "konstante": { "name": "constant.language.deutsch", "match": "\\b(wahr|falsch|nichts)\\b" },
     "schluesselwort": {
       "name": "keyword.control.deutsch",
-      "match": "\\b(sei|wenn|sonst|solange|für|fuer|in|funktion|zurück|zurueck|und|oder|nicht|klasse|neu|abbrechen|weiter|versuche|fange|endlich|lade|passe|fall|werfe|pruefe|konstante|statisch|als)\\b"
+      "match": "\\b(sei|wenn|sonst|solange|für|fuer|in|funktion|zurück|zurueck|und|oder|nicht|klasse|aufzaehlung|aufzählung|neu|abbrechen|weiter|versuche|fange|endlich|lade|passe|fall|werfe|pruefe|konstante|statisch|als)\\b"
     },
     "fehlerart": {
       "name": "support.class.exception.deutsch",

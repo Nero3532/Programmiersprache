@@ -26,6 +26,7 @@ class TokenTyp(Enum):
     ODER = auto()
     NICHT = auto()
     KLASSE = auto()
+    AUFZAEHLUNG = auto()
     NEU = auto()
     ABBRECHEN = auto()
     WEITER = auto()
