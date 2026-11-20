@@ -349,6 +349,28 @@ für x in neu Zaehler(3) { drucke(x) }      # 1 2 3
 drucke(summe(neu Zaehler(4)))              # 10
 ```
 
+### Generatoren
+
+Eine Funktion mit `ergib` liefert beim Aufruf einen Generator statt eines Werts. Der Rumpf läuft erst weiter, wenn der
+Generator abgefragt wird; `zurück` beendet ihn. Läuft ohne Threads im selben Thread.
+
+```
+funktion nat() { sei i = 0
+    solange wahr { ergib i
+        i += 1 } }
+für x in nat() { wenn x > 3 { abbrechen }
+    drucke(x) }                            # 0 1 2 3
+funktion zwei() { ergib 1
+    zurück
+    ergib 2 }
+drucke(liste(zwei()))                      # [1]
+```
+
+- Unendliche Generatoren nur mit `abbrechen` in `für` oder mit `naechstes(g)` abfragen, sonst läuft die Schleife ewig.
+- Nutzung: `für`, `liste`, `summe`, `abbilden` & Co., Comprehensions, Entpacken (`sei [a, b] = f()`), `naechstes(g)`.
+- Typname: `typ(g)` ergibt `Generator`.
+- Grenzen: `ergib` nur im Rumpf einer Funktion, nicht außerhalb und nicht in einem `passe`-Ausdruck.
+
 ### Aufzählungstypen
 
 ```
