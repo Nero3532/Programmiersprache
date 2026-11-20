@@ -47,6 +47,7 @@ for _typ, _zeichen in {
     TokenTyp.LPAREN: '(', TokenTyp.RPAREN: ')', TokenTyp.LGESCHWEIFTE: '{', TokenTyp.RGESCHWEIFTE: '}',
     TokenTyp.LECKIG: '[', TokenTyp.RECKIG: ']', TokenTyp.KOMMA: ',', TokenTyp.PUNKT: '.',
     TokenTyp.DOPPELPUNKT: ':', TokenTyp.SEMIKOLON: ';', TokenTyp.PFEIL: '->',
+    TokenTyp.FRAGE_PUNKT: '?.', TokenTyp.AT: '@',
 }.items():
     _TOKEN_ANZEIGE[_typ] = f"'{_zeichen}'"
 for _typ, _zeichen in _VERBUND_OPS.items():
@@ -214,6 +215,7 @@ class Parser:
         elif typ == TokenTyp.SOLANGE:   anw = self._solange_anweisung()
         elif typ == TokenTyp.FUER:      anw = self._fuer_anweisung()
         elif typ == TokenTyp.FUNKTION:  anw = self._funktion_definition()
+        elif typ == TokenTyp.AT:        anw = self._dekorierte_funktion(False)[0]
         elif typ == TokenTyp.KLASSE:    anw = self._klassen_definition()
         elif typ == TokenTyp.AUFZAEHLUNG: anw = self._aufzaehlung_definition()
         elif typ == TokenTyp.ZURUECK:   anw = self._zurueck_anweisung()
@@ -384,6 +386,25 @@ class Parser:
         name = self._verbrauche(TokenTyp.BEZEICHNER).wert
         return self._funktion_rumpf(name)
 
+    def _dekorierte_funktion(self, in_klasse):
+        """Eine oder mehrere '@ausdruck'-Zeilen, dann 'funktion' (in Klassen auch 'statisch funktion').
+        Liefert (FunktionDefinition, ist_statisch)."""
+        dekoratoren = []
+        while self._aktuell().typ == TokenTyp.AT:
+            self.pos += 1
+            dekoratoren.append(self._ausdruck())
+            if self._aktuell().typ != TokenTyp.ZEILENENDE:
+                self._fehler("Nach dem Dekorator '@…' muss eine neue Zeile folgen")
+            self._ueberspringen_leerzeilen()
+        statisch = in_klasse and self._aktuell().typ == TokenTyp.STATISCH
+        if statisch:
+            self.pos += 1
+        if self._aktuell().typ != TokenTyp.FUNKTION:
+            self._fehler("Nach einem Dekorator '@…' muss 'funktion' folgen")
+        fn = self._funktion_definition()
+        fn.dekoratoren = dekoratoren
+        return fn, statisch
+
     def _funktion_ausdruck(self):
         # Ausdrucksform (Lambda) — Name optional
         self._verbrauche(TokenTyp.FUNKTION)
@@ -443,7 +464,10 @@ class Parser:
         statische_methoden = []
         klassenattribute = []
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
-            if self._aktuell().typ == TokenTyp.FUNKTION:
+            if self._aktuell().typ == TokenTyp.AT:
+                fn, statisch = self._dekorierte_funktion(True)
+                (statische_methoden if statisch else methoden).append(fn)
+            elif self._aktuell().typ == TokenTyp.FUNKTION:
                 methoden.append(self._funktion_definition())
             elif self._aktuell().typ == TokenTyp.STATISCH:
                 self.pos += 1
@@ -880,6 +904,7 @@ class Parser:
 
     def _aufruf(self):
         knoten = self._primaer()
+        optional = False
         while True:
             if self._aktuell().typ == TokenTyp.LPAREN:
                 self.pos += 1
@@ -889,6 +914,11 @@ class Parser:
                 self.pos += 1
                 attr = self._verbrauche(TokenTyp.BEZEICHNER).wert
                 knoten = ast.AttributZugriff(knoten, attr)
+            elif self._aktuell().typ == TokenTyp.FRAGE_PUNKT:
+                self.pos += 1
+                attr = self._verbrauche(TokenTyp.BEZEICHNER).wert
+                knoten = ast.OptionalZugriff(knoten, attr)
+                optional = True
             elif self._aktuell().typ == TokenTyp.LECKIG:
                 self.pos += 1
                 idx = self._index_oder_slice()
@@ -896,7 +926,7 @@ class Parser:
                 knoten = ast.IndexZugriff(knoten, idx)
             else:
                 break
-        return knoten
+        return ast.OptionalKette(knoten) if optional else knoten
 
     def _index_oder_slice(self):
         start = None
