@@ -243,6 +243,30 @@ werden vererbt (links-nach-rechts, wie Methoden).
 (jeweils `(dies, andere)`); unäres `~` über `__bitnicht__(dies)`. Nur der linke Operand wird
 geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
 
+**Sammlungs-Hooks:** Klassen verhalten sich wie eingebaute Sammlungen über `__laenge__(dies)`,
+`__hole__(dies, schluessel)` und `__setze__(dies, schluessel, wert)` (für `länge`, `x[i]` und `x[i] = w`),
+`__enthaelt__(dies, wert)` (für `in` / `nicht in`) sowie `__aufruf__(dies, ...)` (für `x(...)`).
+Slices kommen als `Teilbereich`-Objekt an (`.anfang`, `.ende`, `.schritt`; nicht angegebene Teile sind `nichts`).
+Fehlt ein Hook, gibt es eine deutsche Meldung; falsche Rückgabetypen werden ebenfalls gemeldet.
+
+```
+klasse Stapel {
+    funktion __init__(dies, werte) { dies.daten = werte }
+    funktion __laenge__(dies) { zurück länge(dies.daten) }
+    funktion __hole__(dies, s) {
+        wenn typ(s) == "Teilbereich" { zurück neu Stapel(dies.daten[s.anfang:s.ende]) }
+        zurück dies.daten[s]
+    }
+    funktion __setze__(dies, s, w) { dies.daten[s] = w }
+    funktion __enthaelt__(dies, w) { zurück w in dies.daten }
+    funktion __aufruf__(dies, x) { zurück dies.daten[x] + 1 }
+}
+sei l = neu Stapel([10, 20, 30, 40])
+drucke(länge(l), l[2], länge(l[1:3]), 30 in l, l(2))   # 4 30 2 wahr 31
+l[0] = 7
+drucke(l.daten)                                        # [7, 20, 30, 40]
+```
+
 ### Aufzählungstypen
 
 ```
