@@ -370,6 +370,7 @@ drucke(liste(zwei()))                      # [1]
 - Nutzung: `für`, `liste`, `summe`, `abbilden` & Co., Comprehensions, Entpacken (`sei [a, b] = f()`), `naechstes(g)`.
 - Typname: `typ(g)` ergibt `Generator`.
 - Grenzen: `ergib` nur im Rumpf einer Funktion, nicht außerhalb und nicht in einem `passe`-Ausdruck.
+- Vorzeitiges Ende: `für` schließt einen Generator bei `abbrechen`, `zurück` oder Fehler sofort, sein `endlich` läuft dann. Ein bei Programmende noch angehaltener Generator oder einer, der nur in einer Listen-Comprehension abbricht, führt sein `endlich` nicht verlässlich aus.
 
 ### Aufzählungstypen
 

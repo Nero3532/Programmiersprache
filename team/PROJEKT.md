@@ -6,7 +6,7 @@ Einzige Quelle für die Agenten `sprache-*` und firmenweite Rollen (`dev-audit`,
 - Projekt: Deutsch (`<Repo>`, Branch master) — Programmiersprache mit deutschen Schlüsselwörtern.
 - Art: Baum-Interpreter in Python ≥ 3.10, nur Standardbibliothek; Version in `deutsch/__init__.py`.
 - Ordner: `deutsch/lexer.py` (SCHLUESSELWOERTER) → `parser.py` → `ast_knoten.py` → `interpreter.py` (Auswertung + Stdlib); `umgebung.py` (Geltungsbereiche), `token_typen.py`, `main.py` (CLI/REPL), `deutsch/__main__.py`, `tests/test_*.py` (mehrere Dateien), `beispiele/*.deu`, `ROADMAP.md`, `CHANGELOG.md`, `README.md`.
-- Prüfen: `py -m unittest discover -s tests` (~1270 Tests, ~80 s wegen Unterprozess-Tests; einzelne Datei: `py -m unittest tests.test_builtins`).
+- Prüfen: `py -m unittest discover -s tests` (~1430 Tests, ~80 s wegen Unterprozess-Tests; einzelne Datei: `py -m unittest tests.test_builtins`).
 - Starten: `py -m deutsch <datei>` · `py -m deutsch -c "code"`. `py main.py` scheitert an der Shebang-Zeile; `python` ist nur ein Store-Alias.
 - Python-Versionen: 3.12 `py -V:Astral/CPython3.12.13 -m unittest discover -s tests`; 3.13 nur `C:\Program Files\LibreOffice\program\python-core-3.13.*\bin\python.exe` (Ordnername wechselt mit LibreOffice-Updates, z. B. 3.13.17) mit `C:\Program Files\LibreOffice\program` im PATH, sonst DLL-Fehler.
 - CI: GitHub Actions, Linux + Windows, Python 3.10–3.14. Remote erst nach Push prüfbar.

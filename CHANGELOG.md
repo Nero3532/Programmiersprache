@@ -4,6 +4,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.10.0]
+
 ### Hinzugefügt
 - Iterator-Protokoll: Klassen mit `__iter__` (liefert Sammlung oder Objekt mit `__naechstes__`) sind iterierbar in
   `für`, Comprehensions, Entpacken, `liste`, `menge`, `summe`, `abbilden` & Co. Ende per `werfe IterationsEnde()`.
@@ -23,7 +25,13 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   Nutzbar in `für`, Comprehensions, Entpacken, `liste`, `summe`, `abbilden` & Co. und mit `naechstes(g)`.
 
 ### Geändert
-- Bruch: `ergib` ist jetzt Schlüsselwort. Bestehender Code mit `ergib` als Variablen- oder Funktionsname muss umbenannt werden.
+- **Bruch:** `ergib` ist jetzt Schlüsselwort. Bestehender Code mit `ergib` als Variablen- oder Funktionsname muss umbenannt werden.
+- `max` und `min` entpacken ein einzelnes iterierbares Argument (Liste, Menge, Zeichenkette, Generator, Iterator): `max("hallo")` liefert jetzt `'o'`.
+
+### Behoben
+- Generator wird bei vorzeitigem Ende in `für` (`abbrechen`, `zurück`, Fehler) sofort geschlossen; sein `endlich` läuft dann sofort. Fehler aus `endlich` werden gemeldet statt als roher Python-Traceback verloren.
+
+158 neue Regressionstests (1428 gesamt).
 
 ## [2.9.0]
 
