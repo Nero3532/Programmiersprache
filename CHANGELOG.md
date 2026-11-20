@@ -10,6 +10,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
   `__bitxoder__`, `__links__`, `__rechts__`, `__bitnicht__`).
 - `abbilden`, `filtere`, `reduziere` und `gruppiere` nehmen Wörterbücher (Schlüssel, wie bei `für`).
 - VS-Code-Syntaxhervorhebung für `.deu` in `editor/vscode` (siehe dort).
+- Linter in `--pruefen`: meldet unbekannte Namen (mit Vorschlag), unbenutzte `sei`-Variablen in Funktionen und
+  unerreichbaren Code, jeweils mit Zeile. Exitcode bleibt `0`, außer bei Syntaxfehler.
 
 ### Geändert
 - `**kw: T` prüft jetzt jeden Wert statt des ganzen Wörterbuchs; `*args: T` prüft jedes Element einzeln.
