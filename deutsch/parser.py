@@ -630,7 +630,7 @@ class Parser:
             als_name = self._verbrauche(TokenTyp.BEZEICHNER).wert
         return ast.LadeAnweisung(pfad, als_name)
 
-    def _passe_anweisung(self):
+    def _passe_anweisung(self, ist_ausdruck=False):
         self._verbrauche(TokenTyp.PASSE)
         ausdruck = self._ausdruck()
         self._verbrauche(TokenTyp.LGESCHWEIFTE)
@@ -639,12 +639,19 @@ class Parser:
         while self._aktuell().typ not in (TokenTyp.RGESCHWEIFTE, TokenTyp.DATEIENDE):
             if self._aktuell().typ == TokenTyp.FALL:
                 self.pos += 1
-                werte = [self._ausdruck()]
+                muster = [self._muster_lesen()]
                 while self._aktuell().typ == TokenTyp.KOMMA:
                     self.pos += 1
-                    werte.append(self._ausdruck())
+                    muster.append(self._muster_lesen())
+                namen = [set(ast.muster_namen(m)) for m in muster]
+                if any(namen) and any(n != namen[0] for n in namen):
+                    self._fehler("Alternativen mit Bindung müssen alle dieselben Namen binden", mit_gefunden=False)
+                waechter = None
+                if self._aktuell().typ == TokenTyp.WENN:
+                    self.pos += 1
+                    waechter = self._ausdruck()
                 self._verbrauche(TokenTyp.DOPPELPUNKT)
-                faelle.append((werte, self._block()))
+                faelle.append((muster, waechter, self._block()))
             elif self._aktuell().typ == TokenTyp.SONST:
                 self.pos += 1
                 self._verbrauche(TokenTyp.DOPPELPUNKT)
@@ -653,7 +660,77 @@ class Parser:
                 self._fehler("'fall' oder 'sonst' erwartet")
             self._ueberspringen_leerzeilen()
         self._verbrauche(TokenTyp.RGESCHWEIFTE)
-        return ast.PasseAnweisung(ausdruck, faelle, sonst)
+        return ast.PasseAnweisung(ausdruck, faelle, sonst, ist_ausdruck)
+
+    def _muster_lesen(self):
+        """Ein Muster hinter 'fall': Wert | '_' | 'Typ name' | 'sei [m, *rest]' | 'sei {"k": m}' | 'sei name'.
+        Ohne 'sei' wird nie gebunden; Werte ohne Ternär (_koaleszenz), damit 'wenn' der Wächter bleibt."""
+        if self._aktuell().typ == TokenTyp.SEI:
+            self.pos += 1
+            return self._sei_muster()
+        t = self._aktuell()
+        if t.typ == TokenTyp.BEZEICHNER:
+            if t.wert == '_' and self._vorschau().typ in (TokenTyp.DOPPELPUNKT, TokenTyp.KOMMA, TokenTyp.WENN):
+                self.pos += 1
+                return ast.TypMuster(None, None)
+            typ = self._typmuster_lesen()
+            if typ is not None:
+                return typ
+        return self._koaleszenz()
+
+    def _typmuster_lesen(self):
+        """'Typ name' / 'modul.Typ name' (Name/Punktpfad direkt gefolgt von einem Bezeichner) oder None (Position bleibt)."""
+        start = self.pos
+        pfad = self._punktpfad_lesen()
+        if self._aktuell().typ == TokenTyp.BEZEICHNER:
+            return ast.TypMuster(pfad, self._verbrauche(TokenTyp.BEZEICHNER).wert)
+        self.pos = start
+        return None
+
+    def _sei_muster(self):
+        """Muster nach 'fall sei': '[…]', '{…}' oder ein Name; Namen binden, Literale/Punktpfade vergleichen."""
+        t = self._aktuell()
+        if t.typ == TokenTyp.LECKIG:
+            self._umbrueche_ignorieren.append(True)
+            self.pos += 1
+            ziele, rest = [], None
+            while self._aktuell().typ != TokenTyp.RECKIG:
+                if self._aktuell().typ == TokenTyp.STERN:
+                    if rest is not None:
+                        self._fehler("Ein Muster darf höchstens ein '*' (Rest) enthalten")
+                    self.pos += 1
+                    rest = len(ziele)
+                    ziele.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+                else:
+                    ziele.append(self._sei_muster())
+                if self._aktuell().typ != TokenTyp.KOMMA:
+                    break
+                self.pos += 1
+            self._verbrauche(TokenTyp.RECKIG)
+            self._umbrueche_ignorieren.pop()
+            return ast.Muster(ziele, rest)
+        if t.typ == TokenTyp.LGESCHWEIFTE:
+            self._umbrueche_ignorieren.append(True)
+            self.pos += 1
+            paare = []
+            while self._aktuell().typ != TokenTyp.RGESCHWEIFTE:
+                schluessel = self._koaleszenz()
+                self._verbrauche(TokenTyp.DOPPELPUNKT)
+                paare.append((schluessel, self._sei_muster()))
+                if self._aktuell().typ != TokenTyp.KOMMA:
+                    break
+                self.pos += 1
+            self._verbrauche(TokenTyp.RGESCHWEIFTE)
+            self._umbrueche_ignorieren.pop()
+            return ast.WoerterbuchMuster(paare)
+        if t.typ == TokenTyp.BEZEICHNER:
+            typ = self._typmuster_lesen()
+            if typ is not None:
+                return typ
+            if self._vorschau().typ != TokenTyp.PUNKT:  # Name allein bindet; 'a.b' ist ein Wert
+                self.pos += 1
+                return ast.TypMuster(None, None) if t.wert == '_' else t.wert
+        return self._koaleszenz()
 
     # ------------------------------------------------------- Ausdr.-Anweis.
 
@@ -975,6 +1052,8 @@ class Parser:
             return self._neu_instanz()
         if t.typ == TokenTyp.FUNKTION:
             return self._funktion_ausdruck()
+        if t.typ == TokenTyp.PASSE:
+            return self._passe_anweisung(ist_ausdruck=True)
 
         if t.typ == TokenTyp.NICHT:
             # 'nicht' steht über den Vergleichen (wie in Python) und darf daher

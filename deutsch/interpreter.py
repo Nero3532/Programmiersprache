@@ -2104,43 +2104,49 @@ class Interpreter:
         wert = self._instanz_zu_liste(wert)
         if not isinstance(wert, (list, tuple)):
             raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
-        ziele = muster.ziele
-        if muster.rest is None:
-            if len(wert) != len(ziele):
-                raise TypeError(f"Destrukturierung erwartet {self._werte_text(len(ziele))}, bekam {len(wert)}")
-            teile = list(wert)
-        else:
-            mindestens = len(ziele) - 1
-            if len(wert) < mindestens:
-                raise TypeError(
-                    f"Destrukturierung erwartet mindestens {self._werte_text(mindestens)}, bekam {len(wert)}")
-            nach_rest = len(ziele) - muster.rest - 1
-            ende = len(wert) - nach_rest
-            teile = list(wert[:muster.rest]) + [list(wert[muster.rest:ende])] + list(wert[ende:])
-        for ziel, teil in zip(ziele, teile):
+        teile, fehler = self._muster_teile(muster, wert)
+        if fehler:
+            raise TypeError(fehler)
+        for ziel, teil in zip(muster.ziele, teile):
             if isinstance(ziel, ast.Muster):
                 self._muster_zerlegen(ziel, teil, paare)
             else:
                 paare.append((ziel, teil))
 
+    def _muster_teile(self, muster, wert):
+        """Teilt die Liste wert auf die Ziele des Musters: (teile, None) oder (None, Fehlertext) bei falscher Anzahl.
+        Das Rest-Ziel ('*r') bekommt eine Liste. Gemeinsam für Destrukturierung und Mustervergleich."""
+        ziele = muster.ziele
+        if muster.rest is None:
+            if len(wert) != len(ziele):
+                return None, f"Destrukturierung erwartet {self._werte_text(len(ziele))}, bekam {len(wert)}"
+            return list(wert), None
+        mindestens = len(ziele) - 1
+        if len(wert) < mindestens:
+            return None, f"Destrukturierung erwartet mindestens {self._werte_text(mindestens)}, bekam {len(wert)}"
+        nach_rest = len(ziele) - muster.rest - 1
+        ende = len(wert) - nach_rest
+        return list(wert[:muster.rest]) + [list(wert[muster.rest:ende])] + list(wert[ende:]), None
+
     # Typ-Hinweise
+    _PRIMITIVE_TYPEN = {
+        'Ganzzahl':      lambda w: isinstance(w, int) and not isinstance(w, bool),
+        'Kommazahl':     lambda w: isinstance(w, (int, float)) and not isinstance(w, bool),
+        'Zeichenkette':  lambda w: isinstance(w, str),
+        'Wahrheitswert': lambda w: isinstance(w, bool),
+        'Liste':         lambda w: isinstance(w, list),
+        'Woerterbuch':   lambda w: isinstance(w, dict),
+        'Wörterbuch':    lambda w: isinstance(w, dict),
+        'Menge':         lambda w: isinstance(w, set),
+        'Nichts':        lambda w: w is None,
+        'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
+    }
+
     def _pruefe_typ(self, wert, typhinweis, kontext_msg, u):
         if typhinweis is None:
             return
-        primitive = {
-            'Ganzzahl':      lambda w: isinstance(w, int) and not isinstance(w, bool),
-            'Kommazahl':     lambda w: isinstance(w, (int, float)) and not isinstance(w, bool),
-            'Zeichenkette':  lambda w: isinstance(w, str),
-            'Wahrheitswert': lambda w: isinstance(w, bool),
-            'Liste':         lambda w: isinstance(w, list),
-            'Woerterbuch':   lambda w: isinstance(w, dict),
-            'Wörterbuch':    lambda w: isinstance(w, dict),
-            'Menge':         lambda w: isinstance(w, set),
-            'Nichts':        lambda w: w is None,
-            'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
-        }
-        if typhinweis in primitive:
-            ok = primitive[typhinweis](wert)
+        if typhinweis in self._PRIMITIVE_TYPEN:
+            ok = self._PRIMITIVE_TYPEN[typhinweis](wert)
         else:
             ziel = self._typ_klasse(typhinweis, u)
             if ziel is None:
@@ -2577,12 +2583,56 @@ class Interpreter:
 
     def _besuche_PasseAnweisung(self, k, u):
         subjekt = self._besuche(k.ausdruck, u)
-        for werte, block in k.faelle:
-            if any(subjekt == self._besuche(w, u) for w in werte):
-                return self._besuche(block, u)
+        for alternativen, waechter, block in k.faelle:
+            arm_u = Umgebung(u)  # Bindungen und Wächter leben nur im Arm
+            for m in alternativen:
+                paare = []
+                if self._muster_passt(m, subjekt, paare, u):
+                    for name, wert in paare:
+                        arm_u.setze(name, wert)
+                    if waechter is None or self._ist_wahr(self._besuche(waechter, arm_u)):
+                        return self._besuche(block, arm_u)
+                    break  # Alternativen binden dieselben Namen: ein falscher Wächter gilt für alle
         if k.sonst is not None:
             return self._besuche(k.sonst, u)
+        if k.ist_ausdruck:
+            raise ValueError(f"'passe': kein 'fall' passt auf {self._zu_text(subjekt)}")
         return None
+
+    def _muster_passt(self, m, wert, paare, u):
+        """True, wenn wert auf das Muster passt; Bindungen (name, wert) landen in paare. Wirft nicht bei Nichtpassen."""
+        if isinstance(m, str):  # 'sei name'
+            paare.append((m, wert))
+            return True
+        if isinstance(m, ast.TypMuster):
+            if m.typ is not None and not self._typ_passt(wert, m.typ, u):
+                return False
+            if m.name:
+                paare.append((m.name, wert))
+            return True
+        if isinstance(m, ast.Muster):
+            if not isinstance(wert, (list, tuple)):  # Instanzen nicht mit __iter__ verbrauchen
+                return False
+            teile, _ = self._muster_teile(m, wert)
+            return teile is not None and all(self._muster_passt(z, t, paare, u) for z, t in zip(m.ziele, teile))
+        if isinstance(m, ast.WoerterbuchMuster):
+            if not isinstance(wert, dict):
+                return False
+            for schluessel, teil in m.paare:
+                schluessel = self._besuche(schluessel, u)
+                if schluessel not in wert or not self._muster_passt(teil, wert[schluessel], paare, u):
+                    return False
+            return True
+        return self._ist_wahr(self._binaerer_operator('==', wert, self._besuche(m, u)))  # __gleich__ greift
+
+    def _typ_passt(self, wert, typ, u):
+        """Typmuster: eingebaute Typnamen wie bei Typ-Hinweisen, sonst Klasse/Aufzählung/Fehlerart (ist_instanz)."""
+        if typ in self._PRIMITIVE_TYPEN:
+            return self._PRIMITIVE_TYPEN[typ](wert)
+        ziel = self._typ_klasse(typ, u)
+        if ziel is None:
+            raise TypeError(f"Unbekannter Typ im Muster: '{typ}'")
+        return self._eb_ist_instanz(wert, ziel)
 
     def _lade_pfad_aufloesen(self, pfad: str) -> str:
         """Relative 'lade'-Pfade gelten ab dem Ordner der ladenden Datei; im Hauptskript

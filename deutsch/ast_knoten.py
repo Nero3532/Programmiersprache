@@ -305,8 +305,38 @@ class PruefeAnweisung(Knoten):
         self.meldung = meldung  # Knoten | None
 
 class PasseAnweisung(Knoten):
-    __slots__ = ('ausdruck', 'faelle', 'sonst')
-    def __init__(self, ausdruck, faelle, sonst):
+    """passe x { fall …: {…} sonst: {…} }; als Ausdruck (ist_ausdruck) ist der Wert der letzte Wert des Arm-Blocks."""
+    __slots__ = ('ausdruck', 'faelle', 'sonst', 'ist_ausdruck')
+    def __init__(self, ausdruck, faelle, sonst, ist_ausdruck=False):
         self.ausdruck = ausdruck
-        self.faelle = faelle  # [([Knoten, ...], Block), ...]
+        self.faelle = faelle  # [([Muster-Alternative, ...], Wächter | None, Block), ...]
         self.sonst = sonst    # Block | None
+        self.ist_ausdruck = ist_ausdruck
+
+class TypMuster(Knoten):
+    """Muster 'Typ name' (typ = Name/Punktpfad) hinter 'fall'; typ None = '_' (passt immer, bindet nichts);
+    name None = nur prüfen, nicht binden."""
+    __slots__ = ('typ', 'name')
+    def __init__(self, typ, name):
+        self.typ = typ
+        self.name = name
+
+class WoerterbuchMuster(Knoten):
+    """Muster 'sei {"k": m, …}': muss ein Wörterbuch mit allen Schlüsseln sein (weitere sind erlaubt)."""
+    __slots__ = ('paare',)
+    def __init__(self, paare):
+        self.paare = paare  # [(Schlüssel-Knoten, Teilmuster), ...]
+
+def muster_namen(m):
+    """Namen, die ein Muster bindet ('sei'/'für'-Muster, Typ-/Wörterbuchmuster). Reine Wert-Knoten binden nichts."""
+    if isinstance(m, str):
+        yield m
+    elif isinstance(m, Muster):
+        for z in m.ziele:
+            yield from muster_namen(z)
+    elif isinstance(m, TypMuster):
+        if m.name:
+            yield m.name
+    elif isinstance(m, WoerterbuchMuster):
+        for _, teil in m.paare:
+            yield from muster_namen(teil)
