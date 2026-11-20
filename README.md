@@ -302,6 +302,27 @@ l[0] = 7
 drucke(l.daten)                                        # [7, 20, 30, 40]
 ```
 
+### Eigene Iteratoren
+
+Eine Klasse mit `__iter__` ist in `für`, Comprehensions, Entpacken, `liste`, `menge`, `summe`, `abbilden` & Co. iterierbar.
+`__iter__` liefert entweder eine Sammlung oder ein Objekt mit `__naechstes__`. Das Ende meldet `__naechstes__`
+mit `werfe IterationsEnde()`; `naechstes(it)` ruft `__naechstes__` direkt auf.
+
+```
+klasse Zaehler {
+    funktion __init__(dies, n) { dies.n = n
+        dies.i = 0 }
+    funktion __iter__(dies) { zurück dies }
+    funktion __naechstes__(dies) {
+        wenn dies.i >= dies.n { werfe IterationsEnde() }
+        dies.i += 1
+        zurück dies.i
+    }
+}
+für x in neu Zaehler(3) { drucke(x) }      # 1 2 3
+drucke(summe(neu Zaehler(4)))              # 10
+```
+
 ### Aufzählungstypen
 
 ```
@@ -351,6 +372,9 @@ Die Fehlerarten haben deutsche Namen; sie stehen auch im Fehlerkopf der CLI, z. 
 | `SchluesselFehler` | `KeyError` | `DivisionDurchNullFehler` | `ZeroDivisionError` |
 | `AttributFehler` | `AttributeError` | `UeberlaufFehler` | `OverflowError` |
 | `DateiFehler` | `OSError` | `SyntaxFehler` | `SyntaxError` |
+
+`IterationsEnde` ist keine Python-Art, sondern eine eigene Basis (nicht `StopIteration`). Sie wird nur im Iterator-Protokoll
+von `__naechstes__` geworfen (siehe „Eigene Iteratoren“); `fange (IterationsEnde)` fängt sie.
 
 `fange (…)` versteht diese Namen und die englischen Python-Namen (`fange (KeyError) f`), auch gemischt.
 Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`, `fange (LaufzeitFehler)`
@@ -459,6 +483,9 @@ erlaubt und führt sie erneut aus.
 **Allgemein:** `drucke`, `eingabe`, `laenge`/`länge`, `typ`, `ganzzahl`, `kommazahl`, `zeichenkette`,
 `wahrheitswert`, `bereich`, `sortiere`, `anhaengen`/`anhängen`, `entferne`, `umkehren`, `verbinde`,
 `max`, `min`, `abs`, `runde`, `liste`, `woerterbuch`/`wörterbuch`, `eindeutig`, `zusammenfuehren`/`zusammenführen`
+
+`bereich` liefert eine Liste; direkt in `für` oder einer Comprehension läuft es lazy, ohne Liste im Speicher
+(`für i in bereich(10**12) { wenn i >= 2 { abbrechen } }` startet sofort).
 
 `runde` rundet kaufmännisch (ab ,5 vom Nullpunkt weg): `runde(2.5)` ergibt 3, `runde(2.675, 2)` ergibt 2.68.
 
