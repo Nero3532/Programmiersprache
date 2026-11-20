@@ -4,6 +4,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Sammlungs-Dunder für Klassen: `__laenge__` (für `länge`), `__hole__` / `__setze__` (für `x[i]` und `x[i] = w`),
+  `__enthaelt__` (für `in` / `nicht in`), `__aufruf__` (für `x(...)`). Slices kommen als `Teilbereich(anfang, ende, schritt)` an.
+  Falsche Rückgabetypen werden deutsch gemeldet.
+
 ## [2.9.0]
 
 ### Hinzugefügt
