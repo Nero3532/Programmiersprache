@@ -473,5 +473,77 @@ class TestVorzeitigesSchliessen(unittest.TestCase):
         self.assertNotIn('Exception ignored', ergebnis.stderr)
 
 
+class _UnterbrechenderStapel(list):
+    """Wirft ein Strg+C genau nach dem nächsten append: simuliert eine Ausnahme von außen in der Lücke
+    zwischen dem Ändern des Zustands und dem 'try', das ihn zurücksetzt."""
+    scharf = False
+
+    def append(self, x):
+        super().append(x)
+        if self.scharf:
+            self.scharf = False
+            raise KeyboardInterrupt
+
+
+class TestUnterbrechungInDerLuecke(unittest.TestCase):
+    """Zustand (Aufrufkette, Datei, Ladekette) muss nach einer Ausnahme von außen an jeder Stelle sauber sein."""
+
+    def _interpreter(self, code):
+        ip = Interpreter()
+        s = _UnterbrechenderStapel(ip._aufruf_stack)
+        ip._aufruf_stack = s
+        with contextlib.redirect_stdout(io.StringIO()):
+            ip.ausfuehren(parse(code))
+        return ip, s
+
+    def _sauber(self, ip):
+        self.assertEqual(list(ip._aufruf_stack), [])
+        self.assertEqual(list(ip._lade_stack), [])
+        self.assertIsNone(ip._aktuelle_datei)
+
+    def test_next_nach_aufrufkette(self):
+        ip, s = self._interpreter('funktion f() { ergib 1\n ergib 2 }\nsei g = f()')
+        g = ip.global_umgebung.hole('g')
+        s.scharf = True
+        with self.assertRaises(KeyboardInterrupt):
+            next(g)
+        self._sauber(ip)
+        self.assertFalse(g._laeuft)
+        self.assertEqual((next(g), next(g)), (1, 2))  # weiter nutzbar
+        self._sauber(ip)
+
+    def test_close_nach_aufrufkette(self):
+        ip, s = self._interpreter('funktion f() { versuche { ergib 1 } endlich { drucke("e") } }\nsei g = f()')
+        g = ip.global_umgebung.hole('g')
+        s.scharf = True
+        with self.assertRaises(KeyboardInterrupt):
+            g.close()
+        self._sauber(ip)
+        g.close()
+        self._sauber(ip)
+
+    def test_funktionsaufruf_nach_aufrufkette(self):
+        ip, s = self._interpreter('funktion f() { zurück 5 }')
+        s.scharf = True
+        with self.assertRaises(KeyboardInterrupt):
+            ip.ausfuehren(parse('f()'))
+        self._sauber(ip)
+        self.assertEqual(ip.ausfuehren(parse('f()')), 5)
+
+    def test_lade_nach_ladekette(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as ordner:
+            with open(os.path.join(ordner, 'm.deu'), 'w', encoding='utf-8') as f:
+                f.write('sei a = 1\n')
+            ip = Interpreter(ladepfad=ordner)
+            ip._lade_stack = s = _UnterbrechenderStapel()
+            s.scharf = True
+            with self.assertRaises(KeyboardInterrupt):
+                ip.ausfuehren(parse('lade "m.deu" als m'))
+            self._sauber(ip)
+            ip.ausfuehren(parse('lade "m.deu" als m'))  # kein 'zyklischer Import' durch einen Rest in der Ladekette
+            self._sauber(ip)
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -362,26 +362,30 @@ class DeutschGenerator:
     def __repr__(self):
         return f'<Generator {self.name}>'
 
-    def _betreten(self):
+    # Zustand wird vor dem 'try' nur gesichert und erst darin geändert; das 'finally' stellt die Sicherung her.
+    # So bleibt auch eine Ausnahme von außen (Strg+C) zwischen zwei Anweisungen ohne Folgen für den Interpreter.
+    def _sicherung(self):
         ip = self._interpreter
-        zeile, datei = ip._aktuelle_zeile, ip._aktuelle_datei
-        ip._aufruf_stack.append(AufrufEintrag(self.name, zeile, datei))
-        ip._aktuelle_datei = self._datei
-        return zeile, datei
+        return ip._aktuelle_zeile, ip._aktuelle_datei, len(ip._aufruf_stack)
 
-    def _verlassen(self, zeile, datei):
+    def _betreten(self, sicherung):
         ip = self._interpreter
-        ip._aktuelle_datei = datei
-        ip._aktuelle_zeile = zeile
-        ip._aufruf_stack.pop()
+        ip._aufruf_stack.append(AufrufEintrag(self.name, sicherung[0], sicherung[1]))
+        ip._aktuelle_datei = self._datei
+
+    def _verlassen(self, sicherung):
+        ip = self._interpreter
+        ip._aktuelle_zeile, ip._aktuelle_datei = sicherung[0], sicherung[1]
+        del ip._aufruf_stack[sicherung[2]:]
 
     def __next__(self):
         ip = self._interpreter
         if self._laeuft:
             raise ValueError(f"Generator '{self.name}' läuft bereits (Aufruf aus seinem eigenen Rumpf)")
-        zeile, datei = self._betreten()
-        self._laeuft = True
+        sicherung = self._sicherung()
         try:
+            self._betreten(sicherung)
+            self._laeuft = True
             return next(self._rumpf)
         except _ZurueckSignal:
             raise StopIteration from None  # 'zurück' beendet den Generator (ein Wert dahinter entfällt)
@@ -390,15 +394,16 @@ class DeutschGenerator:
             raise ip._signal_fehler_hier(signal) from None
         finally:
             self._laeuft = False
-            self._verlassen(zeile, datei)
+            self._verlassen(sicherung)
 
     def close(self):
         """Beendet den Generator vorzeitig: 'endlich'-Blöcke laufen (mit Ort wie bei einem Aufruf), ihre Fehler gehen weiter."""
-        zeile, datei = self._betreten()
+        sicherung = self._sicherung()
         try:
+            self._betreten(sicherung)
             self._rumpf.close()
         finally:
-            self._verlassen(zeile, datei)
+            self._verlassen(sicherung)
 
     def __del__(self):
         # Verworfen ohne Schleife: 'endlich' läuft noch; ein Fehler darin geht verloren (keine rohe Python-Ausgabe)
@@ -2807,10 +2812,11 @@ class Interpreter:
             kette = ' -> '.join(os.path.basename(p) for p in self._lade_stack + [pfad])
             raise ImportError(f"Zyklischer 'lade'-Import erkannt: {kette}")
         quelltext = self._lade_quelltext(pfad)
-        self._lade_stack.append(pfad)
         vorherige_datei = self._aktuelle_datei
-        self._aktuelle_datei = pfad  # Fehler der Datei nennen ab hier ihren Namen, 'lade' darin gilt ab ihrem Ordner
-        try:
+        lade_tiefe = len(self._lade_stack)
+        try:  # Zustand erst im 'try' ändern (Strg+C dazwischen lässt nichts zurück)
+            self._lade_stack.append(pfad)
+            self._aktuelle_datei = pfad  # Fehler der Datei nennen ab hier ihren Namen, 'lade' darin gilt ab ihrem Ordner
             try:
                 tokens = Lexer(quelltext).tokenisieren()
                 baum = Parser(tokens).parse()
@@ -2827,7 +2833,7 @@ class Interpreter:
             return self.ausfuehren(baum, self.global_umgebung)
         finally:
             self._aktuelle_datei = vorherige_datei
-            self._lade_stack.pop()
+            del self._lade_stack[lade_tiefe:]
 
     # Funktionen
     def _dekorieren(self, fn, dekoratoren, u):
@@ -3074,11 +3080,13 @@ class Interpreter:
             return DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
 
         # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
+        # Zustand vor dem 'try' nur sichern, darin ändern: eine Ausnahme von außen (Strg+C) lässt nichts zurück
         aufruf_zeile = self._aktuelle_zeile
         vorherige_datei = self._aktuelle_datei
-        self._aufruf_stack.append(AufrufEintrag(fname, aufruf_zeile, vorherige_datei))
-        self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
+        stapel_tiefe = len(self._aufruf_stack)
         try:
+            self._aufruf_stack.append(AufrufEintrag(fname, aufruf_zeile, vorherige_datei))
+            self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
             kontext = f"Rückgabewert von '{fname}'"
             try:
                 self._besuche(fn.definition.koerper, fn_u)
@@ -3094,7 +3102,7 @@ class Interpreter:
         finally:
             self._aktuelle_datei = vorherige_datei
             self._aktuelle_zeile = aufruf_zeile  # weitere Aufrufe derselben Anweisung: wieder die Zeile des Aufrufers
-            self._aufruf_stack.pop()
+            del self._aufruf_stack[stapel_tiefe:]
 
     # Klassen
     def _besuche_KlassenDefinition(self, k, u):
