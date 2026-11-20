@@ -12,12 +12,9 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 - (keine offen)
 
 ### P3 — größere Vorhaben
-- Mustervergleich ausbauen: Guards (`fall x wenn …`), Listen-/Dict-/Typmuster mit Bindung, als Ausdruck — M — architekt/opus (Entwurf) → entwickler/sonnet
-- Iterator-Protokoll (`__iter__`/`__naechstes__`), lazy `bereich`; später Generatoren `ergib` (L, braucht Umbau der Auswertung) — M/L — architekt/opus
-- Weitere Dunder-Hooks: `__laenge__`, `__hole__`/`__setze__`, `__enthaelt__`, `__aufruf__` — M — entwickler/sonnet
+- Generator: `endlich` verlässlich bei Programmende und bei Abbruch in Comprehensions (heute nur per GC) — S — entwickler/sonnet
 - Eigenschaften (Getter/Setter) und abstrakte Methoden/Schnittstellen — M — entwickler/sonnet
-- Dekoratoren `@name` (nach Funktionen höherer Ordnung) — S — entwickler/sonnet
-- Optional-Chaining `?.`, Schleifen-`sonst`, Label-`abbrechen` — S/M — entwickler/sonnet
+- Schleifen-`sonst`, Label-`abbrechen`, `?[` (Optional-Index), passe-Kurzform-Arme `fall m: ausdruck` — S/M — entwickler/sonnet ❓ (Syntax)
 - Stdlib CSV und HTTP-Abruf (urllib), wählbare Zeichenkodierung — M — entwickler/sonnet
 - Formatierer; Linter ausbauen (scope-genaue Namensprüfung, Regel b auf oberster Ebene, `konstante`/Destrukturierung) — M/L — entwickler/sonnet
 - Debugger/Schrittmodus — L — architekt/opus
@@ -65,3 +62,8 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 - [2.9.0] Eigene Fehlerklassen: `fange (MeinFehler)` erkennt heute keine Nutzerklassen, `werfe f` verliert den Typ; `werfe WertFehler("Text")` (deutsche Fehlerarten als aufrufbare Builtins, `_besuche_WerfeAnweisung` umbauen); Fehlerobjekt mit Typ/Nachricht/Zeile; `ist_instanz`; erneutes `werfe f` verliert die Fehlerart (Kopf `[AusnahmeFehler]`)
 - [2.9.0] Aufzählungstypen `aufzaehlung Farbe { rot, gruen }`
 - [2.9.0] Linter v1 in `--pruefen` (unbekannte Namen, unbenutzte Variablen, unerreichbarer Code)
+- [2.10.0] Mustervergleich: sei-Muster, Typmuster, Wächter, passe als Ausdruck
+- [2.10.0] Iterator-Protokoll, IterationsEnde, lazy bereich in für, Generatoren ergib
+- [2.10.0] Dunder-Hooks __laenge__, __hole__/__setze__, __enthaelt__, __aufruf__
+- [2.10.0] Dekoratoren @name
+- [2.10.0] Optional-Chaining ?.

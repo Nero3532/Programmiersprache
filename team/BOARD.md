@@ -34,6 +34,7 @@
 - [x] 2026-10-20 PR #1 (Draft) + CI-Fixes: Überlauf-Text Linux (haiku), Strg+C-Wettlauf (sonnet), 3.13-Strg+C nach 2 Fehlversuchen an Architekt (opus) → Ursache python/cpython#139622, Lösung ohne Interpreter-Änderung
 - [x] 2026-11-14 Ausbau-Runde (Scout haiku, dev-produkt sonnet) → Anbindung an die Firma (firma-personal), P2-Rest + VS-Code-Syntax + REPL-Interpolation + Hook-Projektname + Doku-Standardauftrag umgesetzt (08bfee5, 1194 Tests); später: eigene Fehlerklassen, Linter, Aufzählungstypen; keine neue Rolle (kein Beleg)
 - [x] 2026-11-20 P3-Runde → 2.9.0: Entwürfe (opus/high) → Linter (sonnet/medium), Aufzählungen (sonnet/medium), Fehlerklassen (sonnet/high), Doku je Commit parallel (haiku/low), QA (haiku/medium) bestanden: 1270 Tests auf 3.12/3.13/3.14
+- [x] 2026-11-20 Runde 2.10.0: Entwürfe (opus/high) → Dunder-Hooks, Dekoratoren+?., Iteratoren (sonnet/medium), Mustervergleich, Generatoren (sonnet/high), Doku je Commit (haiku/low); QA mit Review (sonnet/medium): Generator-Kopien ohne Befund, 2 Funde behoben (endlich beim Schließen, max/min); 1428 Tests auf 3.12/3.13/3.14
 
 ## Entscheidungen
 - 2026-10-19 Team als Projekt-Agenten in `.claude/agents/sprache-*.md`, Einstieg über `/sprache`.
@@ -49,3 +50,4 @@
 - 2026-10-19 Thread-Stack 128 MB statt 255 MB: Windows setzt den Stack voll als Commit-Speicher an; reicht für ~5900 Aufrufe.
 - 2026-10-19 Beispiele starten mit `uv run --no-project python main.py <datei>`; `py main.py` scheitert hier an der Shebang-Zeile. Seit 2.8.0: `py -m deutsch <datei>` (2026-11-14).
 - 2026-11-20 Nutzer: Aufzählungswerte ohne eigenen Wert ab 0; Aufruf ohne `neu` nur für Fehlerklassen.
+- 2026-11-20 Nutzer: IterationsEnde als Fehlerart; Muster binden nur mit `sei`; passe als Ausdruck über Blöcke; Generatoren ohne Threads.
