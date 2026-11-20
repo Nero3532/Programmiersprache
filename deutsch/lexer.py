@@ -385,8 +385,13 @@ class Lexer:
                 if self._vorschau() == '?':
                     self._weiter()
                     self.tokens.append(self._op_mit_gleich(TokenTyp.FRAGE_FRAGE, TokenTyp.FRAGE_FRAGE_GLEICH, '??'))
+                elif self._vorschau() == '.':
+                    self._weiter()
+                    self.tokens.append(Token(TokenTyp.FRAGE_PUNKT, '?.', self.zeile)); self._weiter()
                 else:
-                    self._fehler("'?' alleine ist ungültig – meintest du '??' (Null-Koaleszenz)?")
+                    self._fehler("'?' alleine ist ungültig – meintest du '??' (Null-Koaleszenz) oder '?.' (Optional-Chaining)?")
+            elif c == '@':
+                self.tokens.append(Token(TokenTyp.AT, '@', self.zeile)); self._weiter()
             # ---- Trennzeichen ----
             elif c == '(':
                 self.tokens.append(Token(TokenTyp.LPAREN, '(', self.zeile)); self._weiter()

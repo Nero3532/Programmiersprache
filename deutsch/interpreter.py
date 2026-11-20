@@ -363,6 +363,10 @@ class DeutschNamensraum:
 _NICHT_GEFUNDEN = object()
 
 
+class _OptionalKurzschluss(Exception):
+    """Intern: 'a?.b' mit a = nichts; wird von OptionalKette gefangen."""
+
+
 def _mit_keywords(fn):
     """Markiert eine eingebaute Funktion oder Methode, die Keyword-Argumente annimmt
     (z. B. sortiere(liste, schluessel=f)). Alle anderen Eingebauten lehnen Keywords ab."""
@@ -2589,8 +2593,16 @@ class Interpreter:
             self._lade_stack.pop()
 
     # Funktionen
+    def _dekorieren(self, fn, dekoratoren, u):
+        """Wie Python: Dekoratoren von oben nach unten auswerten, von unten nach oben anwenden."""
+        for d in reversed([self._besuche(d, u) for d in dekoratoren]):
+            fn = self._aufrufen(d, [fn])
+        return fn
+
     def _besuche_FunktionDefinition(self, k, u):
         fn = DeutschFunktion(k, u, self._aktuelle_datei)
+        if k.dekoratoren:
+            fn = self._dekorieren(fn, k.dekoratoren, u)
         if k.name is not None:
             u.setze(k.name, fn)
         return fn
@@ -2744,8 +2756,10 @@ class Interpreter:
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
         datei = self._aktuelle_datei
-        methoden = {m.name: DeutschFunktion(m, u, datei) for m in k.methoden}
-        statische_methoden = {m.name: DeutschFunktion(m, u, datei) for m in k.statische_methoden}
+        def fn(m):
+            return self._dekorieren(DeutschFunktion(m, u, datei), m.dekoratoren, u)
+        methoden = {m.name: fn(m) for m in k.methoden}
+        statische_methoden = {m.name: fn(m) for m in k.statische_methoden}
         klasse = DeutschKlasse(k.name, eltern, methoden, statische_methoden)
         u.setze(k.name, klasse)
         # Klassenattribute (sei/konstante im Klassenkörper) in einem eigenen Scope auswerten,
@@ -2784,6 +2798,18 @@ class Interpreter:
     # Attribut- und Index-Zugriff
     def _besuche_AttributZugriff(self, k, u):
         return self._hole_attribut(self._besuche(k.objekt, u), k.attribut)
+
+    def _besuche_OptionalZugriff(self, k, u):
+        obj = self._besuche(k.objekt, u)
+        if obj is None:
+            raise _OptionalKurzschluss()
+        return self._hole_attribut(obj, k.attribut)
+
+    def _besuche_OptionalKette(self, k, u):
+        try:
+            return self._besuche(k.ausdruck, u)
+        except _OptionalKurzschluss:
+            return None
 
     def _hole_attribut(self, obj, attribut):
         """Wert von 'obj.attribut' (Instanz, Namensraum, Klasse oder eingebaute Sammlung)."""

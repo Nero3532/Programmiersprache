@@ -68,6 +68,8 @@ class TokenTyp(Enum):
     GROESSER_GROESSER = auto()    # >>
 
     FRAGE_FRAGE = auto()          # ?? (Null-Koaleszenz)
+    FRAGE_PUNKT = auto()          # ?. (Optional-Chaining)
+    AT = auto()                   # @ (Dekorator)
 
     # Verbund-Zuweisungen
     PLUS_GLEICH = auto()          # +=

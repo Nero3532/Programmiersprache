@@ -6,6 +6,7 @@
     { "include": "#kommentar" },
     { "include": "#zeichenkette3" },
     { "include": "#zeichenkette" },
+    { "include": "#dekorator" },
     { "include": "#definition" },
     { "include": "#konstante" },
     { "include": "#schluesselwort" },
@@ -15,6 +16,7 @@
   ],
   "repository": {
     "kommentar": { "name": "comment.line.number-sign.deutsch", "match": "#.*$" },
+    "dekorator": { "name": "entity.name.decorator.deutsch", "match": "@[\\p{L}_][\\p{L}\\p{N}_.]*" },
     "definition": {
       "match": "\\b(funktion|klasse)\\s+([\\p{L}_][\\p{L}\\p{N}_]*)",
       "captures": {
@@ -43,6 +45,7 @@
       "patterns": [
         { "name": "keyword.operator.arrow.deutsch", "match": "->" },
         { "name": "keyword.operator.coalesce.deutsch", "match": "\\?\\?" },
+        { "name": "keyword.operator.optional-chaining.deutsch", "match": "\\?\\." },
         { "name": "keyword.operator.deutsch", "match": "\\*\\*=?|//=?|<<=?|>>=?|[=!<>+\\-*/%&|^]=|[+\\-*/%<>=&|^~]" }
       ]
     },

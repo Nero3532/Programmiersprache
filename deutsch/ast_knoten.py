@@ -125,6 +125,18 @@ class AttributZugriff(Knoten):
         self.objekt = objekt
         self.attribut = attribut
 
+class OptionalZugriff(Knoten):
+    """'objekt?.attribut': bricht die ganze umgebende Kette mit nichts ab, wenn objekt nichts ist."""
+    __slots__ = ('objekt', 'attribut')
+    def __init__(self, objekt, attribut):
+        self.objekt = objekt
+        self.attribut = attribut
+
+class OptionalKette(Knoten):
+    """Umhüllt eine Kette mit '?.': Kurzschluss eines OptionalZugriff ergibt nichts für die ganze Kette."""
+    __slots__ = ('ausdruck',)
+    def __init__(self, ausdruck): self.ausdruck = ausdruck
+
 class IndexZugriff(Knoten):
     __slots__ = ('objekt', 'index')
     def __init__(self, objekt, index):
@@ -232,8 +244,9 @@ class FunktionDefinition(Knoten):
     typhinweis: str | None  (Rückgabetyp: Name oder Punktpfad 'modul.Klasse'; Parameter-Hinweise ebenso)
     kwargs_parameter: (name, typhinweis|None) | None  – der '**name'-Parameter (sammelt überzählige Keywords)
     """
-    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter')
+    __slots__ = ('name', 'parameter', 'koerper', 'typhinweis', 'kwargs_parameter', 'dekoratoren')
     def __init__(self, name, parameter, koerper, typhinweis=None, kwargs_parameter=None):
+        self.dekoratoren = []   # Ausdrücke der '@…'-Zeilen, von oben nach unten
         self.name = name
         self.parameter = parameter
         self.koerper = koerper

@@ -577,13 +577,13 @@ class TestInterpolationZeilen(_Basis):
         self.assertTrue(msg.startswith('Zeile 3:'), msg)
 
     def test_lexerfehler_nennt_absolute_zeile(self):
-        code = 'sei a = 1\ndrucke("x {a @ b}")'
+        code = 'sei a = 1\ndrucke("x {a $ b}")'
         msg = self.syntaxfehler(code)
         self.assertTrue(msg.startswith('Zeile 2:'), msg)
         self.assertIn('Unbekanntes Zeichen', msg)
 
     def test_erste_zeile_bleibt_zeile_1(self):
-        self.assertTrue(self.syntaxfehler('drucke("{@}")').startswith('Zeile 1:'))
+        self.assertTrue(self.syntaxfehler('drucke("{$}")').startswith('Zeile 1:'))
 
     def test_leere_interpolation(self):
         msg = self.syntaxfehler('sei a = 1\nsei s = "ab {} cd"')
@@ -595,7 +595,7 @@ class TestInterpolationZeilen(_Basis):
         self.assertTrue(msg.startswith('Zeile 4:'), msg)
 
     def test_zweite_interpolation_in_derselben_zeichenkette(self):
-        code = 'sei a = 1\nsei s = "{a} und {a @}"\n'
+        code = 'sei a = 1\nsei s = "{a} und {a $}"\n'
         msg = self.syntaxfehler(code)
         self.assertTrue(msg.startswith('Zeile 2:'), msg)
 
@@ -618,7 +618,7 @@ class TestInterpolationZeilen(_Basis):
 
     def test_lexer_startzeile(self):
         with self.assertRaisesRegex(SyntaxError, 'Zeile 7:'):
-            Lexer('@', start_zeile=7).tokenisieren()
+            Lexer('$', start_zeile=7).tokenisieren()
         tokens = Lexer('a\nb', start_zeile=5).tokenisieren()
         self.assertEqual([t.zeile for t in tokens if t.typ == TokenTyp.BEZEICHNER], [5, 6])
 
