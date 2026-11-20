@@ -8,6 +8,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Sammlungs-Dunder für Klassen: `__laenge__` (für `länge`), `__hole__` / `__setze__` (für `x[i]` und `x[i] = w`),
   `__enthaelt__` (für `in` / `nicht in`), `__aufruf__` (für `x(...)`). Slices kommen als `Teilbereich(anfang, ende, schritt)` an.
   Falsche Rückgabetypen werden deutsch gemeldet.
+- Dekoratoren: `@name`, `@name(args)` und `@m.name` vor `funktion`, Methoden und `statisch funktion`. Mehrere werden
+  von unten nach oben angewendet.
+- Optional-Chaining `a?.b` und `a?.m()`: ergibt `nichts`, wenn `a` gleich `nichts` ist; die restliche Kette wird übersprungen.
+  Linter und VS-Code-Grammatik kennen `@` und `?.`.
 
 ## [2.9.0]
 

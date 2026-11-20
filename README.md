@@ -129,6 +129,7 @@ Logisch: `und oder nicht`
 Bitweise: `& | ^ ~` und Schieben `<< >>` für Ganzzahlen; Verbund-Zuweisung `&= |= ^= <<= >>=`
 Mitgliedschaft: `in`, `nicht in`
 Null-Koaleszenz: `a ?? b` (liefert `b` nur, wenn `a` gleich `nichts` ist), Verbund-Zuweisung `a ??= b`
+Optional-Chaining: `a?.b` und `a?.m()` ergeben `nichts`, wenn `a` gleich `nichts` ist; dann wird die ganze Kette übersprungen
 Ternär: `dann_wert wenn bedingung sonst sonst_wert`
 
 ```
@@ -207,6 +208,40 @@ sortiere(["bb", "a", "ccc"], schluessel=laenge)     # [a, bb, ccc]
 `abbilden`, `filtere` und `reduziere` nehmen Listen, Mengen (in sortierter Reihenfolge), Wörterbücher (Schlüssel) und Zeichenketten;
 `abbilden` und `filtere` liefern immer eine Liste. Die Methodenform gibt es für Listen. `sortiere`, `max` und
 `min` nehmen `schluessel=f` (auch `schlüssel=`), `sortiere` zusätzlich `umgekehrt=wahr`.
+
+#### Dekoratoren
+
+Eine Zeile `@ausdruck` vor `funktion` (auch vor Methoden und `statisch funktion`) gibt die Funktion an einen
+Dekorator weiter; die Rückgabe ersetzt die Funktion. Mit Argumenten (`@name(args)`) und Punktpfad (`@m.name`) geht es auch.
+Mehrere Dekoratoren werden wie in Python angewendet: Ausdrücke von oben nach unten ausgewertet, angewendet von unten nach oben.
+
+```
+funktion memo(f) {
+    sei cache = {}
+    zurück funktion(x) {
+        wenn x nicht in cache { cache[x] = f(x) }
+        zurück cache[x]
+    }
+}
+
+funktion zaehlt(f) {
+    sei aufrufe = 0
+    zurück funktion(x) {
+        aufrufe += 1
+        drucke("Aufruf {aufrufe}")
+        zurück f(x)
+    }
+}
+
+@memo
+funktion quadrat(x) -> x * x
+@zaehlt
+funktion verdopple(x) -> x * 2
+
+quadrat(4)     # 16
+quadrat(4)     # 16 (aus dem Cache)
+verdopple(3)   # Aufruf 1, dann 6
+```
 
 ### Klassen
 
