@@ -576,10 +576,10 @@ class Parser:
             # optionaler Typ-Filter: fange (TypeError, ValueError) fehler { ... }
             if self._aktuell().typ == TokenTyp.LPAREN:
                 self.pos += 1
-                fange_typen = [self._verbrauche(TokenTyp.BEZEICHNER).wert]
+                fange_typen = [self._punktpfad_lesen()]
                 while self._aktuell().typ == TokenTyp.KOMMA:
                     self.pos += 1
-                    fange_typen.append(self._verbrauche(TokenTyp.BEZEICHNER).wert)
+                    fange_typen.append(self._punktpfad_lesen())
                 self._verbrauche(TokenTyp.RPAREN)
             # optionaler Variablenname: fange fehler { ... }
             if self._aktuell().typ == TokenTyp.BEZEICHNER:

@@ -492,7 +492,7 @@ versuche {
         self.wirf = self.datei('wirf.deu', self.MODUL)
 
     def test_python_fehler_aus_modul_behaelt_datei_und_zeile(self):
-        e = self.fehler(self.ERNEUT % 'teile(1)', AusnahmeFehler)
+        e = self.fehler(self.ERNEUT % 'teile(1)', ZeroDivisionError)
         self.assertEqual(e.datei, self.wirf)
         self.assertEqual(e.zeile, 2)
         self.assertIn('wirf.deu, Zeile 2: Division durch Null', str(e))
@@ -510,7 +510,7 @@ versuche {
         self.assertIn('  wirf.deu, Zeile 2:', zeilen)
         self.assertIn('        zurück a / 0', zeilen)                   # Quellzeile aus wirf.deu
         self.assertNotIn('        werfe f', zeilen)                      # nicht die Zeile des erneuten Werfens
-        self.assertIn('[AusnahmeFehler] wirf.deu, Zeile 2: Division durch Null', zeilen)
+        self.assertIn('[DivisionDurchNullFehler] wirf.deu, Zeile 2: Division durch Null', zeilen)
         self.assertIn("  in Funktion 'teile' (Zeile 3)", zeilen)        # Aufrufkette des ursprünglichen Fehlers
 
     def test_cli_zeigt_nach_erneutem_werfen_von_werfe_wert(self):
@@ -531,7 +531,7 @@ versuche {
     werfe g
 }
 '''
-        e = self.fehler(code, AusnahmeFehler)
+        e = self.fehler(code, ZeroDivisionError)
         self.assertEqual(e.datei, self.wirf)
         self.assertEqual(e.zeile, 2)
         self.assertIn('wirf.deu, Zeile 2:', self.cli(code))
@@ -546,7 +546,7 @@ versuche {
 
     def test_python_fehler_im_hauptskript_erneut_geworfen(self):
         code = 'versuche {\n    sei a = 1 / 0\n} fange f {\n    werfe f\n}\n'
-        e = self.fehler(code, AusnahmeFehler)
+        e = self.fehler(code, ZeroDivisionError)
         self.assertIsNone(e.datei)
         self.assertEqual(e.zeile, 2)
         zeilen = self.cli(code).splitlines()
@@ -565,7 +565,7 @@ versuche {
     }
 }
 '''
-        e = self.fehler(code, AusnahmeFehler)
+        e = self.fehler(code, ZeroDivisionError)
         self.assertEqual(e.datei, self.wirf)
         self.assertEqual(e.zeile, 2)
 
