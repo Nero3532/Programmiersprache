@@ -243,6 +243,21 @@ werden vererbt (links-nach-rechts, wie Methoden).
 (jeweils `(dies, andere)`); unäres `~` über `__bitnicht__(dies)`. Nur der linke Operand wird
 geprüft (kein `__radd__`-Äquivalent), jeder Operator braucht seine eigene Methode.
 
+### Aufzählungstypen
+
+```
+aufzaehlung Farbe { rot, gruen, blau }       # ohne Wert: ab 0
+drucke(Farbe.gruen, Farbe.gruen.name, Farbe.gruen.wert)   # Farbe.gruen gruen 1
+für f in Farbe { drucke(f.name) }                          # rot, gruen, blau
+sei x: Farbe = Farbe.blau                                  # Typ-Hinweis, zur Laufzeit geprüft
+funktion n(f) { passe f { fall Farbe.rot: { zurück "R" } sonst: { zurück "?" } } }
+versuche { Farbe.rot = 1 } fange (TypFehler) e { drucke("nicht änderbar") }
+```
+Mit Werten: `aufzaehlung Stufe { niedrig = 1, hoch = 10 }`; entweder alle Mitglieder mit oder alle ohne Wert.
+`name` ist Text, `wert` die Zahl. Vergleich nur mit `==` und `!=`; `<` wirft `TypFehler`.
+Werte sind beliebige Ausdrücke, einmal beim Anlegen ausgewertet. Mitglieder und ihre Attribute
+sind unveränderlich (`TypFehler`); unbekannte Mitglieder ergeben `AttributFehler`.
+
 ### Fehlerbehandlung
 
 ```
