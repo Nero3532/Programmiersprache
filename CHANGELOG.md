@@ -7,6 +7,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 ### Hinzugefügt
 - Aufzählungstypen: `aufzaehlung Farbe { rot, gruen = 5, blau }` (auch `aufzählung`). Mitglieder mit `name` und `wert`
   (ohne Wert ab 0, sonst Vorgänger + 1), unveränderlich, iterierbar mit `für`, als Typ-Hinweis und in `passe`/`fall`.
+- Eigene Fehlerklassen: `klasse MeinFehler(WertFehler) { … }` erbt von einer deutschen Fehlerart. Werfen mit
+  `werfe neu MeinFehler("…")`; Fehlerklassen auch ohne `neu` als `werfe WertFehler("…")`.
+- Fehlerobjekt aus `fange f` mit `nachricht`, `art`, `zeile`, `datei`; bleibt als Zeichenkette verwendbar.
+- `ist_instanz(wert, Klasse)` prüft die Art, auch über Vererbung; `fange (m.Klasse)` mit Punktpfad.
 - Verbund-Zuweisung `??=`: `a ??= b` wertet `b` nur aus, wenn `a` gleich `nichts` ist.
 - Bit-Operatoren `& | ^ << >>` und unäres `~` sind für Klassen überladbar (`__bitund__`, `__bitoder__`,
   `__bitxoder__`, `__links__`, `__rechts__`, `__bitnicht__`).
@@ -19,6 +23,9 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - **Bruch:** `aufzaehlung` und `aufzählung` sind jetzt Schlüsselwörter. Bestehende Variablen, Funktionen oder
   Klassen mit diesem Namen müssen umbenannt werden.
 - `**kw: T` prüft jetzt jeden Wert statt des ganzen Wörterbuchs; `*args: T` prüft jedes Element einzeln.
+- `fange (Klasse)` fängt mit jeder Klasse, auch eigenen und Punktpfad-Klassen (nicht nur eingebaute Arten).
+- `werfe f` mit der Fehlervariable aus `fange` behält Art, Meldung und Ort des ursprünglichen Fehlers
+  (vorher wurde die Art zu `AusnahmeFehler`).
 - Fehlerort wird über ein Attribut statt über Textsuche in der Meldung gesetzt.
 
 ### Behoben

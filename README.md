@@ -296,12 +296,36 @@ Die Fehlerarten haben deutsche Namen; sie stehen auch im Fehlerkopf der CLI, z. 
 `fange (…)` versteht diese Namen und die englischen Python-Namen (`fange (KeyError) f`), auch gemischt.
 Mit Vererbung: `fange (DateiFehler)` fängt auch `FileNotFoundError`, `fange (LaufzeitFehler)`
 fängt auch `RekursionsFehler`. `fange (Fehler)` fängt alles, auch mit `werfe` geworfene Werte.
-Diese haben die Art `AusnahmeFehler` (`fange (AusnahmeFehler) e { … }`) und werden von den übrigen Arten
-nicht gefangen. Wird ein gefangener Fehler mit `werfe e` erneut geworfen, behält er Meldung, Datei und Zeile;
-die Art ist danach ebenfalls `AusnahmeFehler`. Ein unbekannter Name, etwa ein Tippfehler, wirft einen
-`NamensFehler` mit Vorschlag (`meintest du 'WertFehler'?`).
+Mit `werfe` geworfene Werte, die keine Fehler sind, haben die Art `AusnahmeFehler`
+(`fange (AusnahmeFehler) e { … }`) und werden von den übrigen Arten nicht gefangen. Ein unbekannter Name,
+etwa ein Tippfehler, wirft einen `NamensFehler` mit Vorschlag (`meintest du 'WertFehler'?`).
 
 Ohne Typ-Liste (`fange f { ... }`) bleibt das bisherige Verhalten: alles wird gefangen.
+
+#### Eigene Fehlerklassen
+
+Eigene Fehlerklassen erben von einer deutschen Fehlerart und sind unter deutschem und englischem Namen fangbar.
+Sie werden mit `neu` erzeugt; Fehlerklassen können auch ohne `neu` geworfen werden, dann mit `werfe WertFehler("…")`:
+
+```
+klasse MeinFehler(WertFehler) {
+    funktion __init__(dies, text, code) {
+        dies.nachricht = text
+        dies.code = code
+    }
+}
+
+versuche {
+    werfe neu MeinFehler("kaputt", 3)
+} fange (MeinFehler) f {
+    drucke(f.nachricht, f.art, f.zeile, f.datei, f.code)
+}
+```
+
+- Das Fehlerobjekt (`f`) hat `nachricht`, `art`, `zeile` und `datei`; es bleibt als Zeichenkette verwendbar.
+- `ist_instanz(f, WertFehler)` prüft die Art, auch über Vererbung.
+- `fange (m.MeinFehler)` mit Punktpfad fängt eine Klasse aus einem geladenen Modul.
+- Wird ein gefangener Fehler mit `werfe f` erneut geworfen, behält er Art, Meldung und Ort.
 
 ### Listen/Strings: Indexing & Slicing
 
