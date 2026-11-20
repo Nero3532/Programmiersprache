@@ -19,6 +19,11 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - Mustervergleich in `passe`: `fall sei [a, *rest]` und `fall sei {"k": m}` (Bindung nur im Arm), Typmuster
   `fall Ganzzahl n`, Platzhalter `fall _`, Wächter `fall muster wenn bedingung`.
 - `passe` als Ausdruck: der Wert des Arms ist das Ergebnis; ohne Treffer und ohne `sonst` ein `WertFehler`.
+- Generatoren: Funktionen mit `ergib` liefern einen Generator (Typ `Generator`); `zurück` beendet ihn. Läuft ohne Threads.
+  Nutzbar in `für`, Comprehensions, Entpacken, `liste`, `summe`, `abbilden` & Co. und mit `naechstes(g)`.
+
+### Geändert
+- Bruch: `ergib` ist jetzt Schlüsselwort. Bestehender Code mit `ergib` als Variablen- oder Funktionsname muss umbenannt werden.
 
 ## [2.9.0]
 
