@@ -5,6 +5,10 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 ## [Unreleased]
 
 ### Hinzugefügt
+- Iterator-Protokoll: Klassen mit `__iter__` (liefert Sammlung oder Objekt mit `__naechstes__`) sind iterierbar in
+  `für`, Comprehensions, Entpacken, `liste`, `menge`, `summe`, `abbilden` & Co. Ende per `werfe IterationsEnde()`.
+- `IterationsEnde` als Fehlerart (eigene Basis, nicht `StopIteration`) und `naechstes(it)` für Iteratoren.
+- `bereich` in `für` und Comprehensions läuft lazy, ohne Liste (`bereich(10**12)` startet sofort). `bereich(...)` als Wert bleibt eine Liste.
 - Sammlungs-Dunder für Klassen: `__laenge__` (für `länge`), `__hole__` / `__setze__` (für `x[i]` und `x[i] = w`),
   `__enthaelt__` (für `in` / `nicht in`), `__aufruf__` (für `x(...)`). Slices kommen als `Teilbereich(anfang, ende, schritt)` an.
   Falsche Rückgabetypen werden deutsch gemeldet.
