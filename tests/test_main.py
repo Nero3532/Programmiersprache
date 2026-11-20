@@ -661,7 +661,7 @@ class TestPruefen(unittest.TestCase):
             'drucke("laeuft")\ndrucke(1 / 0)\nlade "gibt_es_nicht.deu"\n')
         self.assertEqual(code, 0)
         self.assertEqual(fehler, '')
-        self.assertTrue(ausgabe.strip().endswith(': keine Syntaxfehler'))
+        self.assertTrue(ausgabe.strip().endswith(': keine Syntaxfehler, 0 Hinweise'))
         self.assertNotIn('laeuft', ausgabe)
 
     def test_syntaxfehler_exitcode_eins(self):
