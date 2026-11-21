@@ -72,6 +72,20 @@ class CliTests(unittest.TestCase):
         r = lauf('--formatieren', p)
         self.assertEqual((r.returncode, r.stdout.strip()), (0, f'{p}: bereits formatiert'))
 
+    def test_bom_quelltext_laeuft_prueft_und_formatiert_mit_erhalt(self):
+        bom = b'\xef\xbb\xbf'
+        p = self.datei(bom + b'wenn wahr {\ndrucke(7)\n}\n')
+        r = lauf(p)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, '7'))
+        self.assertEqual(lauf('--pruefen', p).returncode, 0)
+        self.assertEqual(lauf('--formatieren', p).returncode, 0)
+        self.assertEqual(self.lesen(p), bom + b'wenn wahr {\n    drucke(7)\n}\n')
+        # 'lade' einer BOM-Datei
+        self.datei(bom + b'sei x = 5\n', 'm.deu')
+        h = self.datei(b'lade "m.deu"\ndrucke(x)\n', 'h.deu')
+        r = lauf(h)
+        self.assertEqual((r.returncode, r.stdout.strip()), (0, '5'))
+
     def test_crlf_bleibt(self):
         p = self.datei(b'wenn wahr {\r\ndrucke(1)\r\n}\r\n')
         self.assertEqual(lauf('--formatieren', p).returncode, 0)

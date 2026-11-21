@@ -64,7 +64,7 @@ class Token:
 
 class Lexer:
     def __init__(self, quelltext: str, start_zeile: int = 1):
-        self.quelltext = quelltext
+        self.quelltext = quelltext.removeprefix('\ufeff')  # BOM von Windows-Editoren
         self.pos = 0
         self.zeile = start_zeile  # >1 für Teilausdrücke (Interpolation) mitten in einer Datei
         self.tokens: list[Token] = []

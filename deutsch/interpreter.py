@@ -267,7 +267,7 @@ _MELDUNGS_REGELN = tuple(
          r'(?:integer |float )?(?:division|modulo|floor division|divmod\(\))(?: or modulo)? by zero'
          r'|float modulo|float divmod\(\)',
          'Division durch Null'),
-        (ZeroDivisionError, r'.*cannot be raised to a negative power',
+        (ZeroDivisionError, r'.*cannot be raised to a negative power|zero to a negative power',
          'Null kann nicht mit negativem Exponenten potenziert werden'),
         (RecursionError, r'maximum recursion depth exceeded.*', 'Maximale Rekursionstiefe überschritten'),
         (ValueError, r'Exceeds the limit \((\d+) digits\) for integer string conversion.*',
@@ -470,11 +470,16 @@ class _WeiterleitungSchema(ValueError):
 
 
 class _NurHttpWeiterleitung(urllib.request.HTTPRedirectHandler):
-    def redirect_request(self, req, fp, code, msg, headers, newurl):
-        schema = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl)).scheme.lower()
-        if schema not in ('http', 'https'):
-            raise _WeiterleitungSchema(f"Weiterleitung auf nicht erlaubtes Schema '{schema}'")
-        return super().redirect_request(req, fp, code, msg, headers, newurl)
+    def http_error_302(self, req, fp, code, msg, headers):
+        # urllib prüft file:/ftp:/… selbst und wirft HTTPError; vorher abfangen für die eigene Meldung
+        ziel = headers.get('location') or headers.get('uri')
+        if ziel:
+            schema = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, ziel)).scheme.lower()
+            if schema not in ('http', 'https'):
+                raise _WeiterleitungSchema(f"Weiterleitung auf nicht erlaubtes Schema '{schema}'")
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
 
 
 _HTTP_OPENER = urllib.request.build_opener(_NurHttpWeiterleitung)
@@ -1535,7 +1540,9 @@ class Interpreter:
         lese(f) liest aus der bereits geöffneten Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, 'r', encoding=kodierung, newline=newline) as f:
+            # utf-8 liest ein BOM (Excel, Windows-Editoren) mit; Schreiben bleibt ohne BOM
+            lese_kodierung = 'utf-8-sig' if kodierung.lower().replace('_', '-') in ('utf-8', 'utf8') else kodierung
+            with open(voller_pfad, 'r', encoding=lese_kodierung, newline=newline) as f:
                 return lese(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -1729,7 +1736,7 @@ class Interpreter:
         pfad = self._zu_text(args[0])
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding='utf-8-sig') as f:
                 return json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -1808,12 +1815,16 @@ class Interpreter:
 
         def lese(f):
             try:
-                zeilen = [z for z in csv.reader(f, delimiter=trenner) if z]  # leere Zeilen überspringen
+                leser = csv.reader(f, delimiter=trenner, strict=True)
+                zeilen = [z for z in leser if z]  # leere Zeilen überspringen
             except csv.Error as e:
-                raise ValueError(f"Ungültiges CSV in '{pfad}': {e}") from None
+                raise ValueError(f"Ungültiges CSV in '{pfad}': nicht geschlossenes Anführungszeichen oder ungültiges Format (Zeile {leser.line_num})") from None
             if not kopfzeile or not zeilen:
                 return zeilen
             kopf = zeilen[0]
+            if len(set(kopf)) < len(kopf):
+                doppelt = next(k for k in kopf if kopf.count(k) > 1)
+                raise ValueError(f"Ungültiges CSV in '{pfad}': Spaltenname '{doppelt}' kommt mehrfach in der Kopfzeile vor")
             ergebnis = []
             for nr, z in enumerate(zeilen[1:], 2):
                 if len(z) > len(kopf):
@@ -1881,6 +1892,8 @@ class Interpreter:
             with _HTTP_OPENER.open(url, timeout=zeitlimit) as antwort:
                 daten = antwort.read(self.HTTP_MAX_BYTES + 1)
                 zeichensatz = antwort.headers.get_content_charset() or 'utf-8'
+                laenge = antwort.headers.get('Content-Length', '')
+                unvollstaendig = laenge.strip().isdigit() and len(daten) < min(int(laenge), self.HTTP_MAX_BYTES + 1)
         except urllib.error.HTTPError as e:
             e.close()
             if 300 <= e.code < 400:  # urllib meldet Schleifen und zu viele Weiterleitungen als HTTPError
@@ -1898,6 +1911,8 @@ class Interpreter:
             raise ValueError(f"Ungültige URL: '{url}'") from None
         except (OSError, http.client.HTTPException):
             raise OSError(f"Netzwerkfehler beim Abruf von '{url}'") from None
+        if unvollstaendig:
+            raise OSError(f"Unvollständige Antwort beim Abruf von '{url}'")
         if len(daten) > self.HTTP_MAX_BYTES:
             raise ValueError(f"Antwort von '{url}' ist zu groß (über {self.HTTP_MAX_BYTES // (1024 * 1024)} MB)")
         try:

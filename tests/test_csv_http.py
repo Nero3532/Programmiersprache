@@ -192,6 +192,20 @@ class _Handler(BaseHTTPRequestHandler):
             self.send_header('Content-Length', '0')
             self.end_headers()
             return
+        elif self.path == '/zu_file':
+            self.send_response(302)
+            self.send_header('Location', 'file:///etc/passwd')
+            self.send_header('Content-Length', '0')
+            self.end_headers()
+            return
+        elif self.path == '/kurz':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/plain')
+            self.send_header('Content-Length', '100')
+            self.end_headers()
+            self.wfile.write(b'nur wenig')
+            self.close_connection = True
+            return
         elif self.path == '/langsam':
             time.sleep(1.5)
         self.send_response(status)
@@ -254,6 +268,14 @@ class TestHttpHolen(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "Weiterleitung auf nicht erlaubtes Schema 'ftp'"):
             self.holen('/zu_ftp')
 
+    def test_weiterleitung_auf_file_verboten(self):
+        with self.assertRaisesRegex(ValueError, "Weiterleitung auf nicht erlaubtes Schema 'file'"):
+            self.holen('/zu_file')
+
+    def test_unvollstaendige_antwort(self):
+        with self.assertRaisesRegex(OSError, 'Unvollständige Antwort'):
+            self.holen('/kurz')
+
     def test_weiterleitungsschleife(self):
         with self.assertRaisesRegex(OSError, 'zyklische Weiterleitungen'):
             self.holen('/schleife')
@@ -278,6 +300,39 @@ class TestHttpHolen(unittest.TestCase):
             auswerten('http_holen("http://127.0.0.1/", zeitlimit=0)')
         with self.assertRaisesRegex(TypeError, 'mindestens 1 Argument'):
             auswerten('http_holen()')
+
+
+class TestQaFunde(DateiBasis):
+    def test_csv_excel_bom_ohne_bom_im_schluessel(self):
+        self.schreibe('a.csv', '﻿name,alter\nAnna,30\n')
+        self.assertEqual(self.hier('csv_lesen("a.csv")'), [{'name': 'Anna', 'alter': '30'}])
+
+    def test_bom_bei_datei_zeilen_json_lesen_schreiben_ohne_bom(self):
+        self.schreibe('t.txt', '﻿A\nB\n')
+        self.assertEqual(self.hier('datei_lesen("t.txt")'), 'A\nB\n')
+        self.assertEqual(self.hier('zeilen_lesen("t.txt")'), ['A', 'B'])
+        self.schreibe('j.json', '﻿{"a": 1}')
+        self.assertEqual(self.hier('json_lesen("j.json")'), {'a': 1})
+        self.hier('datei_schreiben("o.txt", "x")')
+        with open(self.pfad('o.txt'), 'rb') as f:
+            self.assertEqual(f.read(), b'x')
+
+    def test_csv_doppelte_spaltennamen(self):
+        self.schreibe('a.csv', 'a,b,a\n1,2,3\n')
+        with self.assertRaisesRegex(ValueError, "Spaltenname 'a' kommt mehrfach"):
+            self.hier('csv_lesen("a.csv")')
+        self.assertEqual(self.hier('csv_lesen("a.csv", kopfzeile=falsch)'), [['a', 'b', 'a'], ['1', '2', '3']])
+
+    def test_csv_offenes_anfuehrungszeichen(self):
+        self.schreibe('a.csv', 'a,b\n1,"2\n')
+        with self.assertRaisesRegex(ValueError, r'nicht geschlossenes Anführungszeichen.*Zeile \d+'):
+            self.hier('csv_lesen("a.csv")')
+
+    def test_null_hoch_negativ_deutsch(self):
+        for code in ('0 ** -1', '0.0 ** -1', 'sei a = 0\na ** -1'):
+            with self.subTest(code=code):
+                with self.assertRaisesRegex(ZeroDivisionError, 'Null kann nicht mit negativem Exponenten'):
+                    auswerten(code)
 
 
 class TestJsonText(unittest.TestCase):

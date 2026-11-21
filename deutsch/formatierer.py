@@ -112,6 +112,8 @@ def datei_formatieren(pfad: str) -> int:
     except UnicodeDecodeError:
         print(f'{pfad}: keine gültige UTF-8-Datei, nichts geändert', file=sys.stderr)
         return 1
+    bom = text.startswith('\ufeff')
+    text = text.removeprefix('\ufeff')
     crlf = b'\r\n' in roh
     original = text.replace('\r\n', '\n')
 
@@ -123,7 +125,7 @@ def datei_formatieren(pfad: str) -> int:
     if grund:
         print(f'{pfad}: Formatieren abgebrochen, Datei unverändert: {grund}', file=sys.stderr)
         return 1
-    ausgabe = (neu.replace('\n', '\r\n') if crlf else neu).encode('utf-8')
+    ausgabe = ('\ufeff' * bom + (neu.replace('\n', '\r\n') if crlf else neu)).encode('utf-8')
     if ausgabe == roh:
         print(f'{pfad}: bereits formatiert')
         return 0
