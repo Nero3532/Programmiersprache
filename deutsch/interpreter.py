@@ -5,6 +5,14 @@ import functools
 import inspect
 import random
 import json
+import csv
+import io
+import codecs
+import socket
+import http.client
+import urllib.error
+import urllib.parse
+import urllib.request
 import re
 import time
 import statistics
@@ -435,6 +443,21 @@ class DeutschNamensraum:
 _NICHT_GEFUNDEN = object()
 
 
+class _WeiterleitungSchema(ValueError):
+    """Intern: Weiterleitung auf ein anderes Schema als http/https."""
+
+
+class _NurHttpWeiterleitung(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        schema = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, newurl)).scheme.lower()
+        if schema not in ('http', 'https'):
+            raise _WeiterleitungSchema(f"Weiterleitung auf nicht erlaubtes Schema '{schema}'")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+_HTTP_OPENER = urllib.request.build_opener(_NurHttpWeiterleitung)
+
+
 class _OptionalKurzschluss(Exception):
     """Intern: 'a?.b' mit a = nichts; wird von OptionalKette gefangen."""
 
@@ -749,6 +772,11 @@ class Interpreter:
         g.setze('zippe',            self._eb_zippe)
         g.setze('json_lesen',       self._eb_json_lesen)
         g.setze('json_schreiben',   self._eb_json_schreiben)
+        g.setze('json_parsen',      self._eb_json_parsen)
+        g.setze('json_text',        self._eb_json_text)
+        g.setze('csv_lesen',        self._eb_csv_lesen)
+        g.setze('csv_schreiben',    self._eb_csv_schreiben)
+        g.setze('http_holen',       self._eb_http_holen)
         g.setze('kommandozeilen_argumente', self._eb_kommandozeilen_argumente)
         g.setze('passt_zu',         self._eb_passt_zu)
         g.setze('regex_ersetze',    self._eb_regex_ersetze)
@@ -1470,16 +1498,18 @@ class Interpreter:
             falsch = next((a for a in args if not isinstance(a, (int, float))), args[0])
             raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(falsch)}")
 
-    def _eb_datei_lesen(self, *args):
+    @_mit_keywords
+    def _eb_datei_lesen(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_lesen', kwargs)
         self._pruefe_args('datei_lesen', args, 1)
-        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read())
+        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read(), kodierung)
 
-    def _lese_datei(self, pfad: str, lese):
-        """Gemeinsame Fehlerübersetzung für datei_lesen und zeilen_lesen.
+    def _lese_datei(self, pfad: str, lese, kodierung: str = 'utf-8', newline=None):
+        """Gemeinsame Fehlerübersetzung für datei_lesen, zeilen_lesen und csv_lesen.
         lese(f) liest aus der bereits geöffneten Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding=kodierung, newline=newline) as f:
                 return lese(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -1488,16 +1518,16 @@ class Interpreter:
         except PermissionError:
             raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
         except UnicodeDecodeError:
-            raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
+            raise ValueError(f"'{pfad}' ist keine gültige {kodierung.upper()}-Textdatei")
         except OSError:
             raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
-    def _schreibe_datei(self, pfad: str, modus: str, schreibe):
-        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen und json_schreiben.
+    def _schreibe_datei(self, pfad: str, modus: str, schreibe, kodierung: str = 'utf-8', newline=None):
+        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen, json_schreiben und csv_schreiben.
         schreibe(f) schreibt in die bereits geöffnete Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, modus, encoding='utf-8') as f:
+            with open(voller_pfad, modus, encoding=kodierung, newline=newline) as f:
                 schreibe(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
@@ -1508,23 +1538,29 @@ class Interpreter:
         except OSError:
             raise OSError(f"'{pfad}' konnte nicht geschrieben werden")
         except UnicodeEncodeError:
-            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als UTF-8 speichern lassen")
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als {kodierung.upper()} speichern lassen")
 
-    def _eb_datei_schreiben(self, *args):
+    @_mit_keywords
+    def _eb_datei_schreiben(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_schreiben', kwargs)
         self._pruefe_args('datei_schreiben', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt))
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt), kodierung)
         return None
 
-    def _eb_datei_anhaengen(self, *args):
+    @_mit_keywords
+    def _eb_datei_anhaengen(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_anhängen', kwargs)
         self._pruefe_args('datei_anhängen', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt))
+        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt), kodierung)
         return None
 
-    def _eb_zeilen_lesen(self, *args):
+    @_mit_keywords
+    def _eb_zeilen_lesen(self, *args, **kwargs):
+        kodierung = self._kodierung('zeilen_lesen', kwargs)
         self._pruefe_args('zeilen_lesen', args, 1)
-        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f])
+        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f], kodierung)
 
     def _eb_datei_loeschen(self, *args):
         self._pruefe_args('datei_loeschen', args, 1)
@@ -1694,6 +1730,175 @@ class Interpreter:
             raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden')
         self._schreibe_datei(pfad, 'w', lambda f: json.dump(bereit, f, ensure_ascii=False, indent=2))
         return None
+
+    def _kodierung(self, name, kwargs):
+        """Liest das einzige erlaubte Keyword 'kodierung=' und prüft, dass es eine Text-Kodierung ist."""
+        for k in kwargs:
+            if k != 'kodierung':
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+        return self._kodierung_pruefen(kwargs.get('kodierung', 'utf-8'))
+
+    def _kodierung_pruefen(self, kodierung):
+        if not isinstance(kodierung, str):
+            raise TypeError(f"'kodierung' erwartet eine Zeichenkette, bekam {self._typname(kodierung)}")
+        try:
+            info = codecs.lookup(kodierung)
+        except LookupError:
+            raise ValueError(f"Unbekannte Kodierung '{kodierung}'") from None
+        if not getattr(info, '_is_text_encoding', True):  # z. B. 'hex', 'rot13'
+            raise ValueError(f"'{kodierung}' ist keine Text-Kodierung")
+        return kodierung
+
+    def _binde(self, name, args, kwargs, pflicht, optional):
+        """Bindet Positions- und Keyword-Argumente wie Python: pflicht = Namen, optional = {Name: Standard}."""
+        namen = list(pflicht) + list(optional)
+        if len(args) > len(namen):
+            raise TypeError(f"'{name}' erwartet höchstens {len(namen)} Argument(e), bekam {len(args)}")
+        werte = dict(zip(namen, args))
+        for k, v in kwargs.items():
+            if k not in namen:
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+            if k in werte:
+                raise TypeError(f"'{name}': '{k}' ist doppelt angegeben")
+            werte[k] = v
+        fehlend = [n for n in pflicht if n not in werte]
+        if fehlend:
+            raise TypeError(f"'{name}' erwartet mindestens {len(pflicht)} Argument(e), es fehlt '{fehlend[0]}'")
+        return [werte.get(n, optional.get(n)) for n in namen]
+
+    def _csv_trenner(self, name, trenner):
+        if not isinstance(trenner, str):
+            raise TypeError(f"'{name}': 'trennzeichen' erwartet eine Zeichenkette, bekam {self._typname(trenner)}")
+        if len(trenner) != 1 or trenner in '"\r\n':
+            raise ValueError(f"'{name}': 'trennzeichen' muss genau ein Zeichen sein (kein Anführungszeichen, kein Zeilenumbruch)")
+        return trenner
+
+    @_mit_keywords
+    def _eb_csv_lesen(self, *args, **kwargs):
+        pfad, trenner, kopfzeile, kodierung = self._binde(
+            'csv_lesen', args, kwargs, ('pfad',), {'trennzeichen': ',', 'kopfzeile': True, 'kodierung': 'utf-8'})
+        pfad, trenner = self._zu_text(pfad), self._csv_trenner('csv_lesen', trenner)
+        kopfzeile, kodierung = self._ist_wahr(kopfzeile), self._kodierung_pruefen(kodierung)
+
+        def lese(f):
+            try:
+                zeilen = [z for z in csv.reader(f, delimiter=trenner) if z]  # leere Zeilen überspringen
+            except csv.Error as e:
+                raise ValueError(f"Ungültiges CSV in '{pfad}': {e}") from None
+            if not kopfzeile or not zeilen:
+                return zeilen
+            kopf = zeilen[0]
+            ergebnis = []
+            for nr, z in enumerate(zeilen[1:], 2):
+                if len(z) > len(kopf):
+                    raise ValueError(f"Ungültiges CSV in '{pfad}': Zeile {nr} hat mehr Felder als die Kopfzeile")
+                ergebnis.append(dict(zip(kopf, z + [''] * (len(kopf) - len(z)))))
+            return ergebnis
+        return self._lese_datei(pfad, lese, kodierung, newline='')
+
+    @_mit_keywords
+    def _eb_csv_schreiben(self, *args, **kwargs):
+        pfad, zeilen, trenner, kodierung = self._binde(
+            'csv_schreiben', args, kwargs, ('pfad', 'zeilen'), {'trennzeichen': ',', 'kodierung': 'utf-8'})
+        pfad, trenner = self._zu_text(pfad), self._csv_trenner('csv_schreiben', trenner)
+        kodierung = self._kodierung_pruefen(kodierung)
+        if not isinstance(zeilen, list):
+            raise TypeError(f"'csv_schreiben' erwartet eine Liste von Zeilen, bekam {self._typname(zeilen)}")
+
+        def zelle(w):
+            if w is None:
+                return ''
+            if isinstance(w, (list, dict, set)):
+                raise TypeError(f"'csv_schreiben' kann '{self._typname(w)}' nicht als Feld speichern")
+            return self._zu_text(w)
+
+        # Alles vorab prüfen, umwandeln und kodieren: ein Fehler ließe sonst eine halbe Datei zurück
+        if zeilen and all(isinstance(z, dict) for z in zeilen):
+            kopf = list(zeilen[0])
+            for z in zeilen:
+                fremd = [k for k in z if k not in kopf]
+                if fremd:
+                    raise ValueError(f"'csv_schreiben': Schlüssel '{self._zu_text(fremd[0])}' fehlt in der Kopfzeile (erste Zeile)")
+            tabelle = [[self._zu_text(k) for k in kopf]] + [[zelle(z.get(k)) for k in kopf] for z in zeilen]
+        elif all(isinstance(z, list) for z in zeilen):
+            tabelle = [[zelle(w) for w in z] for z in zeilen]
+        else:
+            raise TypeError("'csv_schreiben' erwartet eine Liste von Wörterbüchern oder eine Liste von Listen")
+        puffer = io.StringIO(newline='')
+        csv.writer(puffer, delimiter=trenner, lineterminator='\n').writerows(tabelle)
+        text = puffer.getvalue()
+        try:
+            text.encode(kodierung)
+        except UnicodeEncodeError:
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als {kodierung.upper()} speichern lassen") from None
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(text), kodierung, newline='')
+        return None
+
+    HTTP_MAX_BYTES = 50 * 1024 * 1024  # Schutz vor endlos großen Antworten
+
+    @_mit_keywords
+    def _eb_http_holen(self, *args, **kwargs):
+        url, zeitlimit = self._binde('http_holen', args, kwargs, ('url',), {'zeitlimit': 10})
+        url = self._zu_text(url)
+        if isinstance(zeitlimit, bool) or not isinstance(zeitlimit, (int, float)):
+            raise TypeError(f"'http_holen': 'zeitlimit' erwartet eine Zahl, bekam {self._typname(zeitlimit)}")
+        if not zeitlimit > 0:
+            raise ValueError("'http_holen': 'zeitlimit' muss größer als 0 sein")
+        try:
+            schema = urllib.parse.urlsplit(url).scheme.lower()
+        except ValueError:
+            raise ValueError(f"Ungültige URL: '{url}'") from None
+        if schema not in ('http', 'https'):
+            raise ValueError(f"'http_holen' erlaubt nur http:// und https://, nicht '{url}'")
+        zeit_meldung = f"Zeitüberschreitung beim Abruf von '{url}' (nach {zeitlimit} Sekunden)"
+        try:
+            with _HTTP_OPENER.open(url, timeout=zeitlimit) as antwort:
+                daten = antwort.read(self.HTTP_MAX_BYTES + 1)
+                zeichensatz = antwort.headers.get_content_charset() or 'utf-8'
+        except urllib.error.HTTPError as e:
+            e.close()
+            if 300 <= e.code < 400:  # urllib meldet Schleifen und zu viele Weiterleitungen als HTTPError
+                raise OSError(f"Zu viele oder zyklische Weiterleitungen beim Abruf von '{url}'") from None
+            raise OSError(f"HTTP-Fehler {e.code} beim Abruf von '{url}'") from None
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, (TimeoutError, socket.timeout)):
+                raise TimeoutError(zeit_meldung) from None
+            raise OSError(f"Netzwerkfehler beim Abruf von '{url}'") from None
+        except TimeoutError:
+            raise TimeoutError(zeit_meldung) from None
+        except _WeiterleitungSchema as e:
+            raise ValueError(str(e)) from None
+        except ValueError:  # http.client.InvalidURL und Zeichen, die sich nicht senden lassen
+            raise ValueError(f"Ungültige URL: '{url}'") from None
+        except (OSError, http.client.HTTPException):
+            raise OSError(f"Netzwerkfehler beim Abruf von '{url}'") from None
+        if len(daten) > self.HTTP_MAX_BYTES:
+            raise ValueError(f"Antwort von '{url}' ist zu groß (über {self.HTTP_MAX_BYTES // (1024 * 1024)} MB)")
+        try:
+            return daten.decode(zeichensatz)
+        except LookupError:
+            raise ValueError(f"Antwort von '{url}' nennt die unbekannte Kodierung '{zeichensatz}'") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"Antwort von '{url}' ist kein gültiger {zeichensatz.upper()}-Text") from None
+
+    def _eb_json_parsen(self, *args):
+        self._pruefe_args('json_parsen', args, 1)
+        if not isinstance(args[0], str):
+            raise TypeError(f"'json_parsen' erwartet eine Zeichenkette, bekam {self._typname(args[0])}")
+        try:
+            return json.loads(args[0])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Ungültiges JSON (Zeichen {e.pos})") from None
+        except RecursionError:
+            raise RecursionError("JSON ist zu tief verschachtelt") from None
+
+    def _eb_json_text(self, *args):
+        self._pruefe_args('json_text', args, 1)
+        try:
+            bereit = self._json_bereit(args[0])
+        except RecursionError:
+            raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden') from None
+        return json.dumps(bereit, ensure_ascii=False, indent=2)
 
     def _eb_kommandozeilen_argumente(self, *args):
         self._pruefe_args('kommandozeilen_argumente', args, 0)
