@@ -76,6 +76,7 @@ Verwendung:
   python main.py datei.deu [args...]   Datei ausführen; args stehen in kommandozeilen_argumente()
   python main.py -c "code" [args...]   Code direkt ausführen
   python main.py --pruefen datei.deu   auf Syntaxfehler und Hinweise prüfen, nichts ausführen
+  python main.py --formatieren datei.deu   Datei einheitlich einrücken (Kommentare bleiben)
   python main.py -V, --version         Version anzeigen
   python main.py -h, --hilfe, --help   diese Hilfe anzeigen
 
@@ -588,6 +589,12 @@ def main():
             print('Fehler: --pruefen braucht eine Datei, z. B. --pruefen programm.deu', file=sys.stderr)
             sys.exit(2)
         datei_pruefen(argv[1])
+    elif erste == '--formatieren':
+        if len(argv) < 2:
+            print('Fehler: --formatieren braucht eine Datei, z. B. --formatieren programm.deu', file=sys.stderr)
+            sys.exit(2)
+        from deutsch import formatierer
+        sys.exit(formatierer.datei_formatieren(argv[1]))
     elif erste.startswith('-'):
         print(f'Fehler: unbekannte Option {erste!r}', file=sys.stderr)
         print("Hinweis: 'python main.py --hilfe' zeigt alle Optionen.", file=sys.stderr)
