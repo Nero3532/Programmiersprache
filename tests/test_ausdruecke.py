@@ -882,5 +882,61 @@ class TestLesbareSyntaxfehler(_Basis):
                 self.assertNotRegex(self.syntaxfehler(code), r'\b[A-Z][A-Z_]{2,}\b')
 
 
+class TestZahlenSchnellpfad(unittest.TestCase):
+    """Operanden genau int/float nehmen einen schnellen Pfad; Ergebnisse und Fehler bleiben die des allgemeinen."""
+    def test_ergebnisse(self):
+        faelle = {
+            '7 // 2': '3', '-7 // 2': '-4', '7 % 3': '1', '-7 % 3': '2', '7 / 2': '3.5', '2 ** 10': '1024',
+            '2 ** -1': '0.5', '1 + 2.5': '3.5', '3 == 3.0': 'wahr', '1 != 1': 'falsch', '1 < 2.5': 'wahr',
+            '2 >= 3': 'falsch', 'wahr + 1': '2', 'wahr == 1': 'wahr', '2.5 // 1': '2', '5.5 % 2': '1.5',
+        }
+        for ausdruck, erwartet in faelle.items():
+            with self.subTest(ausdruck):
+                self.assertEqual(ausgabe(f'drucke({ausdruck})').strip(), erwartet)
+
+    def test_division_durch_null(self):
+        for ausdruck, meldung in {'1 / 0': 'Division durch Null', '1.5 / 0.0': 'Division durch Null',
+                                  '1 // 0': 'Ganzzahldivision durch Null', '1 % 0': 'Division durch Null'}.items():
+            with self.subTest(ausdruck):
+                with self.assertRaises(ZeroDivisionError) as ctx:
+                    ausgabe(f'drucke({ausdruck})')
+                self.assertIn(meldung, str(ctx.exception))
+
+    def test_kurzschluss_und_koaleszenz_bleiben(self):
+        self.assertEqual(ausgabe('drucke(0 und 1 / 0); drucke(1 oder 1 / 0); drucke(nichts ?? 4)').split(), ['0', '1', '4'])
+
+
+class TestAufrufSchnellpfad(unittest.TestCase):
+    """Parameterplan je Definition gecacht: derselbe Aufruf wechselt zwischen schnellem und allgemeinem Pfad."""
+    def test_gleiche_funktion_mit_wechselnder_argumentform(self):
+        code = ('funktion f(a, b = 10) { zurück a + b }\n'
+                'drucke(f(1, 2))\ndrucke(f(1))\ndrucke(f(1, b = 5))\ndrucke(f(1, 2))')
+        self.assertEqual(ausgabe(code).split(), ['3', '11', '6', '3'])
+
+    def test_typhinweis_nur_bei_hinweis_geprueft(self):
+        code = 'funktion f(a, b: Ganzzahl) { zurück b }\n'
+        self.assertEqual(ausgabe(code + 'drucke(f("x", 2))').strip(), '2')
+        with self.assertRaises(TypeError) as ctx:
+            ausgabe(code + 'f(1, "zwei")')
+        self.assertIn("Parameter 'b': erwartet Typ 'Ganzzahl'", str(ctx.exception))
+
+    def test_hinweis_gilt_weiter_fuer_zuweisung_im_koerper(self):
+        with self.assertRaises(TypeError):
+            ausgabe('funktion f(n: Ganzzahl) { n = "x" }\nf(1)')
+
+    def test_falsche_argumentzahl_meldungen(self):
+        with self.assertRaises(TypeError) as ctx:
+            ausgabe('funktion f(a, b) { zurück a }\nf(1)')
+        self.assertIn('Pflichtargument(e) fehlen: b', str(ctx.exception))
+        with self.assertRaises(TypeError) as ctx:
+            ausgabe('funktion f(a) { zurück a }\nf(1, 2)')
+        self.assertIn('erwartet höchstens 1 Argument(e), bekam 2', str(ctx.exception))
+
+    def test_variadisch_und_kwargs_weiter_allgemein(self):
+        code = ('funktion f(a, *r) { zurück r }\ndrucke(f(1, 2, 3))\n'
+                'funktion g(a, **kw) { zurück kw }\ndrucke(g(1, x = 2))')
+        self.assertEqual(ausgabe(code).split('\n')[0], '[2, 3]')
+
+
 if __name__ == '__main__':
     unittest.main()

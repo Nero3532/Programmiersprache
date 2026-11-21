@@ -2,6 +2,9 @@
 import os
 import math
 import functools
+import itertools
+import operator
+import weakref
 import inspect
 import random
 import json
@@ -102,6 +105,25 @@ class Teilbereich:
 # als Teilbereich-Objekt (.anfang/.ende/.schritt, nicht angegebene Teile = nichts).
 
 # Bit-Operatoren (nur Ganzzahlen bzw. Mengen, keine Überladung durch Klassen)
+def _zahl_geteilt(l, r):
+    if r == 0: raise ZeroDivisionError('Division durch Null')
+    return l / r
+
+def _zahl_ganz_geteilt(l, r):
+    if r == 0: raise ZeroDivisionError('Ganzzahldivision durch Null')
+    return l // r
+
+def _zahl_modulo(l, r):
+    if r == 0: raise ZeroDivisionError('Division durch Null')
+    return l % r
+
+# Schneller Pfad: beide Operanden genau int/float (kein bool, keine Instanz, keine Zeichenkette)
+_ZAHL_OPERATOREN = {
+    '+': operator.add, '-': operator.sub, '*': operator.mul, '/': _zahl_geteilt, '//': _zahl_ganz_geteilt,
+    '%': _zahl_modulo, '**': operator.pow, '==': operator.eq, '!=': operator.ne, '<': operator.lt,
+    '>': operator.gt, '<=': operator.le, '>=': operator.ge,
+}
+_KURZSCHLUSS_OPERATOREN = frozenset(('und', 'oder', '??'))
 _BIT_OPERATOREN = ('&', '|', '^', '<<', '>>')
 
 
@@ -585,6 +607,10 @@ class Interpreter:
         # Datei, deren Code gerade läuft (absoluter Pfad); None = Hauptskript bzw. REPL.
         # Wechselt bei 'lade' und beim Aufruf einer Funktion aus einer geladenen Datei.
         self._aktuelle_datei: str | None = None
+        # Lebende Generatoren (Erzeugungsnummer -> Generator), schwach: bei Programmende noch angehaltene werden geschlossen
+        self._aufruf_plaene = {}  # FunktionDefinition -> Parameterplan (siehe _funktion_aufrufen)
+        self._generatoren = weakref.WeakValueDictionary()
+        self._generator_nummer = itertools.count()
         self._dispatch = self._dispatch_aufbauen()
         self._gen_dispatch = {  # Anweisungen, die 'ergib' enthalten können (siehe 'Generatoren')
             ast.WennAnweisung: self._gen_Wenn, ast.SolangeAnweisung: self._gen_Solange,
@@ -2180,6 +2206,18 @@ class Interpreter:
             self._letzter_aufruf_stack = []
         return self._besuche(knoten, umgebung)
 
+    def generatoren_schliessen(self):
+        """Schließt noch angehaltene Generatoren (umgekehrte Erzeugungsreihenfolge): ihr 'endlich' läuft jetzt.
+        Alle werden geschlossen; der erste Fehler aus einem 'endlich' geht danach weiter."""
+        erster = None
+        for _, gen in sorted(self._generatoren.items(), key=lambda p: p[0], reverse=True):
+            try:
+                gen.close()
+            except Exception as e:
+                erster = erster or e
+        if erster is not None:
+            raise erster
+
     def _besuche(self, knoten, umgebung):
         methode = self._dispatch.get(type(knoten))
         if methode is None:
@@ -2372,11 +2410,16 @@ class Interpreter:
     def _besuche_ListenAusdruck(self, k, u):
         iterable = self._iterable_auswerten(k.iterable, u)
         ergebnis = []
-        for elem in self._iteriere(iterable):
-            iter_u = Umgebung(u)
-            self._schleifenvariable_binden(k.variable, elem, iter_u)
-            if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
-                ergebnis.append(self._besuche(k.ausdruck, iter_u))
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                iter_u = Umgebung(u)
+                self._schleifenvariable_binden(k.variable, elem, iter_u)
+                if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
+                    ergebnis.append(self._besuche(k.ausdruck, iter_u))
+        except BaseException:
+            self._iterator_schliessen(iterator, True)  # Abbruch durch Fehler: Generator sofort schließen
+            raise
         return ergebnis
 
     def _schleifenvariable_binden(self, variable, elem, u):
@@ -2587,21 +2630,26 @@ class Interpreter:
 
     # Operationen
     def _besuche_BinaereOperation(self, k, u):
-        # Kurzschluss
-        if k.operator == 'und':
+        op = k.operator
+        if op in _KURZSCHLUSS_OPERATOREN:
             l = self._besuche(k.links, u)
-            return l if not self._ist_wahr(l) else self._besuche(k.rechts, u)
-        if k.operator == 'oder':
-            l = self._besuche(k.links, u)
-            return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
-        if k.operator == '??':
-            # Null-Koaleszenz: rechts wird nur ausgewertet, wenn links 'nichts' ist
-            l = self._besuche(k.links, u)
+            if op == 'und':
+                return l if not self._ist_wahr(l) else self._besuche(k.rechts, u)
+            if op == 'oder':
+                return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
+            # '??': rechts wird nur ausgewertet, wenn links 'nichts' ist
             return l if l is not None else self._besuche(k.rechts, u)
 
-        l = self._besuche(k.links, u)
-        r = self._besuche(k.rechts, u)
-        return self._binaerer_operator(k.operator, l, r)
+        besuche = self._dispatch  # direkt statt über _besuche: ein Aufruf weniger je Operand
+        a, b = k.links, k.rechts
+        l = besuche[type(a)](a, u)
+        r = besuche[type(b)](b, u)
+        tl, tr = type(l), type(r)
+        if (tl is int or tl is float) and (tr is int or tr is float):
+            f = _ZAHL_OPERATOREN.get(op)
+            if f is not None:
+                return f(l, r)
+        return self._binaerer_operator(op, l, r)
 
     def _binaerer_operator(self, op, l, r):
         if isinstance(l, DeutschInstanz):
@@ -3216,7 +3264,8 @@ class Interpreter:
                     yield from self._gen_Block(k.endlich_koerper, u)
         return None
 
-    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+    def _parameter_binden(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+        """Allgemeiner Pfad: Keywords, Variadisch, '**name', Defaults, Fehlermeldungen. Gibt (Name, Aufrufumgebung)."""
         kwargs = kwargs or {}
         fname = fn.definition.name or '<anonym>'
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
@@ -3280,9 +3329,36 @@ class Interpreter:
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+        return fname, fn_u
+
+    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+        definition = fn.definition
+        plan = self._aufruf_plaene.get(definition)
+        if plan is None:
+            # je Definition einmal: ((name, typhinweis), ...) für den schnellen Pfad; False = nicht einfach
+            # (variadisch oder '**name'); Defaults brauchen den allgemeinen Pfad nur bei fehlenden Argumenten
+            plan = self._aufruf_plaene[definition] = (
+                False if definition.kwargs_parameter is not None or any(p[2] for p in definition.parameter)
+                else tuple((p[0], p[3]) for p in definition.parameter))
+        if plan is not False and not kwargs and len(args) == len(plan):
+            # genau passende Argumentzahl, keine Keywords: nur Typprüfung der Parameter mit Hinweis
+            fn_u = Umgebung(fn.umgebung)
+            fn_u.typ_kontext = fn.umgebung  # Parameter-Hinweise gelten für Namen der Definitionsumgebung
+            variablen = fn_u.variablen
+            for (p_name, p_typ), wert in zip(plan, args):
+                if p_typ is None:
+                    variablen[p_name] = wert
+                else:
+                    self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
+                    fn_u.setze(p_name, wert, p_typ)  # der Hinweis gilt auch für spätere Zuweisungen im Körper
+            fname = definition.name or '<anonym>'
+        else:
+            fname, fn_u = self._parameter_binden(fn, args, kwargs)
 
         if fn.definition.ist_generator:  # der Rumpf läuft erst beim Abrufen (Rückgabetyp-Hinweis entfällt)
-            return DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
+            gen = DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
+            self._generatoren[next(self._generator_nummer)] = gen
+            return gen
 
         # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
         # Zustand vor dem 'try' nur sichern, darin ändern: eine Ausnahme von außen (Strg+C) lässt nichts zurück
