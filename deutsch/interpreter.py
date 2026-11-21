@@ -2,6 +2,7 @@
 import os
 import math
 import functools
+import inspect
 import random
 import json
 import re
@@ -9,7 +10,11 @@ import time
 import statistics
 import hashlib
 import base64
+import builtins
+import difflib
 from datetime import datetime
+from typing import NamedTuple
+from decimal import Decimal, ROUND_HALF_UP, localcontext
 from . import ast_knoten as ast
 from .umgebung import Umgebung
 
@@ -17,15 +22,38 @@ from .umgebung import Umgebung
 # ---------------------------------------------------------------- Signale
 
 class _ZurueckSignal(Exception):
-    def __init__(self, wert): self.wert = wert
+    def __init__(self, wert, zeile=None):
+        self.wert = wert
+        self.zeile = zeile
 
 class _AbbrechenSignal(Exception):
-    pass
+    def __init__(self, zeile=None):
+        self.zeile = zeile
 
 class _WeiterSignal(Exception):
-    pass
+    def __init__(self, zeile=None):
+        self.zeile = zeile
 
 _KONTROLLSIGNALE = (_ZurueckSignal, _AbbrechenSignal, _WeiterSignal)
+
+
+def _signal_fehler(signal, datei: str | None = None, dateiname: str | None = None) -> RuntimeError:
+    """Übersetzt ein Kontrollfluss-Signal, das seinen gültigen Bereich verlassen hat
+    ('abbrechen'/'weiter' ohne Schleife in der Funktion, 'zurück' ohne Funktion), in einen Fehler.
+    datei/dateiname: Pfad bzw. Anzeigename der geladenen Datei, in der das Signal ausgelöst wurde."""
+    if isinstance(signal, _ZurueckSignal):
+        text = "'zurück' außerhalb einer Funktion"
+    elif isinstance(signal, _AbbrechenSignal):
+        text = "'abbrechen' außerhalb einer Schleife"
+    else:
+        text = "'weiter' außerhalb einer Schleife"
+    if signal.zeile is not None:
+        ort = f'{dateiname}, Zeile {signal.zeile}' if dateiname else f'Zeile {signal.zeile}'
+        text = f'{ort}: {text}'
+    fehler = RuntimeError(text)
+    fehler.datei = datei
+    fehler.zeile = signal.zeile
+    return fehler
 
 # Operator-Überladung: Klassen können diese Methoden definieren, um +/-/*/... selbst
 # zu implementieren. Nur der linke Operand wird geprüft (keine __radd__-artige Umkehrung),
@@ -38,6 +66,11 @@ _OPERATOR_METHODEN = {
     '//': '__ganzdividiere__',
     '%':  '__modulo__',
     '**': '__potenziere__',
+    '&':  '__bitund__',
+    '|':  '__bitoder__',
+    '^':  '__bitxoder__',
+    '<<': '__links__',
+    '>>': '__rechts__',
     '==': '__gleich__',
     '!=': '__ungleich__',
     '<':  '__kleiner__',
@@ -45,6 +78,23 @@ _OPERATOR_METHODEN = {
     '<=': '__kleinergleich__',
     '>=': '__groessergleich__',
 }
+
+class Teilbereich:
+    """Wert für 'x[a:b:c]' bei __hole__/__setze__: .anfang, .ende, .schritt (fehlend = nichts)."""
+    def __init__(self, anfang, ende, schritt):
+        self.anfang, self.ende, self.schritt = anfang, ende, schritt
+
+    def __str__(self):
+        return f"Teilbereich({', '.join('nichts' if v is None else str(v) for v in (self.anfang, self.ende, self.schritt))})"
+
+
+# Weitere Dunder-Hooks (Sammlungs-/Aufruf-Verhalten):
+# __laenge__(dies) · __hole__(dies, schluessel) · __setze__(dies, schluessel, wert)
+# __enthaelt__(dies, wert) · __aufruf__(dies, ...). Slices kommen
+# als Teilbereich-Objekt (.anfang/.ende/.schritt, nicht angegebene Teile = nichts).
+
+# Bit-Operatoren (nur Ganzzahlen bzw. Mengen, keine Überladung durch Klassen)
+_BIT_OPERATOREN = ('&', '|', '^', '<<', '>>')
 
 
 class SchluesselFehler(KeyError):
@@ -60,18 +110,307 @@ class AusnahmeFehler(Exception):
         self.nachricht = nachricht
 
     def __str__(self):
-        return self.nachricht if self.nachricht is not None else str(self.wert)
+        if self.nachricht is not None:
+            return self.nachricht
+        if isinstance(self.wert, DeutschInstanz) and 'nachricht' in self.wert.attribute:
+            return str(self.wert.attribute['nachricht'])
+        return str(self.wert)
+
+
+class DeutschFehler(str):
+    """Wert der Fehlervariable aus 'fange f': der Fehlertext (wie bisher eine Zeichenkette) samt
+    Attributen nachricht (ohne Ortsangabe), art, zeile, datei (None = Hauptskript) und der Ausnahme."""
+    def __new__(cls, text, nachricht=None, art='Fehler', zeile=None, datei=None, ausnahme=None):
+        self = super().__new__(cls, text)
+        self.nachricht = text if nachricht is None else nachricht
+        self.art = art
+        self.zeile = zeile
+        self.datei = datei
+        self._ausnahme = ausnahme
+        return self
+
+
+_AUSNAHME_KLASSEN = {}
+
+
+def _ausnahme_klasse(python_fehler):
+    """AusnahmeFehler, der zugleich die Python-Fehlerklasse ist (None = nur AusnahmeFehler), damit
+    'fange (WertFehler)' und 'fange (ValueError)' eine geworfene Fehlerklassen-Instanz per isinstance fängt."""
+    if python_fehler is None:
+        return AusnahmeFehler
+    klasse = _AUSNAHME_KLASSEN.get(python_fehler)
+    if klasse is None:
+        klasse = type(f'AusnahmeFehler_{python_fehler.__name__}', (AusnahmeFehler, python_fehler), {})
+        _AUSNAHME_KLASSEN[python_fehler] = klasse
+    return klasse
+
+
+# ------------------------------------------------------- Deutsche Fehlerarten
+
+class _IterationsEndeFehler(Exception):
+    """Ende eines Iterators ('werfe IterationsEnde()'); bewusst nicht StopIteration (PEP 479 in Generatoren)."""
+
+
+# Deutscher Name -> Python-Klasse. Gilt in 'fange (...)' (mit Vererbung: WertFehler fängt auch
+# UnicodeDecodeError) und im Fehlerkopf der CLI. 'Fehler' ist der Oberbegriff und fängt alles.
+FEHLERARTEN = {
+    'Fehler': Exception,
+    'TypFehler': TypeError,
+    'WertFehler': ValueError,
+    'NamensFehler': NameError,
+    'IndexFehler': IndexError,
+    'SchluesselFehler': KeyError,
+    'AttributFehler': AttributeError,
+    'DateiFehler': OSError,
+    'SyntaxFehler': SyntaxError,
+    'LaufzeitFehler': RuntimeError,
+    'RekursionsFehler': RecursionError,
+    'ZusicherungsFehler': AssertionError,
+    'ImportFehler': ImportError,
+    'EingabeEndeFehler': EOFError,
+    'DivisionDurchNullFehler': ZeroDivisionError,
+    'UeberlaufFehler': OverflowError,
+    'IterationsEnde': _IterationsEndeFehler,
+}
+
+# Umkehrung für den Fehlerkopf; 'Fehler' (Exception) ist nur der Auffangname für alles Übrige
+_FEHLERART_NAMEN = {klasse: name for name, klasse in FEHLERARTEN.items() if name != 'Fehler'}
+
+
+def fehlerart_name(fehler) -> str:
+    """Deutscher Name der speziellsten passenden Fehlerart, z. B. 'DivisionDurchNullFehler' für
+    ZeroDivisionError, 'DateiFehler' für FileNotFoundError, 'WertFehler' für UnicodeDecodeError.
+    Unbekannte Python-Typen heißen 'Fehler'; ein per 'werfe' geworfener Wert 'AusnahmeFehler'."""
+    if isinstance(fehler, AusnahmeFehler):
+        if isinstance(fehler.wert, DeutschInstanz):
+            return fehler.wert.klasse.name
+        return 'AusnahmeFehler'
+    for klasse in type(fehler).__mro__:
+        name = _FEHLERART_NAMEN.get(klasse)
+        if name is not None:
+            return name
+    return 'Fehler'
+
+
+# Englische Namen, die 'fange (...)' zusätzlich annimmt: alle eingebauten Python-Fehlerklassen
+_ENGLISCHE_FEHLERNAMEN = frozenset(
+    name for name, obj in vars(builtins).items()
+    if isinstance(obj, type) and issubclass(obj, BaseException)
+) | {'AusnahmeFehler'}
+
+
+def _fehlerart_pruefen(name: str, bekannte_klassennamen) -> None:
+    """Löst einen Fehler aus, wenn 'name' in 'fange (...)' keine bekannte Fehlerart ist."""
+    if name in FEHLERARTEN or name in _ENGLISCHE_FEHLERNAMEN or name in bekannte_klassennamen:
+        return
+    text = f"Unbekannte Fehlerart '{name}' in 'fange'"
+    treffer = difflib.get_close_matches(name, list(FEHLERARTEN), n=1, cutoff=0.6)
+    if treffer:
+        text += f" – meintest du '{treffer[0]}'?"
+    else:
+        text += ". Bekannt: " + ', '.join(FEHLERARTEN)
+    raise NameError(text)
+
+
+_PYTHON_TYPNAMEN = {'list': 'Liste', 'dict': 'Woerterbuch', 'set': 'Menge'}
+
+# Gleitkomma-Überlauf meldet Python je nach Betriebssystem anders: Windows 'Result too large',
+# Linux das errno-Tupel "(34, 'Numerical result out of range')". Deshalb gilt jeder nicht deutsche
+# OverflowError, den keine genauere Regel unten trifft, als Überlauf in eine Kommazahl (siehe _meldung_deutsch).
+_UEBERLAUF_MELDUNG = 'Ergebnis ist zu groß für eine Kommazahl'
+# Erkennt schon deutsche Meldungen anhand von Umlauten, ß oder typischen Wörtern (Python-Meldungen sind englisch).
+_DEUTSCH_MERKMALE = re.compile(r'[äöüßÄÖÜ]|\b(?:ist|ergibt|eine|zu|nicht)\b')
+
+# Deutsche Fassungen häufiger englischer Python-Meldungen, die ohne eigene Übersetzung durchrutschen:
+# (Fehlerklasse, Muster für die ganze Meldung, Ersetzung mit \1, \2 … oder Funktion(Treffer))
+_MELDUNGS_REGELN = tuple(
+    (klasse, re.compile(muster, re.DOTALL), ersatz) for klasse, muster, ersatz in (
+        (OverflowError, r'int too large to convert to float', 'Ganzzahl ist zu groß für eine Kommazahl'),
+        (OverflowError, r'integer division result too large for a float',
+         'Ergebnis der Division ist zu groß für eine Kommazahl'),
+        (OverflowError, r'cannot convert float infinity to integer',
+         'Unendlich lässt sich nicht in eine Ganzzahl umwandeln'),
+        (OverflowError, r'cannot convert float NaN to integer',
+         'NaN (keine Zahl) lässt sich nicht in eine Ganzzahl umwandeln'),
+        (OverflowError, r'math range error', 'Ergebnis liegt außerhalb des darstellbaren Zahlenbereichs'),
+        (ZeroDivisionError,
+         r'(?:integer |float )?(?:division|modulo|floor division|divmod\(\))(?: or modulo)? by zero'
+         r'|float modulo|float divmod\(\)',
+         'Division durch Null'),
+        (ZeroDivisionError, r'.*cannot be raised to a negative power',
+         'Null kann nicht mit negativem Exponenten potenziert werden'),
+        (RecursionError, r'maximum recursion depth exceeded.*', 'Maximale Rekursionstiefe überschritten'),
+        (ValueError, r'Exceeds the limit \((\d+) digits\) for integer string conversion.*',
+         r'Ganzzahl hat mehr als \1 Ziffern und ist zu lang zum Umwandeln in Text'),
+        (ValueError, r'invalid literal for int\(\) with base \d+: (.*)', r'Kann \1 nicht in Ganzzahl umwandeln'),
+        (ValueError, r'could not convert string to float: (.*)', r'Kann \1 nicht in Kommazahl umwandeln'),
+        (ValueError, r'math domain error', 'Wert liegt außerhalb des Definitionsbereichs'),
+        (ValueError, r'expected a finite input, got (.*)', r'Erwartet eine endliche Zahl, bekam \1'),
+        (ValueError, r'range\(\) arg 3 must not be zero', 'Die Schrittweite darf nicht 0 sein'),
+        (TypeError, r"(?:cannot use '\w+' as a (?:dict key|set element) \()?unhashable type: '(\w+)'\)?",
+         lambda m: f"Typ '{_PYTHON_TYPNAMEN.get(m.group(1), m.group(1))}' ist nicht hashbar "
+                   "und kann kein Schlüssel oder Mengen-Element sein"),
+    )
+)
+
+_UNICODE_GRUENDE = {
+    'invalid start byte': 'ungültiges Startbyte',
+    'invalid continuation byte': 'ungültiges Folgebyte',
+    'unexpected end of data': 'Daten enden unerwartet',
+    'invalid data': 'ungültige Daten',
+    'truncated data': 'abgeschnittene Daten',
+    'illegal encoding': 'ungültige Kodierung',
+}
+
+
+def _unicode_meldung(e) -> str | None:
+    """Deutsche Meldung für UnicodeDecodeError/UnicodeEncodeError mit Kodierung und Position."""
+    try:
+        start, ende = e.start, e.end
+        if isinstance(e, UnicodeDecodeError):
+            grund = _UNICODE_GRUENDE.get(e.reason, e.reason)
+            if ende - start <= 1:
+                stelle = f'Byte 0x{e.object[start]:02x} an Position {start}'
+            else:
+                stelle = f'Bytes an Position {start}–{ende - 1}'
+            return f"Text lässt sich nicht als '{e.encoding}' dekodieren: {grund} ({stelle})"
+        if isinstance(e, UnicodeEncodeError):
+            zeichen = e.object[start:ende]
+            if len(zeichen) == 1:
+                anzeige = f"'{zeichen}' " if zeichen.isprintable() else ''
+                stelle = f'Zeichen {anzeige}(U+{ord(zeichen):04X}) an Position {start}'
+            else:
+                stelle = f'Zeichen an Position {start}–{ende - 1}'
+            return f"{stelle} lässt sich nicht als '{e.encoding}' kodieren"
+    except Exception:  # unvollständig aufgebaute Ausnahme: dann den Originaltext lassen
+        pass
+    return None
+
+
+def _ist_deutsch(text: str) -> bool:
+    """Grobe Erkennung schon deutscher Meldungen anhand von Umlauten, ß oder typischen Wörtern."""
+    return _DEUTSCH_MERKMALE.search(text) is not None
+
+
+def _meldung_deutsch(e) -> str:
+    """Meldung von e; bekannte englische Python-Texte (und Unicode-Fehler) auf Deutsch."""
+    text = str(e)
+    if isinstance(e, AusnahmeFehler):  # eigene Meldung des Programms, nie umschreiben
+        return text
+    if isinstance(e, (UnicodeDecodeError, UnicodeEncodeError)):
+        return _unicode_meldung(e) or text
+    for klasse, muster, ersatz in _MELDUNGS_REGELN:
+        if isinstance(e, klasse):
+            treffer = muster.fullmatch(text)
+            if treffer:
+                return ersatz(treffer) if callable(ersatz) else treffer.expand(ersatz)
+    if isinstance(e, OverflowError) and not _ist_deutsch(text):
+        return _UEBERLAUF_MELDUNG
+    return text
+
+
+_MELDUNGS_KLASSEN = {}
+
+
+def _klasse_mit_meldung(basis):
+    """Unterklasse von basis (gleicher Name), deren str() die gesetzte 'deutsche_meldung' ist.
+    Nötig für Klassen, die sich nicht aus einer einzelnen Meldung bauen lassen (UnicodeDecodeError)
+    oder deren str() die Meldung verändert (KeyError setzt sie in Anführungszeichen)."""
+    klasse = _MELDUNGS_KLASSEN.get(basis)
+    if klasse is None:
+        klasse = type(basis.__name__, (basis,), {
+            '__str__': lambda self: self.deutsche_meldung,
+            '__module__': basis.__module__,
+        })
+        _MELDUNGS_KLASSEN[basis] = klasse
+    return klasse
 
 
 # ---------------------------------------------------------- Laufzeit-Typen
 
+class AufrufEintrag(NamedTuple):
+    """Ein Eintrag der Aufrufkette: die Funktion 'name' wurde in 'zeile' der Datei 'datei' aufgerufen.
+    datei: absoluter Pfad der Datei, in der die Aufrufstelle steht (None = Hauptskript/REPL)."""
+    name: str
+    zeile: int | None
+    datei: str | None
+
+
 class DeutschFunktion:
-    def __init__(self, definition: ast.FunktionDefinition, umgebung: Umgebung):
+    def __init__(self, definition: ast.FunktionDefinition, umgebung: Umgebung, datei: str | None = None):
         self.definition = definition
         self.umgebung = umgebung
+        self.datei = datei  # absoluter Pfad der Datei, in der die Funktion steht (None = Hauptskript/REPL)
 
     def __repr__(self):
         return f'<Funktion {self.definition.name or "anonym"}>'
+
+
+class DeutschGenerator:
+    """Ergebnis des Aufrufs einer Funktion mit 'ergib': ein Python-Iterator über den Rumpf (ohne Thread).
+    Jede Fortsetzung setzt Aufrufkette, Datei und Zeile wie ein Funktionsaufruf und stellt sie danach zurück."""
+    def __init__(self, interpreter, rumpf, name: str, datei: str | None):
+        self._interpreter = interpreter
+        self._rumpf = rumpf  # Python-Generator aus Interpreter._gen_Block
+        self.name = name
+        self._datei = datei  # Datei der Definition (None = Hauptskript/REPL)
+        self._laeuft = False
+
+    def __iter__(self):
+        return self
+
+    def __repr__(self):
+        return f'<Generator {self.name}>'
+
+    # Zustand wird vor dem 'try' nur gesichert und erst darin geändert; das 'finally' stellt die Sicherung her.
+    # So bleibt auch eine Ausnahme von außen (Strg+C) zwischen zwei Anweisungen ohne Folgen für den Interpreter.
+    def _sicherung(self):
+        ip = self._interpreter
+        return ip._aktuelle_zeile, ip._aktuelle_datei, len(ip._aufruf_stack)
+
+    def _betreten(self, sicherung):
+        ip = self._interpreter
+        ip._aufruf_stack.append(AufrufEintrag(self.name, sicherung[0], sicherung[1]))
+        ip._aktuelle_datei = self._datei
+
+    def _verlassen(self, sicherung):
+        ip = self._interpreter
+        ip._aktuelle_zeile, ip._aktuelle_datei = sicherung[0], sicherung[1]
+        del ip._aufruf_stack[sicherung[2]:]
+
+    def __next__(self):
+        ip = self._interpreter
+        if self._laeuft:
+            raise ValueError(f"Generator '{self.name}' läuft bereits (Aufruf aus seinem eigenen Rumpf)")
+        sicherung = self._sicherung()
+        try:
+            self._betreten(sicherung)
+            self._laeuft = True
+            return next(self._rumpf)
+        except _ZurueckSignal:
+            raise StopIteration from None  # 'zurück' beendet den Generator (ein Wert dahinter entfällt)
+        except (_AbbrechenSignal, _WeiterSignal) as signal:
+            ip._letzter_aufruf_stack = list(ip._aufruf_stack)
+            raise ip._signal_fehler_hier(signal) from None
+        finally:
+            self._laeuft = False
+            self._verlassen(sicherung)
+
+    def close(self):
+        """Beendet den Generator vorzeitig: 'endlich'-Blöcke laufen (mit Ort wie bei einem Aufruf), ihre Fehler gehen weiter."""
+        sicherung = self._sicherung()
+        try:
+            self._betreten(sicherung)
+            self._rumpf.close()
+        finally:
+            self._verlassen(sicherung)
+
+    def __del__(self):
+        # Verworfen ohne Schleife: 'endlich' läuft noch; ein Fehler darin geht verloren (keine rohe Python-Ausgabe)
+        try:
+            self.close()
+        except Exception:
+            pass
 
 
 class GebundeneMethode:
@@ -96,6 +435,17 @@ class DeutschNamensraum:
 _NICHT_GEFUNDEN = object()
 
 
+class _OptionalKurzschluss(Exception):
+    """Intern: 'a?.b' mit a = nichts; wird von OptionalKette gefangen."""
+
+
+def _mit_keywords(fn):
+    """Markiert eine eingebaute Funktion oder Methode, die Keyword-Argumente annimmt
+    (z. B. sortiere(liste, schluessel=f)). Alle anderen Eingebauten lehnen Keywords ab."""
+    fn._akzeptiert_keywords = True
+    return fn
+
+
 class DeutschKlasse:
     def __init__(self, name: str, eltern: list, methoden: dict, statische_methoden: dict = None):
         self.name = name
@@ -104,6 +454,7 @@ class DeutschKlasse:
         self.statische_methoden = statische_methoden or {}  # {name: DeutschFunktion}, kein 'dies'
         self.klassenattribute: dict = {}      # gesetzt nach __init__ in _besuche_KlassenDefinition
         self.konstante_attribute: set = set()  # Teilmenge von klassenattribute-Schlüsseln
+        self.python_fehler = None  # nur bei den eingebauten Fehlerklassen: die Python-Fehlerklasse
 
     def suche_methode(self, name: str):
         if name in self.methoden:
@@ -132,8 +483,43 @@ class DeutschKlasse:
                 return wert
         return _NICHT_GEFUNDEN
 
+    def python_fehlerklasse(self):
+        """Python-Fehlerklasse der ersten Fehler-Elternklasse (Tiefensuche wie suche_methode), sonst None."""
+        if self.python_fehler is not None:
+            return self.python_fehler
+        for e in self.eltern:
+            py = e.python_fehlerklasse()
+            if py is not None:
+                return py
+        return None
+
     def __repr__(self):
         return f'<Klasse {self.name}>'
+
+
+class DeutschAufzaehlung:
+    def __init__(self, name: str, mitglieder: dict):
+        self.name = name
+        self.mitglieder = mitglieder  # {name: AufzaehlungsWert}, Definitionsreihenfolge
+
+    def __iter__(self):
+        return iter(self.mitglieder.values())
+
+    def __repr__(self):
+        return f'<Aufzählung {self.name}>'
+
+
+class AufzaehlungsWert:
+    """Mitglied einer Aufzählung; Gleichheit und Hash sind die Objektidentität."""
+    def __init__(self, aufzaehlung: DeutschAufzaehlung, name: str, wert):
+        self.aufzaehlung = aufzaehlung
+        self.name = name
+        self.wert = wert
+
+    def __repr__(self):
+        return f'{self.aufzaehlung.name}.{self.name}'
+
+    __str__ = __repr__
 
 
 class DeutschInstanz:
@@ -170,10 +556,18 @@ class Interpreter:
         self._ladepfad = ladepfad or os.getcwd()
         self._cli_argumente = list(argumente) if argumente else []
         self._aktuelle_zeile: int | None = None
-        self._aufruf_stack: list[tuple[str, int]] = []
+        self._aufruf_stack: list[AufrufEintrag] = []
         self._letzter_aufruf_stack: list = []
         self._lade_stack: list[str] = []
+        # Datei, deren Code gerade läuft (absoluter Pfad); None = Hauptskript bzw. REPL.
+        # Wechselt bei 'lade' und beim Aufruf einer Funktion aus einer geladenen Datei.
+        self._aktuelle_datei: str | None = None
         self._dispatch = self._dispatch_aufbauen()
+        self._gen_dispatch = {  # Anweisungen, die 'ergib' enthalten können (siehe 'Generatoren')
+            ast.WennAnweisung: self._gen_Wenn, ast.SolangeAnweisung: self._gen_Solange,
+            ast.FuerAnweisung: self._gen_Fuer, ast.PasseAnweisung: self._gen_Passe,
+            ast.VersucheAnweisung: self._gen_Versuche, ast.ErgibAnweisung: self._gen_Ergib,
+        }
         self._listen_methoden = self._listen_methoden_aufbauen()
         self._string_methoden = self._string_methoden_aufbauen()
         self._woerterbuch_methoden = self._woerterbuch_methoden_aufbauen()
@@ -202,10 +596,10 @@ class Interpreter:
             'anhängen':  lambda obj, *a: (obj.append(a[0]), None)[1],
             'laenge':    lambda obj: len(obj),
             'länge':     lambda obj: len(obj),
-            'entferne':  lambda obj, *a: obj.pop(int(a[0])) if a else obj.pop(),
+            'entferne':  lambda obj, *a: self._liste_entferne(obj, *a),
             'enthält':   lambda obj, x: x in obj,
             'umkehren':  lambda obj: (obj.reverse(), None)[1],
-            'sortiere':  lambda obj: self._sortiert(obj, in_place=True),
+            'sortiere':  _mit_keywords(lambda obj, /, *a, **kw: self._liste_sortiere(obj, a, kw)),
             'erste':     lambda obj: obj[0] if obj else None,
             'letzte':    lambda obj: obj[-1] if obj else None,
             'kopiere':   lambda obj: list(obj),
@@ -214,6 +608,12 @@ class Interpreter:
             'zaehle':    lambda obj, x: self._zaehle(obj, x, 'Liste'),
             'einfuegen': lambda obj, index, wert: self._liste_einfuegen(obj, index, wert),
             'erweitere': lambda obj, andere: self._liste_erweitere(obj, andere),
+            'abbilden':  lambda obj, *a: self._liste_abbilden(obj, a),
+            'filtere':   lambda obj, *a: self._liste_filtere(obj, a),
+            'reduziere': lambda obj, *a: self._liste_reduziere(obj, a),
+            'eindeutig': lambda obj: self._liste_eindeutig(obj),
+            'max':       _mit_keywords(lambda obj, /, *a, **kw: self._liste_extremum(obj, a, kw, max, 'max')),
+            'min':       _mit_keywords(lambda obj, /, *a, **kw: self._liste_extremum(obj, a, kw, min, 'min')),
         }
 
     def _string_methoden_aufbauen(self):
@@ -225,7 +625,17 @@ class Interpreter:
             'länge':         lambda obj: len(obj),
             'teile':         lambda obj, *a: obj.split(a[0]) if a else obj.split(),
             'enthält':       lambda obj, x: x in obj,
-            'ersetze':       lambda obj, alt, neu: obj.replace(alt, neu),
+            'ersetze':       lambda obj, *a: self._text_ersetze(obj, a),
+            'links_auffuellen': _mit_keywords(lambda obj, /, *a, **kw:
+                                self._text_auffuellen('links_auffuellen', obj, a, kw, str.rjust)),
+            'links_auffüllen':  _mit_keywords(lambda obj, /, *a, **kw:
+                                self._text_auffuellen('links_auffüllen', obj, a, kw, str.rjust)),
+            'rechts_auffuellen': _mit_keywords(lambda obj, /, *a, **kw:
+                                 self._text_auffuellen('rechts_auffuellen', obj, a, kw, str.ljust)),
+            'rechts_auffüllen':  _mit_keywords(lambda obj, /, *a, **kw:
+                                 self._text_auffuellen('rechts_auffüllen', obj, a, kw, str.ljust)),
+            'zentrieren':    _mit_keywords(lambda obj, /, *a, **kw:
+                             self._text_auffuellen('zentrieren', obj, a, kw, str.center)),
             'trimmen':       lambda obj: obj.strip(),
             'links_trimmen': lambda obj: obj.lstrip(),
             'rechts_trimmen':lambda obj: obj.rstrip(),
@@ -235,7 +645,7 @@ class Interpreter:
             'großschreibe':  lambda obj: obj.capitalize(),
             'zeichen':       lambda obj: list(obj),
             'wiederhole':    lambda obj, n: obj * int(n),
-            'zahl':          lambda obj: int(obj) if obj.lstrip('-').isdigit() else float(obj),
+            'zahl':          lambda obj: self._zeichenkette_zu_zahl(obj),
             'index_von':     lambda obj, x: self._index_von(obj, x, 'Zeichenkette'),
             'zaehle':        lambda obj, x: self._zaehle(obj, x, 'Zeichenkette'),
             'ist_ziffer':    lambda obj: obj.isdigit(),
@@ -255,6 +665,8 @@ class Interpreter:
             'länge':      lambda obj: len(obj),
             'hole':       lambda obj, k, *d: obj.get(k, d[0] if d else None),
             'kopiere':    lambda obj: dict(obj),
+            'zusammenfuehren': lambda obj, *a: self._woerterbuecher_zusammenfuehren('zusammenfuehren', (obj,) + a),
+            'zusammenführen':  lambda obj, *a: self._woerterbuecher_zusammenfuehren('zusammenführen', (obj,) + a),
         }
 
     def _menge_methoden_aufbauen(self):
@@ -289,6 +701,9 @@ class Interpreter:
         g.setze('wahrheitswert', self._eb_wahrheitswert)
         g.setze('bereich',      self._eb_bereich)
         g.setze('sortiere',     self._eb_sortiere)
+        g.setze('abbilden',     self._eb_abbilden)
+        g.setze('filtere',      self._eb_filtere)
+        g.setze('reduziere',    self._eb_reduziere)
         g.setze('anhaengen',    self._eb_anhaengen)
         g.setze('anhängen',     self._eb_anhaengen)
         g.setze('entferne',     self._eb_entferne)
@@ -299,6 +714,8 @@ class Interpreter:
         g.setze('abs',          self._eb_abs)
         g.setze('runde',        self._eb_runde)
         g.setze('liste',        self._eb_liste)
+        g.setze('naechstes',    self._eb_naechstes)
+        g.setze('nächstes',     self._eb_naechstes)
         g.setze('woerterbuch',  self._eb_woerterbuch)
         g.setze('wörterbuch',   self._eb_woerterbuch)
         g.setze('menge',        self._eb_menge)
@@ -350,19 +767,70 @@ class Interpreter:
         g.setze('hash_sha256',       self._eb_hash_sha256)
         g.setze('base64_kodieren',   self._eb_base64_kodieren)
         g.setze('base64_dekodieren', self._eb_base64_dekodieren)
+        g.setze('pfad_verbinden',    self._eb_pfad_verbinden)
+        g.setze('dateiname',         self._eb_dateiname)
+        g.setze('ordnername',        self._eb_ordnername)
+        g.setze('endung',            self._eb_endung)
+        g.setze('ist_datei',         self._eb_ist_datei)
+        g.setze('ist_ordner',        self._eb_ist_ordner)
+        g.setze('datei_loeschen',    self._eb_datei_loeschen)
+        g.setze('datei_löschen',     self._eb_datei_loeschen)
+        g.setze('umbenennen',        self._eb_umbenennen)
+        g.setze('zeilen_lesen',      self._eb_zeilen_lesen)
+        g.setze('eindeutig',         self._eb_eindeutig)
+        g.setze('gruppiere',         self._eb_gruppiere)
+        g.setze('zusammenfuehren',   self._eb_zusammenfuehren)
+        g.setze('zusammenführen',    self._eb_zusammenfuehren)
+        g.setze('arcsin',            self._eb_arcsin)
+        g.setze('arccos',            self._eb_arccos)
+        g.setze('arctan',            self._eb_arctan)
+        g.setze('arctan2',           self._eb_arctan2)
+        g.setze('warte',             self._eb_warte)
+        g.setze('datum_lesen',       self._eb_datum_lesen)
+        g.setze('ist_instanz',       self._eb_ist_instanz)
+        # Fehlerarten als Klassen: Oberklasse 'Fehler', alle anderen erben von ihr
+        fehler = DeutschKlasse('Fehler', [], {})
+        for name, py in FEHLERARTEN.items():
+            klasse = fehler if name == 'Fehler' else DeutschKlasse(name, [fehler], {})
+            klasse.python_fehler = py
+            g.setze(name, klasse)
+
+    def _eb_ist_instanz(self, *args):
+        self._pruefe_args('ist_instanz', args, 2)
+        wert, klasse = args
+        if isinstance(klasse, DeutschAufzaehlung):
+            return isinstance(wert, AufzaehlungsWert) and wert.aufzaehlung is klasse
+        if not isinstance(klasse, DeutschKlasse):
+            raise TypeError(f"'ist_instanz' erwartet als zweites Argument eine Klasse oder Aufzählung, "
+                            f"bekam {self._typname(klasse)}")
+        if isinstance(wert, DeutschInstanz):
+            return self._ist_instanz_von(wert.klasse, klasse)
+        if isinstance(wert, DeutschFehler):  # gefangener Python-Fehler: nur eingebaute Fehlerarten passen
+            return klasse.python_fehler is not None and isinstance(wert._ausnahme, klasse.python_fehler)
+        return False
 
     def _eb_drucke(self, *args):
         print(' '.join(self._zu_text(a) for a in args))
         return None
 
     def _eb_eingabe(self, *args):
-        return input(self._zu_text(args[0]) if args else '')
+        try:
+            return input(self._zu_text(args[0]) if args else '')
+        except EOFError:
+            raise EOFError('Eingabe nicht möglich: Dateiende erreicht, die Eingabe ist geschlossen') from None
 
     def _eb_laenge(self, *args):
         self._pruefe_args('länge', args, 1)
         obj = args[0]
         if isinstance(obj, (list, dict, str, set)):
             return len(obj)
+        if isinstance(obj, DeutschInstanz):
+            m = obj.klasse.suche_methode('__laenge__')
+            if m is not None:
+                n = self._funktion_aufrufen(m, [obj])
+                if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+                    raise TypeError(f"'__laenge__' muss eine Ganzzahl ≥ 0 liefern, bekam {self._zu_text(n)}")
+                return n
         raise TypeError(f"'länge' nicht unterstützt für {self._typname(obj)}")
 
     def _eb_typ(self, *args):
@@ -392,16 +860,75 @@ class Interpreter:
         return self._ist_wahr(args[0])
 
     def _eb_bereich(self, *args):
-        if len(args) == 1:   return list(range(int(args[0])))
-        if len(args) == 2:   return list(range(int(args[0]), int(args[1])))
-        if len(args) == 3:   return list(range(int(args[0]), int(args[1]), int(args[2])))
-        raise TypeError("'bereich' erwartet 1–3 Argumente")
+        return list(self._bereich_range(args))
 
-    def _eb_sortiere(self, *args):
+    @staticmethod
+    def _bereich_range(args):
+        if not 1 <= len(args) <= 3:
+            raise TypeError("'bereich' erwartet 1–3 Argumente")
+        return range(*(int(a) for a in args))
+
+    def _iterable_auswerten(self, knoten, u):
+        """Wie _besuche, aber 'bereich(...)' in für/Comprehension bleibt ein lazy range (keine Liste im Speicher)."""
+        if (isinstance(knoten, ast.FunktionAufruf) and isinstance(knoten.funktion, ast.Bezeichner)
+                and knoten.funktion.name == 'bereich' and not knoten.keyword_argumente
+                and not knoten.mit_entpacken and u.hole('bereich') == self._eb_bereich):
+            return self._bereich_range([self._besuche(a, u) for a in knoten.argumente])
+        return self._besuche(knoten, u)
+
+    @_mit_keywords
+    def _eb_sortiere(self, /, *args, **kwargs):
+        schluessel, umgekehrt = self._sortier_optionen('sortiere', kwargs)
         self._pruefe_args('sortiere', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'sortiere' erwartet eine Liste oder Menge")
-        return self._sortiert(list(args[0]))
+        return self._sortiere_mit(list(args[0]), schluessel, umgekehrt)
+
+    def _liste_sortiere(self, obj, args, kwargs):
+        """liste.sortiere([schluessel=f][, umgekehrt=wahr]) – sortiert in place, gibt nichts zurück."""
+        if args:
+            raise TypeError("'sortiere' nimmt nur die Keyword-Argumente 'schluessel' und 'umgekehrt' an")
+        schluessel, umgekehrt = self._sortier_optionen('sortiere', kwargs)
+        obj[:] = self._sortiere_mit(list(obj), schluessel, umgekehrt)  # bei Fehler im Schlüssel bleibt obj unverändert
+        return None
+
+    def _sortier_optionen(self, name, kwargs):
+        """Liest schluessel=/schlüssel= (alle) und umgekehrt= (nur 'sortiere'). Gibt (schluessel|None, umgekehrt) zurück.
+        schluessel=nichts bedeutet: kein Schlüssel."""
+        schluessel, umgekehrt, schluessel_gesetzt = None, False, False
+        for k, v in kwargs.items():
+            if k in ('schluessel', 'schlüssel'):
+                if schluessel_gesetzt:
+                    raise TypeError(f"'{name}': 'schluessel' und 'schlüssel' sind dasselbe Argument "
+                                    f"und dürfen nicht beide angegeben werden")
+                schluessel_gesetzt = True
+                if v is not None:
+                    self._pruefe_funktion(name, v, 1, f"für '{k}'")
+                    schluessel = v
+            elif k == 'umgekehrt' and name == 'sortiere':
+                umgekehrt = self._ist_wahr(v)
+            else:
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+        return schluessel, umgekehrt
+
+    def _sortiere_mit(self, liste, schluessel, umgekehrt):
+        """Neue, sortierte Liste. Ohne Schlüssel und ohne 'umgekehrt' exakt das bisherige Verhalten.
+        Gleiche Schlüssel behalten ihre ursprüngliche Reihenfolge (auch bei 'umgekehrt')."""
+        if schluessel is None and not umgekehrt:
+            return self._sortiert(liste)
+        if schluessel is None:
+            try:
+                return sorted(liste, reverse=umgekehrt)
+            except TypeError:
+                return sorted(liste, key=str, reverse=umgekehrt)
+        schluessel_werte = [self._aufrufen(schluessel, [e]) for e in liste]
+        try:
+            reihenfolge = sorted(range(len(liste)), key=schluessel_werte.__getitem__, reverse=umgekehrt)
+        except TypeError:  # nicht vergleichbare Schlüssel (gemischte Typen): wie ohne Schlüssel nach Text
+            reihenfolge = sorted(range(len(liste)), key=lambda i: self._zu_text(schluessel_werte[i]),
+                                 reverse=umgekehrt)
+        return [liste[i] for i in reihenfolge]
 
     @staticmethod
     def _sortiert(liste, in_place=False):
@@ -429,6 +956,131 @@ class Interpreter:
         except TypeError:
             raise TypeError(f"'zaehle' erwartet den gleichen Typ wie {typname}, bekam {self._typname(x)}")
 
+    def _zeichenkette_zu_zahl(self, text):
+        try:
+            return int(text) if text.lstrip('-').isdigit() else float(text)
+        except ValueError:
+            raise ValueError(f"Kann '{text}' nicht in Zahl umwandeln")
+
+    def _text_auffuellen(self, name, obj, args, kwargs, fn):
+        """links_auffuellen / rechts_auffuellen / zentrieren: breite und optional zeichen (positional oder als Keyword).
+        fn ist str.rjust, str.ljust bzw. str.center."""
+        unbekannt = [k for k in kwargs if k != 'zeichen']
+        if unbekannt:
+            raise TypeError(f"'{name}' hat kein Parameter '{unbekannt[0]}'")
+        if not 1 <= len(args) <= 2:
+            raise TypeError(f"'{name}' erwartet 1–2 Argumente, bekam {len(args)}")
+        if len(args) == 2 and 'zeichen' in kwargs:
+            raise TypeError(f"'{name}': 'zeichen' ist mehrfach angegeben")
+        breite = args[0]
+        zeichen = args[1] if len(args) == 2 else kwargs.get('zeichen', ' ')
+        if not isinstance(breite, int):
+            raise TypeError(f"'{name}' erwartet eine Ganzzahl als Breite, bekam {self._typname(breite)}")
+        if not isinstance(zeichen, str):
+            raise TypeError(f"'{name}' erwartet ein Füllzeichen als Zeichenkette, bekam {self._typname(zeichen)}")
+        if len(zeichen) != 1:
+            raise ValueError(f"'{name}': Das Füllzeichen muss genau 1 Zeichen lang sein, bekam {len(zeichen)}")
+        return fn(obj, breite, zeichen)
+
+    def _text_ersetze(self, obj, args):
+        """text.ersetze(alt, neu[, anzahl]): ersetzt alle Vorkommen oder höchstens 'anzahl' viele."""
+        if not 2 <= len(args) <= 3:
+            raise TypeError(f"'ersetze' erwartet 2–3 Argumente, bekam {len(args)}")
+        alt, neu = args[0], args[1]
+        if not isinstance(alt, str) or not isinstance(neu, str):
+            raise TypeError(f"'ersetze' erwartet Zeichenketten als erstes und zweites Argument, "
+                            f"bekam {self._typname(alt)} und {self._typname(neu)}")
+        if len(args) == 2:
+            return obj.replace(alt, neu)
+        anzahl = args[2]
+        if not isinstance(anzahl, int):
+            raise TypeError(f"'ersetze' erwartet eine Ganzzahl als Anzahl, bekam {self._typname(anzahl)}")
+        if anzahl < 0:
+            raise ValueError(f"'ersetze' erwartet eine Anzahl von 0 oder mehr, bekam {anzahl}")
+        return obj.replace(alt, neu, anzahl)
+
+    def _liste_entferne(self, liste, *index):
+        """Gemeinsame Logik für entferne(liste[, index]) und liste.entferne([index])."""
+        if not index:
+            if not liste:
+                raise IndexError("'entferne' kann nicht aus einer leeren Liste entfernen")
+            return liste.pop()
+        try:
+            position = int(index[0])
+        except (ValueError, TypeError):
+            raise TypeError(f"'entferne' erwartet einen Ganzzahl-Index, bekam {self._typname(index[0])}")
+        try:
+            return liste.pop(position)
+        except IndexError:
+            raise IndexError(f'Index {position} ist außerhalb des Bereichs')
+
+    def _vergleichs_extremum(self, fn, werte, name, schluessel=None):
+        """max/min über werte (mit schluessel: über die Schlüsselwerte, bei Gleichstand gewinnt der erste).
+        Nicht vergleichbare Typen (z. B. Ganzzahl und Zeichenkette) → deutsche Meldung."""
+        if schluessel is not None:
+            vergleichswerte = [self._aufrufen(schluessel, [w]) for w in werte]
+            try:
+                return werte[fn(range(len(werte)), key=vergleichswerte.__getitem__)]
+            except TypeError:
+                typen = list(dict.fromkeys(self._typname(w) for w in vergleichswerte))
+                raise TypeError(f"'{name}' kann Schlüsselwerte dieser Typen nicht vergleichen: {', '.join(typen)}")
+        try:
+            return fn(werte)
+        except TypeError:
+            typen = list(dict.fromkeys(self._typname(w) for w in werte))
+            raise TypeError(f"'{name}' kann Werte dieser Typen nicht vergleichen: {', '.join(typen)}")
+
+    def _iteriere(self, wert):
+        """Wie iter(), aber mit deutscher Meldung für nicht iterierbare Werte; Instanzen über __iter__/__naechstes__."""
+        if isinstance(wert, DeutschInstanz) and wert.klasse.suche_methode('__iter__') is not None:
+            return self._instanz_iterator(wert)
+        try:
+            return iter(wert)
+        except TypeError:
+            raise TypeError(f"'{self._typname(wert)}' ist nicht iterierbar") from None
+
+    def _instanz_iterator(self, inst):
+        """__iter__ liefert einen Iterator (Instanz mit __naechstes__, Ende per 'werfe IterationsEnde()')
+        oder eine Sammlung."""
+        it = self._funktion_aufrufen(inst.klasse.suche_methode('__iter__'), [inst])
+        if not isinstance(it, DeutschInstanz):
+            return self._iteriere(it)
+        naechstes = it.klasse.suche_methode('__naechstes__')
+        if naechstes is None:
+            raise TypeError(f"'__iter__' von '{inst.klasse.name}' muss eine Sammlung oder ein Objekt "
+                            f"mit '__naechstes__' liefern")
+        return self._naechstes_schleife(it, naechstes)
+
+    def _naechstes_schleife(self, it, naechstes):
+        while True:
+            try:
+                wert = self._funktion_aufrufen(naechstes, [it])
+            except _IterationsEndeFehler:
+                return
+            yield wert
+
+    def _instanz_zu_liste(self, wert):
+        """Instanzen mit __iter__ und Generatoren werden zur Liste; alles andere bleibt unverändert."""
+        if isinstance(wert, DeutschGenerator):
+            return list(wert)
+        if isinstance(wert, DeutschInstanz) and wert.klasse.suche_methode('__iter__') is not None:
+            return list(self._iteriere(wert))
+        return wert
+
+    def _eb_naechstes(self, *args):
+        self._pruefe_args('nächstes', args, 1)
+        x = args[0]
+        if isinstance(x, DeutschInstanz):
+            m = x.klasse.suche_methode('__naechstes__')
+            if m is not None:
+                return self._funktion_aufrufen(m, [x])
+        if not hasattr(x, '__next__'):
+            raise TypeError(f"'{self._typname(x)}' ist kein Iterator")
+        try:
+            return next(x)
+        except StopIteration:
+            raise _IterationsEndeFehler('Iterator ist zu Ende') from None
+
     def _liste_einfuegen(self, obj, index, wert):
         try:
             obj.insert(int(index), wert)
@@ -441,6 +1093,31 @@ class Interpreter:
             raise TypeError(f"'erweitere' erwartet eine Liste oder Menge, bekam {self._typname(andere)}")
         obj.extend(andere)
         return None
+
+    def _liste_extremum(self, liste, args, kwargs, fn, name):
+        """liste.max([schluessel=f]) und liste.min(...): wie die gleichnamigen Builtins, die Liste ist der Empfänger."""
+        if args:
+            raise TypeError(f"'{name}' nimmt keine Positionsargumente an, nur das Keyword 'schluessel'")
+        schluessel, _ = self._sortier_optionen(name, kwargs)
+        if not liste:
+            raise ValueError(f"'{name}' erwartet eine nicht-leere Liste")
+        return self._vergleichs_extremum(fn, liste, name, schluessel)
+
+    @staticmethod
+    def _liste_eindeutig(liste):
+        """Neue Liste ohne Dubletten; das erste Auftreten bestimmt die Reihenfolge.
+        Unhashbare Werte (Listen, Wörterbücher) werden über == verglichen."""
+        ergebnis, gesehen = [], set()
+        for e in liste:
+            try:
+                if e in gesehen:
+                    continue
+                gesehen.add(e)
+            except TypeError:
+                if e in ergebnis:
+                    continue
+            ergebnis.append(e)
+        return ergebnis
 
     def _eb_anhaengen(self, *args):
         self._pruefe_args('anhängen', args, 2)
@@ -456,7 +1133,7 @@ class Interpreter:
         liste = args[0]
         if not isinstance(liste, list):
             raise TypeError("Erstes Argument von 'entferne' muss eine Liste sein")
-        return liste.pop(int(args[1]) if len(args) == 2 else -1)
+        return self._liste_entferne(liste, *args[1:])
 
     def _eb_umkehren(self, *args):
         self._pruefe_args('umkehren', args, 1)
@@ -474,30 +1151,217 @@ class Interpreter:
             raise TypeError("Erstes Argument von 'verbinde' muss eine Liste sein")
         return trenn.join(self._zu_text(e) for e in liste)
 
-    def _eb_max(self, *args):
-        if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
-        if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
-        return max(werte)
+    def _extremum_werte(self, args):
+        """Werte für max/min: ein einzelnes iterierbares Argument (Liste, Menge, Zeichenkette, Generator, Instanz
+        mit __iter__) wird entpackt; sonst sind die Argumente selbst die Werte."""
+        if len(args) == 1:
+            w = self._instanz_zu_liste(args[0])
+            if isinstance(w, (list, set, str)):
+                return list(w)
+        return list(args)
 
-    def _eb_min(self, *args):
+    @_mit_keywords
+    def _eb_max(self, /, *args, **kwargs):
+        schluessel, _ = self._sortier_optionen('max', kwargs)
+        if not args: raise TypeError("'max' erwartet mindestens 1 Argument")
+        werte = self._extremum_werte(args)
+        if not werte: raise ValueError("'max' erwartet eine nicht-leere Liste")
+        return self._vergleichs_extremum(max, werte, 'max', schluessel)
+
+    @_mit_keywords
+    def _eb_min(self, /, *args, **kwargs):
+        schluessel, _ = self._sortier_optionen('min', kwargs)
         if not args: raise TypeError("'min' erwartet mindestens 1 Argument")
-        werte = args[0] if len(args) == 1 and isinstance(args[0], list) else list(args)
+        werte = self._extremum_werte(args)
         if not werte: raise ValueError("'min' erwartet eine nicht-leere Liste")
-        return min(werte)
+        return self._vergleichs_extremum(min, werte, 'min', schluessel)
+
+    def _eb_eindeutig(self, *args):
+        self._pruefe_args('eindeutig', args, 1)
+        if not isinstance(args[0], list):
+            raise TypeError(f"'eindeutig' erwartet eine Liste, bekam {self._typname(args[0])}")
+        return self._liste_eindeutig(args[0])
+
+    # ----------------------------------------------- Funktionen höherer Ordnung
+
+    def _eb_abbilden(self, *args):
+        self._pruefe_args('abbilden', args, 2)
+        return self._hof_abbilden(args[0], args[1], 'als 2. Argument')
+
+    def _eb_filtere(self, *args):
+        self._pruefe_args('filtere', args, 2)
+        return self._hof_filtere(args[0], args[1], 'als 2. Argument')
+
+    def _eb_reduziere(self, *args):
+        if len(args) not in (2, 3):
+            raise TypeError(f"'reduziere' erwartet 2–3 Argumente, bekam {len(args)}")
+        return self._hof_reduziere(args[0], args[1], args[2:], 'als 2. Argument')
+
+    def _liste_abbilden(self, obj, args):
+        self._pruefe_args('abbilden', args, 1)
+        return self._hof_abbilden(obj, args[0], 'als Argument')
+
+    def _liste_filtere(self, obj, args):
+        self._pruefe_args('filtere', args, 1)
+        return self._hof_filtere(obj, args[0], 'als Argument')
+
+    def _liste_reduziere(self, obj, args):
+        if len(args) not in (1, 2):
+            raise TypeError(f"'reduziere' erwartet 1–2 Argumente, bekam {len(args)}")
+        return self._hof_reduziere(obj, args[0], args[1:], 'als Argument')
+
+    def _hof_abbilden(self, sammlung, f, wo_f):
+        elemente = self._hof_elemente('abbilden', sammlung)
+        self._pruefe_funktion('abbilden', f, 1, wo_f)
+        return [self._aufrufen(f, [e]) for e in elemente]
+
+    def _hof_filtere(self, sammlung, f, wo_f):
+        elemente = self._hof_elemente('filtere', sammlung)
+        self._pruefe_funktion('filtere', f, 1, wo_f)
+        return [e for e in elemente if self._ist_wahr(self._aufrufen(f, [e]))]
+
+    def _hof_reduziere(self, sammlung, f, start, wo_f):
+        """start: leeres Tupel (kein Startwert) oder (wert,) – 'nichts' ist ein gültiger Startwert."""
+        elemente = self._hof_elemente('reduziere', sammlung)
+        self._pruefe_funktion('reduziere', f, 2, wo_f)
+        if start:
+            ergebnis = start[0]
+        elif elemente:
+            ergebnis, elemente = elemente[0], elemente[1:]
+        else:
+            raise ValueError("'reduziere' kann eine leere Sammlung nicht ohne Startwert reduzieren")
+        for e in elemente:
+            ergebnis = self._aufrufen(f, [ergebnis, e])
+        return ergebnis
+
+    def _eb_gruppiere(self, *args):
+        self._pruefe_args('gruppiere', args, 2)
+        return self._hof_gruppiere(args[0], args[1], 'als 2. Argument')
+
+    def _hof_gruppiere(self, sammlung, f, wo_f):
+        """Wörterbuch: Schlüssel f(e) -> Liste aller Elemente e mit diesem Schlüssel (in ihrer Reihenfolge)."""
+        elemente = self._hof_elemente('gruppiere', sammlung)
+        self._pruefe_funktion('gruppiere', f, 1, wo_f)
+        ergebnis = {}
+        for e in elemente:
+            schluessel = self._aufrufen(f, [e])
+            try:
+                ergebnis.setdefault(schluessel, []).append(e)
+            except TypeError:  # unhashbarer Schlüssel, z. B. eine Liste
+                raise TypeError(f"'gruppiere' erwartet als Schlüssel einen unveränderlichen Wert, "
+                                f"bekam {self._typname(schluessel)}") from None
+        return ergebnis
+
+    def _hof_elemente(self, name, sammlung):
+        """Elemente einer Liste, Menge (sortiert, damit das Ergebnis stabil ist) oder Zeichenkette als neue Liste."""
+        sammlung = self._instanz_zu_liste(sammlung)
+        if isinstance(sammlung, (list, str, dict)):  # Wörterbuch: Schlüssel, wie bei 'für'
+            return list(sammlung)
+        if isinstance(sammlung, set):
+            return self._sortiert(list(sammlung))
+        raise TypeError(f"'{name}' erwartet als erstes eine Liste, Menge, Wörterbuch oder Zeichenkette, "
+                        f"bekam {self._typname(sammlung)}")
+
+    @staticmethod
+    def _argumente_text(n, dativ=False):
+        if n == 1:
+            return '1 Argument'
+        return f'{n} Argumenten' if dativ else f'{n} Argumente'
+
+    def _pruefe_funktion(self, name, f, n, wo):
+        """Stellt vorab sicher, dass f eine Funktion ist, die mit n Argumenten aufrufbar ist,
+        damit die Meldung auf Deutsch kommt (statt erst beim Aufruf, ggf. als Python-Fehler)."""
+        if isinstance(f, DeutschFunktion):
+            bereich = self._parameter_bereich(f.definition.parameter, 0)
+        elif isinstance(f, GebundeneMethode):
+            bereich = self._parameter_bereich(f.funktion.definition.parameter, 1)  # 'dies' ist schon belegt
+        elif callable(f):
+            bereich = self._python_bereich(f)
+        else:
+            raise TypeError(f"'{name}' erwartet {wo} eine Funktion, bekam {self._typname(f)}")
+        if bereich is None:
+            return
+        minimum, maximum = bereich
+        if n < minimum or (maximum is not None and n > maximum):
+            if maximum is None:
+                soll = f'mindestens {self._argumente_text(minimum)}'
+            elif minimum == maximum:
+                soll = f'genau {self._argumente_text(minimum)}'
+            else:
+                soll = f'{minimum} bis {self._argumente_text(maximum)}'
+            raise TypeError(f"'{name}': Die übergebene Funktion erwartet {soll}, "
+                            f"wird hier aber mit {self._argumente_text(n, dativ=True)} aufgerufen")
+
+    @staticmethod
+    def _parameter_bereich(parameter, abzug):
+        """(Minimum, Maximum|None) der positionalen Argumente einer Deutsch-Funktion; abzug: schon belegte vorne."""
+        feste = [p for p in parameter if not p[2]]
+        minimum = max((i + 1 for i, p in enumerate(feste) if p[1] is None), default=0)
+        maximum = None if len(feste) != len(parameter) else len(feste)
+        return max(minimum - abzug, 0), (None if maximum is None else max(maximum - abzug, 0))
+
+    @staticmethod
+    def _python_bereich(f):
+        """Wie _parameter_bereich für eingebaute Funktionen; None, wenn die Signatur unbekannt ist."""
+        try:
+            signatur = inspect.signature(f)
+        except (ValueError, TypeError):
+            return None
+        minimum, maximum = 0, 0
+        for p in signatur.parameters.values():
+            if p.kind in (p.POSITIONAL_ONLY, p.POSITIONAL_OR_KEYWORD):
+                if maximum is not None:
+                    maximum += 1
+                if p.default is p.empty:
+                    minimum += 1
+            elif p.kind is p.VAR_POSITIONAL:
+                maximum = None
+        return minimum, maximum
 
     def _eb_abs(self, *args):
-        self._pruefe_args('abs', args, 1); return abs(args[0])
+        self._pruefe_args('abs', args, 1)
+        try:
+            return abs(args[0])
+        except TypeError:
+            raise TypeError(f"'abs' erwartet eine Zahl, bekam {self._typname(args[0])}")
 
     def _eb_runde(self, *args):
-        if len(args) not in (1, 2): raise TypeError("'runde' erwartet 1–2 Argumente")
-        stellen = int(args[1]) if len(args) == 2 else 0
-        return round(float(args[0]), stellen) if stellen > 0 else int(round(args[0]))
+        """Kaufmännisch: ab ,5 vom Nullpunkt weg. Ohne Stellen oder mit Stellen <= 0 eine Ganzzahl, sonst eine Kommazahl."""
+        if len(args) not in (1, 2):
+            raise TypeError(f"'runde' erwartet 1–2 Argumente, bekam {len(args)}")
+        zahl = args[0]
+        if not isinstance(zahl, (int, float)):
+            raise TypeError(f"'runde' erwartet eine Zahl, bekam {self._typname(zahl)}")
+        stellen = 0
+        if len(args) == 2:
+            stellen = args[1]
+            if not isinstance(stellen, int):
+                raise TypeError(f"'runde' erwartet eine Ganzzahl als Stellenzahl, bekam {self._typname(stellen)}")
+        if isinstance(zahl, float) and not math.isfinite(zahl):
+            raise ValueError(f"'runde' erwartet eine endliche Zahl, bekam {self._zu_text(zahl)}")
+        if isinstance(zahl, bool):  # Python rechnet mit wahr/falsch wie mit 1/0; str() würde 'True' liefern
+            zahl = int(zahl)
+        gerundet = self._runde_dezimal(zahl, stellen)
+        if stellen > 0:
+            return float(gerundet) + 0.0  # + 0.0: aus -0.0 wird 0.0
+        return int(gerundet)
+
+    @staticmethod
+    def _runde_dezimal(zahl, stellen):
+        """Rundet auf der Dezimaldarstellung (str) der Zahl, ROUND_HALF_UP. Gibt ein Decimal zurück."""
+        ganzstellen = len(str(int(abs(zahl))))
+        # Außerhalb dieser Grenzen ändert sich das Ergebnis nicht, nur die Zwischenwerte würden riesig:
+        # Stellen unter -(Ganzstellen+1) ergeben immer 0, ab 400 Nachkommastellen ist die Zahl schon exakt.
+        stellen = min(max(stellen, -(ganzstellen + 1)), 400)
+        with localcontext() as kontext:
+            kontext.prec = ganzstellen + max(stellen, 0) + 5
+            quantum = Decimal(1).scaleb(-stellen)
+            return Decimal(str(zahl)).quantize(quantum, rounding=ROUND_HALF_UP)
 
     def _eb_liste(self, *args):
         self._pruefe_args('liste', args, 1)
         try:
-            return list(args[0])
+            return list(self._instanz_zu_liste(args[0]))
         except TypeError:
             raise TypeError(f"'{self._typname(args[0])}' kann nicht in Liste umgewandelt werden")
 
@@ -537,6 +1401,35 @@ class Interpreter:
             return math.exp(args[0])
         except TypeError:
             raise TypeError(f"'exponential' erwartet eine Zahl, bekam {self._typname(args[0])}")
+        except OverflowError:
+            raise OverflowError(f"'exponential' ergibt für {self._zu_text(args[0])} eine zu große Zahl")
+
+    def _eb_arcsin(self, *args):
+        self._pruefe_args('arcsin', args, 1)
+        return self._arkusfunktion('arcsin', math.asin, args[0])
+
+    def _eb_arccos(self, *args):
+        self._pruefe_args('arccos', args, 1)
+        return self._arkusfunktion('arccos', math.acos, args[0])
+
+    def _eb_arctan(self, *args):
+        self._pruefe_args('arctan', args, 1)
+        return self._arkusfunktion('arctan', math.atan, args[0])
+
+    def _eb_arctan2(self, *args):
+        self._pruefe_args('arctan2', args, 2)
+        try:
+            return math.atan2(args[0], args[1])
+        except TypeError:
+            raise TypeError(f"'arctan2' erwartet zwei Zahlen, bekam {self._typname(args[0])} und {self._typname(args[1])}")
+
+    def _arkusfunktion(self, name, fn, wert):
+        try:
+            return fn(wert)
+        except TypeError:
+            raise TypeError(f"'{name}' erwartet eine Zahl, bekam {self._typname(wert)}")
+        except ValueError:  # nur arcsin/arccos: Definitionsbereich -1 bis 1
+            raise ValueError(f"'{name}' nicht definiert für {self._zu_text(wert)}, erlaubt sind Werte von -1 bis 1")
 
     def _eb_ggt(self, *args):
         if not args:
@@ -566,20 +1459,28 @@ class Interpreter:
 
     def _eb_logarithmus(self, *args):
         if len(args) not in (1, 2):
-            raise TypeError("'logarithmus' erwartet 1–2 Argumente")
+            raise TypeError(f"'logarithmus' erwartet 1–2 Argumente, bekam {len(args)}")
         try:
             return math.log(args[0]) if len(args) == 1 else math.log(args[0], args[1])
+        except ZeroDivisionError:  # nur bei Basis 1: log(Basis) ist 0
+            raise ZeroDivisionError(f"'logarithmus' ist mit Basis {self._zu_text(args[1])} nicht definiert")
         except ValueError:
-            raise ValueError(f"'logarithmus' nicht definiert für {args[0]}")
+            raise ValueError(f"'logarithmus' nicht definiert für {self._zu_text(args[0])}")
         except TypeError:
-            raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(args[0])}")
+            falsch = next((a for a in args if not isinstance(a, (int, float))), args[0])
+            raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(falsch)}")
 
     def _eb_datei_lesen(self, *args):
         self._pruefe_args('datei_lesen', args, 1)
-        pfad = self._zu_text(args[0])
+        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read())
+
+    def _lese_datei(self, pfad: str, lese):
+        """Gemeinsame Fehlerübersetzung für datei_lesen und zeilen_lesen.
+        lese(f) liest aus der bereits geöffneten Datei."""
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
-                return f.read()
+            with open(voller_pfad, 'r', encoding='utf-8') as f:
+                return lese(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
         except IsADirectoryError:
@@ -588,34 +1489,102 @@ class Interpreter:
             raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
         except UnicodeDecodeError:
             raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
-    def _eb_datei_schreiben(self, *args):
-        self._pruefe_args('datei_schreiben', args, 2)
-        pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
+    def _schreibe_datei(self, pfad: str, modus: str, schreibe):
+        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen und json_schreiben.
+        schreibe(f) schreibt in die bereits geöffnete Datei."""
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
-                f.write(inhalt)
+            with open(voller_pfad, modus, encoding='utf-8') as f:
+                schreibe(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
         except IsADirectoryError:
             raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
         except PermissionError:
             raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht geschrieben werden")
+        except UnicodeEncodeError:
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als UTF-8 speichern lassen")
+
+    def _eb_datei_schreiben(self, *args):
+        self._pruefe_args('datei_schreiben', args, 2)
+        pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt))
         return None
 
     def _eb_datei_anhaengen(self, *args):
         self._pruefe_args('datei_anhängen', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        try:
-            with open(self._pfad_aufloesen(pfad), 'a', encoding='utf-8') as f:
-                f.write(inhalt)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
-        except IsADirectoryError:
-            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
-        except PermissionError:
-            raise PermissionError(f"Keine Berechtigung zum Schreiben von '{pfad}'")
+        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt))
         return None
+
+    def _eb_zeilen_lesen(self, *args):
+        self._pruefe_args('zeilen_lesen', args, 1)
+        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f])
+
+    def _eb_datei_loeschen(self, *args):
+        self._pruefe_args('datei_loeschen', args, 1)
+        pfad = self._zu_text(args[0])
+        voller_pfad = self._pfad_vorpruefen(pfad)  # Ordner meldet das vorab als 'ist ein Ordner, keine Datei'
+        try:
+            os.remove(voller_pfad)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Löschen von '{pfad}'")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelöscht werden")
+        return None
+
+    def _eb_umbenennen(self, *args):
+        self._pruefe_args('umbenennen', args, 2)
+        alt, neu = self._zu_text(args[0]), self._zu_text(args[1])
+        voller_alt = self._pfad_vorpruefen(alt, ordner_erlaubt=True)
+        voller_neu = self._pfad_vorpruefen(neu, ordner_erlaubt=True)
+        if not os.path.lexists(voller_alt):
+            raise FileNotFoundError(f"Datei oder Ordner nicht gefunden: '{alt}'")
+        if os.path.lexists(voller_neu):  # os.rename würde unter Linux still überschreiben
+            raise FileExistsError(f"'{neu}' existiert bereits")
+        try:
+            os.rename(voller_alt, voller_neu)
+        except FileNotFoundError:
+            raise FileNotFoundError(f"Zielordner für '{neu}' existiert nicht")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Umbenennen von '{alt}'")
+        except OSError:
+            raise OSError(f"'{alt}' konnte nicht umbenannt werden")
+        return None
+
+    def _eb_pfad_verbinden(self, *args):
+        if not args:
+            raise TypeError("'pfad_verbinden' erwartet mindestens 1 Argument")
+        return os.path.join(*[self._zu_text(a) for a in args])
+
+    def _eb_dateiname(self, *args):
+        self._pruefe_args('dateiname', args, 1)
+        return os.path.basename(self._zu_text(args[0]))
+
+    def _eb_ordnername(self, *args):
+        """Pfad des enthaltenden Ordners ('a/b/c.txt' -> 'a/b', wie os.path.dirname); leer, wenn kein Ordneranteil da ist.
+        Passt zu pfad_verbinden(ordnername(p), dateiname(p))."""
+        self._pruefe_args('ordnername', args, 1)
+        return os.path.dirname(self._zu_text(args[0]))
+
+    def _eb_endung(self, *args):
+        self._pruefe_args('endung', args, 1)
+        return os.path.splitext(self._zu_text(args[0]))[1]
+
+    def _eb_ist_datei(self, *args):
+        self._pruefe_args('ist_datei', args, 1)
+        return os.path.isfile(self._pfad_aufloesen(self._zu_text(args[0])))
+
+    def _eb_ist_ordner(self, *args):
+        self._pruefe_args('ist_ordner', args, 1)
+        return os.path.isdir(self._pfad_aufloesen(self._zu_text(args[0])))
 
     def _eb_boden(self, *args):
         self._pruefe_args('boden', args, 1)
@@ -653,6 +1622,8 @@ class Interpreter:
         return None
 
     def _eb_summe(self, *args):
+        if len(args) == 1:
+            args = (self._instanz_zu_liste(args[0]),)
         werte = args[0] if len(args) == 1 and isinstance(args[0], (list, set)) else list(args)
         try:
             return sum(werte)
@@ -661,12 +1632,14 @@ class Interpreter:
 
     def _eb_alle(self, *args):
         self._pruefe_args('alle', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'alle' erwartet eine Liste oder Menge")
         return all(self._ist_wahr(e) for e in args[0])
 
     def _eb_einige(self, *args):
         self._pruefe_args('einige', args, 1)
+        args = (self._instanz_zu_liste(args[0]),)
         if not isinstance(args[0], (list, set)):
             raise TypeError("'einige' erwartet eine Liste oder Menge")
         return any(self._ist_wahr(e) for e in args[0])
@@ -674,6 +1647,7 @@ class Interpreter:
     def _eb_aufzaehlen(self, *args):
         if len(args) not in (1, 2):
             raise TypeError("'aufzaehlen' erwartet 1–2 Argumente")
+        args = (self._instanz_zu_liste(args[0]),) + args[1:]
         if not isinstance(args[0], (list, set)):
             raise TypeError("'aufzaehlen' erwartet eine Liste oder Menge")
         start = int(args[1]) if len(args) == 2 else 0
@@ -682,6 +1656,7 @@ class Interpreter:
     def _eb_zippe(self, *args):
         if len(args) < 1:
             raise TypeError("'zippe' erwartet mindestens 1 Argument")
+        args = tuple(self._instanz_zu_liste(a) for a in args)
         for a in args:
             if not isinstance(a, (list, str)):
                 raise TypeError("'zippe' erwartet Listen oder Zeichenketten")
@@ -690,28 +1665,34 @@ class Interpreter:
     def _eb_json_lesen(self, *args):
         self._pruefe_args('json_lesen', args, 1)
         pfad = self._zu_text(args[0])
+        voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(self._pfad_aufloesen(pfad), 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding='utf-8') as f:
                 return json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
+        except PermissionError:
+            raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
+        except UnicodeDecodeError:
+            raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
         except json.JSONDecodeError as e:
-            raise ValueError(f"Ungültiges JSON in '{pfad}': {e}")
+            # Keine Zeilenangabe im Text: 'Zeile' würde die Zeilennummer des Skripts unterdrücken
+            raise ValueError(f"Ungültiges JSON in '{pfad}' (Zeichen {e.pos})")
+        except RecursionError:
+            raise RecursionError(f"JSON in '{pfad}' ist zu tief verschachtelt")
+        except OSError:
+            raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
     def _eb_json_schreiben(self, *args):
         self._pruefe_args('json_schreiben', args, 2)
         pfad, wert = self._zu_text(args[0]), args[1]
-
-        def _konvertiere(o):
-            if isinstance(o, set):
-                return self._sortiert(list(o))
-            raise TypeError(f"'{self._typname(o)}' kann nicht als JSON gespeichert werden")
-
+        # Erst prüfen und umwandeln, dann die Datei anlegen: ein Fehler mitten im Schreiben
+        # ließe sonst eine halbe JSON-Datei zurück
         try:
-            with open(self._pfad_aufloesen(pfad), 'w', encoding='utf-8') as f:
-                json.dump(wert, f, default=_konvertiere, ensure_ascii=False, indent=2)
-        except IsADirectoryError:
-            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+            bereit = self._json_bereit(wert)
+        except RecursionError:
+            raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden')
+        self._schreibe_datei(pfad, 'w', lambda f: json.dump(bereit, f, ensure_ascii=False, indent=2))
         return None
 
     def _eb_kommandozeilen_argumente(self, *args):
@@ -759,10 +1740,42 @@ class Interpreter:
     def _eb_datum_formatieren(self, *args):
         self._pruefe_args('datum_formatieren', args, 2)
         zeitstempel, format_str = args[0], self._zu_text(args[1])
+        if not isinstance(zeitstempel, (int, float)):
+            raise ValueError(f"'datum_formatieren' erwartet als Zeitstempel eine Zahl, "
+                             f"bekam {self._typname(zeitstempel)}")
+        if isinstance(zeitstempel, float) and not math.isfinite(zeitstempel):
+            raise ValueError(f"'datum_formatieren' erwartet als Zeitstempel eine endliche Zahl, "
+                             f"bekam {self._zu_text(zeitstempel)}")
         try:
-            return datetime.fromtimestamp(zeitstempel).strftime(format_str)
-        except (TypeError, ValueError, OSError) as e:
-            raise ValueError(f"Ungültiger Zeitstempel oder Format: {e}")
+            datum = datetime.fromtimestamp(zeitstempel)
+        except (OverflowError, OSError, ValueError):  # welche Art, hängt von Wert und Plattform ab
+            raise ValueError(f"Zeitstempel {self._zu_text(zeitstempel)} liegt außerhalb des "
+                             f"darstellbaren Datumsbereichs") from None
+        try:
+            return datum.strftime(format_str)
+        except (ValueError, OSError):  # z. B. ungültige Formatangabe (je nach Plattform)
+            raise ValueError(f"Ungültiges Datumsformat '{format_str}'") from None
+
+    def _eb_datum_lesen(self, *args):
+        """Gegenstück zu datum_formatieren: Text nach Formatangabe -> Zeitstempel (lokale Zeit, wie jetzt())."""
+        self._pruefe_args('datum_lesen', args, 2)
+        text, format_str = self._zu_text(args[0]), self._zu_text(args[1])
+        try:
+            return datetime.strptime(text, format_str).timestamp()
+        except ValueError:
+            raise ValueError(f"'{text}' passt nicht zum Format '{format_str}'")
+        except (OverflowError, OSError):
+            raise ValueError(f"'{text}' liegt außerhalb des darstellbaren Datumsbereichs")
+
+    def _eb_warte(self, *args):
+        self._pruefe_args('warte', args, 1)
+        sekunden = args[0]
+        if not isinstance(sekunden, (int, float)):
+            raise TypeError(f"'warte' erwartet eine Zahl, bekam {self._typname(sekunden)}")
+        if not 0 <= sekunden < float('inf'):  # NaN fällt hier auch heraus
+            raise ValueError(f"'warte' erwartet eine Zeit von 0 oder mehr Sekunden, bekam {self._zu_text(sekunden)}")
+        time.sleep(sekunden)
+        return None
 
     def _eb_mittelwert(self, *args):
         self._pruefe_args('mittelwert', args, 1)
@@ -871,7 +1884,7 @@ class Interpreter:
             return set()
         self._pruefe_args('menge', args, 1)
         try:
-            return set(args[0])
+            return set(self._instanz_zu_liste(args[0]))
         except TypeError:
             raise TypeError(f"'{self._typname(args[0])}' kann nicht in Menge umgewandelt werden")
 
@@ -913,8 +1926,11 @@ class Interpreter:
         if isinstance(wert, dict):    return 'Woerterbuch'
         if isinstance(wert, set):     return 'Menge'
         if isinstance(wert, DeutschInstanz): return wert.klasse.name
+        if isinstance(wert, AufzaehlungsWert): return wert.aufzaehlung.name
+        if isinstance(wert, DeutschAufzaehlung): return f'Aufzaehlung({wert.name})'
         if isinstance(wert, DeutschKlasse):  return f'Klasse({wert.name})'
         if isinstance(wert, DeutschNamensraum): return f'Namensraum({wert.name})'
+        if isinstance(wert, DeutschGenerator): return 'Generator'
         if isinstance(wert, (DeutschFunktion, GebundeneMethode, type(lambda: None))): return 'Funktion'
         if callable(wert):            return 'Funktion'
         return type(wert).__name__
@@ -940,6 +1956,8 @@ class Interpreter:
             m = wert.klasse.suche_methode('__text__')
             if m:
                 return str(self._funktion_aufrufen(m, [wert]))
+            if wert.klasse.python_fehlerklasse() is not None and 'nachricht' in wert.attribute:
+                return self._zu_text(wert.attribute['nachricht'])
             return repr(wert)
         return str(wert)
 
@@ -967,8 +1985,12 @@ class Interpreter:
 
     def _besuche_Programm(self, k, u):
         ergebnis = None
-        for anw in k.anweisungen:
-            ergebnis = self._besuche_anweisung(anw, u)
+        try:
+            for anw in k.anweisungen:
+                ergebnis = self._besuche_anweisung(anw, u)
+        except _KONTROLLSIGNALE as signal:
+            # Oberste Ebene (auch eine per 'lade' geladene Datei): kein Schleifen-/Funktionskontext
+            raise self._signal_fehler_hier(signal) from None
         return ergebnis
 
     def _besuche_Block(self, k, u):
@@ -987,18 +2009,81 @@ class Interpreter:
             return self._besuche(anw, u)
         except _KONTROLLSIGNALE:
             raise
-        except SyntaxError:
-            raise
         except Exception as e:
-            if isinstance(e, AusnahmeFehler):
-                if zeile is not None and 'Zeile' not in str(e):
-                    self._letzter_aufruf_stack = list(self._aufruf_stack)
-                    raise AusnahmeFehler(e.wert, nachricht=f'Zeile {zeile}: {e}') from e
+            neu = self._fehler_mit_ort(e, zeile)
+            if neu is None:
                 raise
-            if zeile is not None and 'Zeile' not in str(e):
-                self._letzter_aufruf_stack = list(self._aufruf_stack)
-                raise type(e)(f'Zeile {zeile}: {e}') from e
-            raise
+            raise neu from e
+
+    def _fehler_mit_ort(self, e, zeile):
+        """Der Fehler e mit Ortsangabe der Anweisung in 'zeile'; None, wenn e unverändert weitergehen soll."""
+        # Syntaxfehler aus 'lade' tragen ihren Ort schon; 'werfe SyntaxFehler(…)' (AusnahmeFehler) bekommt einen
+        if isinstance(e, SyntaxError) and not isinstance(e, AusnahmeFehler):
+            return None
+        if zeile is None or getattr(e, 'zeile', None) is not None:  # .zeile: schon mit Ort versehen
+            return None
+        self._letzter_aufruf_stack = list(self._aufruf_stack)
+        kern = _meldung_deutsch(e)
+        nachricht = f'{self._ort(zeile)}: {kern}'
+        if isinstance(e, AusnahmeFehler):
+            neu = type(e)(e.wert, nachricht=nachricht)
+        else:
+            neu = self._fehler_neu_mit_meldung(e, nachricht)
+        neu.kern = kern  # Meldung ohne Ortsangabe (für 'nachricht' der Fehlervariable)
+        # Fundort als Attribute: Datei (absoluter Pfad, None = Hauptskript/REPL) und Zeile
+        neu.datei = self._aktuelle_datei
+        neu.zeile = zeile
+        return neu
+
+    @staticmethod
+    def _fehler_neu_mit_meldung(e: Exception, nachricht: str) -> Exception:
+        """Baut e mit neuer Meldung neu und behält dabei die Klasse von e, damit 'fange (Klasse)'
+        weiter greift. Klassen, die sich nicht aus einer einzelnen Meldung bauen lassen (z. B.
+        UnicodeDecodeError) oder deren str() die Meldung verändert (KeyError), werden als gleichnamige
+        Unterklasse mit den Originalargumenten neu erzeugt. Notfalls Basisklasse bzw. RuntimeError."""
+        klasse = type(e)
+        try:
+            neu = klasse(nachricht)
+            if str(neu) == nachricht:
+                return neu
+        except Exception:
+            pass
+        try:
+            neu = _klasse_mit_meldung(klasse)(*e.args)
+            neu.deutsche_meldung = nachricht
+            return neu
+        except Exception:
+            pass
+        for basis in klasse.__mro__[1:]:
+            if not issubclass(basis, Exception):
+                continue
+            try:
+                return basis(nachricht)
+            except TypeError:
+                continue
+        return RuntimeError(nachricht)
+
+    def _ort(self, zeile: int) -> str:
+        """'Zeile 3' im Hauptskript, 'hilfe.deu, Zeile 3' in einer per 'lade' geladenen Datei."""
+        if self._aktuelle_datei is None:
+            return f'Zeile {zeile}'
+        return f'{self._datei_anzeigename(self._aktuelle_datei)}, Zeile {zeile}'
+
+    def _datei_anzeigename(self, pfad: str) -> str:
+        """Pfad relativ zum Ordner des Hauptskripts (mit '/'), außerhalb davon der volle Pfad."""
+        try:
+            relativ = os.path.relpath(pfad, self._ladepfad)
+        except ValueError:  # z. B. anderes Laufwerk unter Windows
+            return pfad
+        if relativ == os.pardir or relativ.startswith(os.pardir + os.sep):
+            return pfad
+        return relativ.replace(os.sep, '/')
+
+    def _signal_fehler_hier(self, signal) -> RuntimeError:
+        """Wie _signal_fehler, nennt aber die Datei, in der gerade Code läuft."""
+        if self._aktuelle_datei is None:
+            return _signal_fehler(signal)
+        return _signal_fehler(signal, self._aktuelle_datei, self._datei_anzeigename(self._aktuelle_datei))
 
     # Literale
     def _besuche_Ganzzahl(self,     k, u): return k.wert
@@ -1025,23 +2110,64 @@ class Interpreter:
     def _besuche_Bezeichner(self, k, u):
         return u.hole(k.name)
 
+    # Entpacken ('*x', '**x'): erlaubt sind Listen, Mengen, Zeichenketten und Wörterbücher (deren Schlüssel)
+    _ENTPACKBAR = (list, tuple, set, frozenset, str, dict)
+
+    def _entpackte_elemente(self, knoten, u):
+        """Wert von '*ausdruck' (ast.Entpacken): eine Sammlung, deren Elemente eingesetzt werden."""
+        wert = self._instanz_zu_liste(self._besuche(knoten.ausdruck, u))
+        if not isinstance(wert, self._ENTPACKBAR):
+            raise TypeError(f"Entpacken mit '*' erwartet eine Liste, Menge, Zeichenkette oder ein "
+                            f"Wörterbuch, bekam {self._typname(wert)}")
+        return wert
+
+    def _entpacktes_woerterbuch(self, ausdruck, u):
+        """Wert von '**ausdruck': ein Wörterbuch, dessen Einträge eingesetzt werden."""
+        wert = self._besuche(ausdruck, u)
+        if not isinstance(wert, dict):
+            raise TypeError(f"Entpacken mit '**' erwartet ein Wörterbuch, bekam {self._typname(wert)}")
+        return wert
+
+    def _elemente_mit_entpacken(self, elemente, u):
+        ergebnis = []
+        for e in elemente:
+            if isinstance(e, ast.Entpacken):
+                ergebnis.extend(self._entpackte_elemente(e, u))
+            else:
+                ergebnis.append(self._besuche(e, u))
+        return ergebnis
+
     def _besuche_Liste(self, k, u):
+        if k.mit_entpacken:
+            return self._elemente_mit_entpacken(k.elemente, u)
         return [self._besuche(e, u) for e in k.elemente]
 
     def _besuche_Woerterbuch(self, k, u):
-        return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+        if not k.mit_entpacken:
+            return {self._besuche(kk, u): self._besuche(ww, u) for kk, ww in k.paare}
+        ergebnis = {}
+        for kk, ww in k.paare:
+            if kk is None:  # '**x': spätere Schlüssel überschreiben frühere
+                ergebnis.update(self._entpacktes_woerterbuch(ww, u))
+            else:
+                schluessel = self._besuche(kk, u)
+                ergebnis[schluessel] = self._besuche(ww, u)
+        return ergebnis
 
     def _besuche_MengenLiteral(self, k, u):
-        elemente = [self._besuche(e, u) for e in k.elemente]
+        if k.mit_entpacken:
+            elemente = self._elemente_mit_entpacken(k.elemente, u)
+        else:
+            elemente = [self._besuche(e, u) for e in k.elemente]
         try:
             return set(elemente)
         except TypeError:
             raise TypeError('Mengen-Elemente müssen hashbar sein (keine Listen/Wörterbücher)')
 
     def _besuche_ListenAusdruck(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._iterable_auswerten(k.iterable, u)
         ergebnis = []
-        for elem in iterable:
+        for elem in self._iteriere(iterable):
             iter_u = Umgebung(u)
             self._schleifenvariable_binden(k.variable, elem, iter_u)
             if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
@@ -1049,44 +2175,96 @@ class Interpreter:
         return ergebnis
 
     def _schleifenvariable_binden(self, variable, elem, u):
-        """variable: str (einfache Bindung) | list[str] (Destrukturierung)."""
-        if isinstance(variable, list):
-            if not isinstance(elem, (list, tuple)):
-                raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(elem)}")
-            if len(elem) != len(variable):
-                raise TypeError(
-                    f"Destrukturierung erwartet {len(variable)} Werte, bekam {len(elem)}"
-                )
-            for name, wert in zip(variable, elem):
+        """variable: str (einfache Bindung) | ast.Muster (Destrukturierung)."""
+        if isinstance(variable, ast.Muster):
+            paare = []
+            self._muster_zerlegen(variable, elem, paare)
+            for name, wert in paare:
                 u.setze(name, wert)
         else:
             u.setze(variable, elem)
 
+    @staticmethod
+    def _werte_text(n):
+        return '1 Wert' if n == 1 else f'{n} Werte'
+
+    def _muster_zerlegen(self, muster, wert, paare):
+        """Verteilt wert auf die Ziele des Musters und hängt (ziel, teilwert) für jedes Blatt an paare an.
+        Prüft zuerst alles (Typ, Anzahl, verschachtelte Muster); erst danach darf jemand binden/zuweisen.
+        Ein Rest-Ziel ('*r') bekommt eine Liste; Blätter sind Namen (str) oder Zuweisungsziele (Knoten)."""
+        wert = self._instanz_zu_liste(wert)
+        if not isinstance(wert, (list, tuple)):
+            raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
+        teile, fehler = self._muster_teile(muster, wert)
+        if fehler:
+            raise TypeError(fehler)
+        for ziel, teil in zip(muster.ziele, teile):
+            if isinstance(ziel, ast.Muster):
+                self._muster_zerlegen(ziel, teil, paare)
+            else:
+                paare.append((ziel, teil))
+
+    def _muster_teile(self, muster, wert):
+        """Teilt die Liste wert auf die Ziele des Musters: (teile, None) oder (None, Fehlertext) bei falscher Anzahl.
+        Das Rest-Ziel ('*r') bekommt eine Liste. Gemeinsam für Destrukturierung und Mustervergleich."""
+        ziele = muster.ziele
+        if muster.rest is None:
+            if len(wert) != len(ziele):
+                return None, f"Destrukturierung erwartet {self._werte_text(len(ziele))}, bekam {len(wert)}"
+            return list(wert), None
+        mindestens = len(ziele) - 1
+        if len(wert) < mindestens:
+            return None, f"Destrukturierung erwartet mindestens {self._werte_text(mindestens)}, bekam {len(wert)}"
+        nach_rest = len(ziele) - muster.rest - 1
+        ende = len(wert) - nach_rest
+        return list(wert[:muster.rest]) + [list(wert[muster.rest:ende])] + list(wert[ende:]), None
+
     # Typ-Hinweise
+    _PRIMITIVE_TYPEN = {
+        'Ganzzahl':      lambda w: isinstance(w, int) and not isinstance(w, bool),
+        'Kommazahl':     lambda w: isinstance(w, (int, float)) and not isinstance(w, bool),
+        'Zeichenkette':  lambda w: isinstance(w, str),
+        'Wahrheitswert': lambda w: isinstance(w, bool),
+        'Liste':         lambda w: isinstance(w, list),
+        'Woerterbuch':   lambda w: isinstance(w, dict),
+        'Wörterbuch':    lambda w: isinstance(w, dict),
+        'Menge':         lambda w: isinstance(w, set),
+        'Nichts':        lambda w: w is None,
+        'Generator':     lambda w: isinstance(w, DeutschGenerator),
+        'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
+    }
+
     def _pruefe_typ(self, wert, typhinweis, kontext_msg, u):
         if typhinweis is None:
             return
-        primitive = {
-            'Ganzzahl':      lambda w: isinstance(w, int) and not isinstance(w, bool),
-            'Kommazahl':     lambda w: isinstance(w, (int, float)) and not isinstance(w, bool),
-            'Zeichenkette':  lambda w: isinstance(w, str),
-            'Wahrheitswert': lambda w: isinstance(w, bool),
-            'Liste':         lambda w: isinstance(w, list),
-            'Woerterbuch':   lambda w: isinstance(w, dict),
-            'Wörterbuch':    lambda w: isinstance(w, dict),
-            'Menge':         lambda w: isinstance(w, set),
-            'Nichts':        lambda w: w is None,
-            'Funktion':      lambda w: isinstance(w, (DeutschFunktion, GebundeneMethode)) or callable(w),
-        }
-        if typhinweis in primitive:
-            ok = primitive[typhinweis](wert)
-        elif u.existiert(typhinweis) and isinstance(u.hole(typhinweis), DeutschKlasse):
-            ziel = u.hole(typhinweis)
-            ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
+        if typhinweis in self._PRIMITIVE_TYPEN:
+            ok = self._PRIMITIVE_TYPEN[typhinweis](wert)
         else:
-            raise TypeError(f"Unbekannter Typ-Hinweis: '{typhinweis}'")
+            ziel = self._typ_klasse(typhinweis, u)
+            if ziel is None:
+                raise TypeError(f"Unbekannter Typ-Hinweis: '{typhinweis}'")
+            if isinstance(ziel, DeutschAufzaehlung):
+                ok = isinstance(wert, AufzaehlungsWert) and wert.aufzaehlung is ziel
+            else:
+                ok = isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziel)
         if not ok:
             raise TypeError(f"{kontext_msg}: erwartet Typ '{typhinweis}', bekam {self._typname(wert)}")
+
+    def _punktpfad_holen(self, pfad: str, u):
+        """Wert eines Namens oder Punktpfads ('modul.Basis') ab dem Scope u; Fehler wie bei 'a.b'."""
+        teile = pfad.split('.')
+        wert = u.hole(teile[0])
+        for teil in teile[1:]:
+            wert = self._hole_attribut(wert, teil)
+        return wert
+
+    def _typ_klasse(self, typhinweis: str, u):
+        """Die Klasse, die ein Typ-Hinweis (Name oder Punktpfad 'modul.Klasse') benennt, sonst None."""
+        try:
+            wert = self._punktpfad_holen(typhinweis, u)
+        except (NameError, AttributeError):
+            return None
+        return wert if isinstance(wert, (DeutschKlasse, DeutschAufzaehlung)) else None
 
     def _ist_instanz_von(self, klasse, ziel):
         if klasse is ziel:
@@ -1100,20 +2278,19 @@ class Interpreter:
         if k.name in u.konstanten:
             raise TypeError(f"'{k.name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
         if k.ist_konstante:
-            u.setze_konstante(k.name, wert)
+            u.setze_konstante(k.name, wert, k.typhinweis)
         else:
-            u.setze(k.name, wert)
+            u.setze(k.name, wert, k.typhinweis)
         return wert
 
     def _besuche_DestrukturierendeDeklaration(self, k, u):
         wert = self._besuche(k.wert, u)
-        if not isinstance(wert, (list, tuple)):
-            raise TypeError(f"Destrukturierung erwartet eine Liste, bekam {self._typname(wert)}")
-        if len(wert) != len(k.namen):
-            raise TypeError(
-                f"Destrukturierung erwartet {len(k.namen)} Werte, bekam {len(wert)}"
-            )
-        for name, einzelwert in zip(k.namen, wert):
+        paare = []
+        self._muster_zerlegen(k.muster, wert, paare)
+        for name, _ in paare:  # erst alles prüfen, dann binden: bei einem Verstoß bleibt der Scope unverändert
+            if name in u.konstanten:
+                raise TypeError(f"'{name}' ist bereits als Konstante in diesem Geltungsbereich deklariert")
+        for name, einzelwert in paare:
             u.setze(name, einzelwert)
         return wert
 
@@ -1122,19 +2299,54 @@ class Interpreter:
         self._ziel_setzen(k.ziel, wert, u)
         return wert
 
+    def _besuche_KettenZuweisung(self, k, u):
+        # a = b = ausdruck: Wert einmal auswerten; alle Namen müssen vorher existieren,
+        # damit bei einem unbekannten Namen keines der Ziele schon verändert ist
+        wert = self._besuche(k.wert, u)
+        for ziel in k.ziele:
+            self._ziel_vorpruefen(ziel, u)
+        for ziel in k.ziele:
+            self._ziel_setzen(ziel, wert, u)
+        return wert
+
+    def _ziel_vorpruefen(self, ziel, u):
+        """Wirft den NameError für noch nicht deklarierte Namen, bevor irgendetwas zugewiesen wird."""
+        if isinstance(ziel, ast.Bezeichner):
+            if not u.existiert(ziel.name):
+                raise NameError(u.nicht_deklariert_meldung(ziel.name))
+        elif isinstance(ziel, ast.Muster):
+            for teilziel in ziel.ziele:
+                self._ziel_vorpruefen(teilziel, u)
+
     def _besuche_VerbundZuweisung(self, k, u):
+        if isinstance(k.ziel, ast.Bezeichner) and not u.existiert(k.ziel.name):
+            raise NameError(u.nicht_deklariert_meldung(k.ziel.name))
         alter_wert = self._besuche(k.ziel, u)
+        if k.operator == '??':  # nur zuweisen, wenn das Ziel 'nichts' ist; rechts sonst nicht auswerten
+            if alter_wert is not None:
+                return alter_wert
+            neuer_wert = self._besuche(k.wert, u)
+            self._ziel_setzen(k.ziel, neuer_wert, u)
+            return neuer_wert
         delta = self._besuche(k.wert, u)
         neuer_wert = self._binaerer_operator(k.operator, alter_wert, delta)
         self._ziel_setzen(k.ziel, neuer_wert, u)
         return neuer_wert
 
     def _ziel_setzen(self, ziel, wert, u):
-        if isinstance(ziel, ast.Bezeichner):
-            if u.existiert(ziel.name):
-                u.weise_zu(ziel.name, wert)
-            else:
-                u.setze(ziel.name, wert)
+        if isinstance(ziel, ast.Muster):
+            # [a, b] = …: erst vollständig zerlegen und Namen prüfen, dann zuweisen
+            paare = []
+            self._muster_zerlegen(ziel, wert, paare)
+            self._ziel_vorpruefen(ziel, u)
+            for teilziel, teilwert in paare:
+                self._ziel_setzen(teilziel, teilwert, u)
+        elif isinstance(ziel, ast.Bezeichner):
+            # Existiert der Name in keinem Scope, wirft weise_zu einen NameError (neue Variablen: 'sei')
+            u.weise_zu(
+                ziel.name, wert,
+                lambda w, hinweis, scope: self._pruefe_typ(w, hinweis, f"Variable '{ziel.name}'", scope),
+            )
         elif isinstance(ziel, ast.AttributZugriff):
             obj = self._besuche(ziel.objekt, u)
             if isinstance(obj, DeutschInstanz):
@@ -1149,9 +2361,17 @@ class Interpreter:
             else:
                 raise TypeError(f"Kann Attribut von '{self._typname(obj)}' nicht setzen")
         elif isinstance(ziel, ast.IndexZugriff):
+            obj = self._besuche(ziel.objekt, u)
+            if isinstance(obj, DeutschInstanz):
+                m = obj.klasse.suche_methode('__setze__')
+                if m is None:
+                    raise TypeError(f"'{obj.klasse.name}' unterstützt keine Index-Zuweisung (Methode '__setze__' fehlt)")
+                idx = (self._teilbereich_bauen(ziel.index, u) if isinstance(ziel.index, ast.SliceAusdruck)
+                       else self._besuche(ziel.index, u))
+                self._funktion_aufrufen(m, [obj, idx, wert])
+                return
             if isinstance(ziel.index, ast.SliceAusdruck):
                 raise TypeError('Slice-Zuweisung wird nicht unterstützt')
-            obj = self._besuche(ziel.objekt, u)
             idx = self._besuche(ziel.index, u)
             try:
                 obj[idx] = wert
@@ -1169,6 +2389,10 @@ class Interpreter:
         if k.operator == 'oder':
             l = self._besuche(k.links, u)
             return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
+        if k.operator == '??':
+            # Null-Koaleszenz: rechts wird nur ausgewertet, wenn links 'nichts' ist
+            l = self._besuche(k.links, u)
+            return l if l is not None else self._besuche(k.rechts, u)
 
         l = self._besuche(k.links, u)
         r = self._besuche(k.rechts, u)
@@ -1181,6 +2405,13 @@ class Interpreter:
                 m = l.klasse.suche_methode(methoden_name)
                 if m is not None:
                     return self._funktion_aufrufen(m, [l, r])
+        if op in ('in', 'nicht in') and isinstance(r, DeutschInstanz):
+            m = r.klasse.suche_methode('__enthaelt__')
+            if m is not None:
+                b = self._funktion_aufrufen(m, [r, l])
+                if not isinstance(b, bool):
+                    raise TypeError(f"'__enthaelt__' muss einen Wahrheitswert liefern, bekam {self._typname(b)}")
+                return b if op == 'in' else not b
         try:
             if op == '+':
                 if isinstance(l, str) or isinstance(r, str):
@@ -1195,7 +2426,10 @@ class Interpreter:
                 if r == 0: raise ZeroDivisionError('Ganzzahldivision durch Null')
                 return l // r
             if op == '**':  return l ** r
-            if op == '%':   return l % r
+            if op == '%':
+                if r == 0: raise ZeroDivisionError('Division durch Null')
+                return l % r
+            if op in _BIT_OPERATOREN: return self._bit_operator(op, l, r)
             if op == '==':  return l == r
             if op == '!=':  return l != r
             if op == '<':   return l < r
@@ -1210,9 +2444,43 @@ class Interpreter:
             )
         raise RuntimeError(f'Unbekannter Operator: {op!r}')
 
+    def _bit_operator(self, op, l, r):
+        """& | ^ << >> für Ganzzahlen; & | ^ zusätzlich für Mengen (Schnitt, Vereinigung, symm. Differenz).
+        Alles andere (auch Wörterbücher und Kommazahlen) ist ein Typfehler."""
+        if isinstance(l, int) and isinstance(r, int):
+            if op == '&': return l & r
+            if op == '|': return l | r
+            if op == '^': return l ^ r
+            if r < 0:
+                raise ValueError('Negative Schiebezahl')
+            if op == '>>': return l >> r
+            try:
+                return l << r
+            except (OverflowError, MemoryError):
+                raise OverflowError('Ergebnis der Linksschiebung ist zu groß')
+        if isinstance(l, set) and isinstance(r, set):
+            if op == '&': return l & r
+            if op == '|': return l | r
+            if op == '^': return l ^ r
+        raise TypeError(
+            f"Operator '{op}' nicht unterstützt für {self._typname(l)} und {self._typname(r)}"
+        )
+
     def _besuche_UnaereOperation(self, k, u):
         val = self._besuche(k.operand, u)
-        if k.operator == '-':    return -val
+        if k.operator == '-':
+            try:
+                return -val
+            except TypeError:
+                raise TypeError(f"Operator '-' nicht unterstützt für {self._typname(val)}")
+        if k.operator == '~':
+            if isinstance(val, DeutschInstanz):
+                m = val.klasse.suche_methode('__bitnicht__')
+                if m is not None:
+                    return self._funktion_aufrufen(m, [val])
+            if isinstance(val, int):
+                return ~val
+            raise TypeError(f"Operator '~' nicht unterstützt für {self._typname(val)}")
         if k.operator == 'nicht': return not self._ist_wahr(val)
         raise RuntimeError(f'Unbekannter unärer Operator: {k.operator!r}')
 
@@ -1250,21 +2518,66 @@ class Interpreter:
         return None
 
     def _besuche_FuerAnweisung(self, k, u):
-        iterable = self._besuche(k.iterable, u)
+        iterable = self._iterable_auswerten(k.iterable, u)
         schleifen_u = Umgebung(u)
-        for elem in iterable:
-            self._schleifenvariable_binden(k.variable, elem, schleifen_u)
-            try:
-                self._besuche(k.koerper, schleifen_u)
-            except _AbbrechenSignal: break
-            except _WeiterSignal:    continue
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                self._schleifenvariable_binden(k.variable, elem, schleifen_u)
+                try:
+                    self._besuche(k.koerper, schleifen_u)
+                except _AbbrechenSignal: break
+                except _WeiterSignal:    continue
+        except _KONTROLLSIGNALE:
+            self._iterator_schliessen(iterator, False)
+            raise
+        except BaseException:
+            self._iterator_schliessen(iterator, True)
+            raise
+        self._iterator_schliessen(iterator, False)
         return None
 
+    @staticmethod
+    def _iterator_schliessen(iterator, fehler_laeuft):
+        """Beendet einen Generator, den die Schleife vorzeitig verlässt, sofort (sein 'endlich' läuft jetzt).
+        Ein Fehler daraus geht weiter – außer es läuft schon einer: der ursprüngliche bleibt der gemeldete."""
+        if isinstance(iterator, DeutschGenerator):
+            try:
+                iterator.close()
+            except Exception:
+                if not fehler_laeuft:
+                    raise
+
     def _besuche_ZurueckAnweisung(self, k, u):
-        raise _ZurueckSignal(self._besuche(k.wert, u))
+        wert = self._besuche(k.wert, u)
+        raise _ZurueckSignal(wert, getattr(k, 'zeile', None))
 
     def _besuche_WerfeAnweisung(self, k, u):
-        raise AusnahmeFehler(self._besuche(k.wert, u))
+        wert = self._besuche(k.wert, u)
+        if isinstance(k.wert, ast.Bezeichner):
+            original = self._fange_herkunft(k.wert.name, wert, u)
+            if original is not None:
+                # Erneutes Werfen der unveränderten Fehlervariable: derselbe Fehler (Art, Meldung, Datei,
+                # Zeile und Aufrufkette bleiben; die CLI zeigt weiter dessen Quellzeile)
+                raise original
+        if isinstance(wert, DeutschInstanz):
+            py = wert.klasse.python_fehlerklasse()
+            if py is not None:
+                raise _ausnahme_klasse(py)(wert)
+        raise AusnahmeFehler(wert)
+
+    @staticmethod
+    def _fange_herkunft(name: str, wert, u):
+        """Die Ausnahme, die die Variable 'name' aus einem 'fange'-Block hält, solange sie noch den
+        dort gebundenen Wert trägt; sonst None."""
+        while u is not None:
+            if name in u.variablen:
+                gefangen = u.gefangen
+                if gefangen is not None and gefangen[0] == name and u.variablen[name] is gefangen[1]:
+                    return gefangen[2]
+                return None
+            u = u.eltern
+        return None
 
     def _besuche_PruefeAnweisung(self, k, u):
         if not self._ist_wahr(self._besuche(k.bedingung, u)):
@@ -1273,8 +2586,8 @@ class Interpreter:
             raise AssertionError('Prüfung fehlgeschlagen')
         return None
 
-    def _besuche_AbbrechenAnweisung(self, k, u): raise _AbbrechenSignal()
-    def _besuche_WeiterAnweisung(self, k, u):    raise _WeiterSignal()
+    def _besuche_AbbrechenAnweisung(self, k, u): raise _AbbrechenSignal(getattr(k, 'zeile', None))
+    def _besuche_WeiterAnweisung(self, k, u):    raise _WeiterSignal(getattr(k, 'zeile', None))
 
     def _besuche_VersucheAnweisung(self, k, u):
         try:
@@ -1282,55 +2595,233 @@ class Interpreter:
         except _KONTROLLSIGNALE:
             raise  # Kontrollfluss-Signale niemals abfangen
         except Exception as e:
-            if k.fange_koerper is not None and self._fehlertyp_passt(e, k.fange_typen):
-                fange_u = Umgebung(u)
-                if k.fange_name:
-                    wert = e.wert if isinstance(e, AusnahmeFehler) else str(e)
-                    fange_u.setze(k.fange_name, wert)
-                self._besuche(k.fange_koerper, fange_u)
-            else:
+            fange_u = self._fange_umgebung(k, e, u)
+            if fange_u is None:
                 raise
+            self._besuche(k.fange_koerper, fange_u)
         finally:
             if k.endlich_koerper is not None:
                 self._besuche(k.endlich_koerper, u)
         return None
 
+    def _fange_umgebung(self, k, e, u):
+        """Umgebung für den 'fange'-Block, wenn dieser den Fehler e fängt (mit gebundener Fehlervariable); sonst None."""
+        if k.fange_koerper is None or not self._fehlertyp_passt(e, k.fange_typen, u):
+            return None
+        fange_u = Umgebung(u)
+        if k.fange_name:
+            wert = self._fehlerwert(e)
+            fange_u.setze(k.fange_name, wert)
+            if getattr(e, 'zeile', None) is not None:  # Herkunft für ein erneutes 'werfe name'
+                fange_u.gefangen = (k.fange_name, wert, e)
+        return fange_u
+
     @staticmethod
-    def _fehlertyp_passt(e, fange_typen):
-        """Prüft ob fange_typen (str-Namen, z.B. 'TypeError') den Fehler oder eine seiner
-        Basisklassen matcht. None bedeutet: alles fangen (Standardverhalten)."""
+    def _fehlerwert(e):
+        """Wert der Fehlervariable: geworfene Instanz (mit art/zeile/datei), Text als DeutschFehler,
+        sonstige geworfene Werte (42, Liste …) unverändert."""
+        zeile, datei = getattr(e, 'zeile', None), getattr(e, 'datei', None)
+        if isinstance(e, AusnahmeFehler):
+            wert = e.wert
+            if isinstance(wert, DeutschInstanz):
+                wert.attribute.update(art=fehlerart_name(e), zeile=zeile, datei=datei)  # reserviert
+                return wert
+            if not isinstance(wert, str):
+                return wert
+            return DeutschFehler(wert, art=fehlerart_name(e), zeile=zeile, datei=datei, ausnahme=e)
+        return DeutschFehler(str(e), getattr(e, 'kern', None), fehlerart_name(e), zeile, datei, e)
+
+    def _fehlertyp_passt(self, e, fange_typen, u):
+        """Prüft ob fange_typen (Namen, z.B. 'WertFehler', 'ValueError' oder eine eigene Fehlerklasse,
+        auch 'modul.Klasse') den Fehler oder eine seiner Basisklassen matcht. None bedeutet: alles fangen
+        (Standardverhalten). Ein unbekannter Name löst einen NameError aus."""
         if fange_typen is None:
             return True
-        namen = {klasse.__name__ for klasse in type(e).__mro__}
-        return not namen.isdisjoint(fange_typen)
+        klassennamen = {klasse.__name__ for klasse in type(e).__mro__}
+        ziele = {}
+        for name in fange_typen:
+            if name not in FEHLERARTEN and name not in _ENGLISCHE_FEHLERNAMEN:
+                ziel = self._typ_klasse(name, u)
+                if isinstance(ziel, DeutschKlasse):
+                    ziele[name] = ziel
+                    continue
+            _fehlerart_pruefen(name, klassennamen)
+        wert = e.wert if isinstance(e, AusnahmeFehler) else None
+        for name in fange_typen:
+            klasse = FEHLERARTEN.get(name)
+            if name in ziele:
+                if isinstance(wert, DeutschInstanz) and self._ist_instanz_von(wert.klasse, ziele[name]):
+                    return True
+            elif klasse is not None:
+                if isinstance(e, klasse):
+                    return True
+            elif name in klassennamen:
+                return True
+        return False
 
     def _pfad_aufloesen(self, pfad: str) -> str:
         if not os.path.isabs(pfad):
             pfad = os.path.join(self._ladepfad, pfad)
         return os.path.normpath(pfad)
 
+    def _pfad_vorpruefen(self, pfad: str, ordner_erlaubt: bool = False) -> str:
+        """Voller Pfad für open(). Nullzeichen und Ordner meldet es vorab auf Deutsch,
+        bevor open() es unverständlich meldet. ordner_erlaubt: Ordner sind hier kein Fehler (z. B. umbenennen)."""
+        if '\x00' in pfad:
+            sichtbar = pfad.replace('\x00', '\\0')
+            raise ValueError(f"'{sichtbar}' ist kein gültiger Dateipfad")
+        voller_pfad = self._pfad_aufloesen(pfad)
+        if not ordner_erlaubt and os.path.isdir(voller_pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
+            raise IsADirectoryError(f"'{pfad}' ist ein Ordner, keine Datei")
+        return voller_pfad
+
+    def _json_bereit(self, wert, aktiv: frozenset = frozenset()):
+        """Prüft wert auf JSON-Tauglichkeit und liefert eine reine Python-Kopie (Mengen werden sortierte Listen).
+        Die Fehler kommen dabei auf Deutsch; json.dump wirft danach nur noch Ein-/Ausgabefehler."""
+        if wert is None or isinstance(wert, (str, int, float)):  # bool ist ein int
+            return wert
+        if isinstance(wert, set):
+            wert = self._sortiert(list(wert))
+        if isinstance(wert, list):
+            if id(wert) in aktiv:
+                raise ValueError(f"Zirkulärer Verweis: '{self._typname(wert)}' enthält sich selbst und kann nicht als JSON gespeichert werden")
+            innen = aktiv | {id(wert)}
+            return [self._json_bereit(e, innen) for e in wert]
+        if isinstance(wert, dict):
+            if id(wert) in aktiv:
+                raise ValueError(f"Zirkulärer Verweis: '{self._typname(wert)}' enthält sich selbst und kann nicht als JSON gespeichert werden")
+            innen = aktiv | {id(wert)}
+            ergebnis = {}
+            for schluessel, eintrag in wert.items():
+                if schluessel is not None and not isinstance(schluessel, (str, int, float)):
+                    raise TypeError(f"Schlüssel vom Typ '{self._typname(schluessel)}' kann nicht als JSON gespeichert werden")
+                ergebnis[schluessel] = self._json_bereit(eintrag, innen)
+            return ergebnis
+        raise TypeError(f"'{self._typname(wert)}' kann nicht als JSON gespeichert werden")
+
     def _besuche_PasseAnweisung(self, k, u):
+        block, arm_u = self._passe_arm(k, u)
+        return None if block is None else self._besuche(block, arm_u)
+
+    def _passe_arm(self, k, u):
+        """(Block, Umgebung) des ersten passenden 'fall' bzw. von 'sonst'; (None, u) ohne Treffer."""
         subjekt = self._besuche(k.ausdruck, u)
-        for werte, block in k.faelle:
-            if any(subjekt == self._besuche(w, u) for w in werte):
-                return self._besuche(block, u)
+        for alternativen, waechter, block in k.faelle:
+            arm_u = Umgebung(u)  # Bindungen und Wächter leben nur im Arm
+            for m in alternativen:
+                paare = []
+                if self._muster_passt(m, subjekt, paare, u):
+                    for name, wert in paare:
+                        arm_u.setze(name, wert)
+                    if waechter is None or self._ist_wahr(self._besuche(waechter, arm_u)):
+                        return block, arm_u
+                    break  # Alternativen binden dieselben Namen: ein falscher Wächter gilt für alle
         if k.sonst is not None:
-            return self._besuche(k.sonst, u)
-        return None
+            return k.sonst, u
+        if k.ist_ausdruck:
+            raise ValueError(f"'passe': kein 'fall' passt auf {self._zu_text(subjekt)}")
+        return None, u
+
+    def _muster_passt(self, m, wert, paare, u):
+        """True, wenn wert auf das Muster passt; Bindungen (name, wert) landen in paare. Wirft nicht bei Nichtpassen."""
+        if isinstance(m, str):  # 'sei name'
+            paare.append((m, wert))
+            return True
+        if isinstance(m, ast.TypMuster):
+            if m.typ is not None and not self._typ_passt(wert, m.typ, u):
+                return False
+            if m.name:
+                paare.append((m.name, wert))
+            return True
+        if isinstance(m, ast.Muster):
+            if not isinstance(wert, (list, tuple)):  # Instanzen nicht mit __iter__ verbrauchen
+                return False
+            teile, _ = self._muster_teile(m, wert)
+            return teile is not None and all(self._muster_passt(z, t, paare, u) for z, t in zip(m.ziele, teile))
+        if isinstance(m, ast.WoerterbuchMuster):
+            if not isinstance(wert, dict):
+                return False
+            for schluessel, teil in m.paare:
+                schluessel = self._besuche(schluessel, u)
+                if schluessel not in wert or not self._muster_passt(teil, wert[schluessel], paare, u):
+                    return False
+            return True
+        return self._ist_wahr(self._binaerer_operator('==', wert, self._besuche(m, u)))  # __gleich__ greift
+
+    def _typ_passt(self, wert, typ, u):
+        """Typmuster: eingebaute Typnamen wie bei Typ-Hinweisen, sonst Klasse/Aufzählung/Fehlerart (ist_instanz)."""
+        if typ in self._PRIMITIVE_TYPEN:
+            return self._PRIMITIVE_TYPEN[typ](wert)
+        ziel = self._typ_klasse(typ, u)
+        if ziel is None:
+            raise TypeError(f"Unbekannter Typ im Muster: '{typ}'")
+        return self._eb_ist_instanz(wert, ziel)
+
+    def _lade_pfad_aufloesen(self, pfad: str) -> str:
+        """Relative 'lade'-Pfade gelten ab dem Ordner der ladenden Datei; im Hauptskript
+        (bzw. in der REPL) ab dem Ladepfad des Interpreters. Ergebnis: absolut und normalisiert."""
+        if not os.path.isabs(pfad):
+            basis = os.path.dirname(self._aktuelle_datei) if self._aktuelle_datei else self._ladepfad
+            pfad = os.path.join(basis, pfad)
+        return os.path.abspath(pfad)
+
+    @staticmethod
+    def _pfad_schluessel(pfad: str) -> str:
+        """Vergleichsschlüssel für die Zyklus-Erkennung (Symlinks aufgelöst, unter Windows ohne Groß-/Kleinschreibung)."""
+        return os.path.normcase(os.path.realpath(pfad))
+
+    @staticmethod
+    def _lade_quelltext(pfad: str) -> str:
+        if os.path.isdir(pfad):  # unter Windows meldet open() auf einen Ordner sonst 'Permission denied'
+            raise IsADirectoryError(f"'lade': '{pfad}' ist ein Ordner, keine Datei")
+        try:
+            with open(pfad, 'r', encoding='utf-8') as f:
+                return f.read()
+        except FileNotFoundError:
+            raise FileNotFoundError(f"'lade': Datei nicht gefunden: '{pfad}'") from None
+        except PermissionError:
+            raise PermissionError(f"'lade': Keine Berechtigung zum Lesen von '{pfad}'") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"'lade': '{pfad}' ist keine gültige UTF-8-Textdatei") from None
+        except OSError:
+            raise OSError(f"'lade': '{pfad}' konnte nicht gelesen werden") from None
+
+    def _syntax_fehler_in_datei(self, fehler: SyntaxError, pfad: str) -> SyntaxError:
+        """Ergänzt einen Lexer-/Parser-Fehler der geladenen Datei um ihren Namen: 'hilfe.deu, Zeile 3: ...'."""
+        treffer = re.match(r'Zeile (\d+): ?(.*)', str(fehler), re.DOTALL)
+        name = self._datei_anzeigename(pfad)
+        if treffer:
+            zeile = int(treffer.group(1))
+            neu = SyntaxError(f'{name}, Zeile {zeile}: {treffer.group(2)}')
+        else:
+            zeile = None
+            neu = SyntaxError(f'{name}: {fehler}')
+        neu.datei = pfad  # nicht .filename/.lineno setzen: SyntaxError.__str__ hängt sie sonst an die Meldung
+        neu.zeile = zeile
+        return neu
 
     def _besuche_LadeAnweisung(self, k, u):
         from .lexer import Lexer
         from .parser import Parser
-        pfad = self._pfad_aufloesen(self._besuche(k.pfad, u))
-        if pfad in self._lade_stack:
+        roh = self._besuche(k.pfad, u)
+        if not isinstance(roh, str):
+            raise TypeError(f"'lade' erwartet einen Pfad als Zeichenkette, bekam {self._typname(roh)}")
+        pfad = self._lade_pfad_aufloesen(roh)
+        schluessel = self._pfad_schluessel(pfad)
+        if any(self._pfad_schluessel(p) == schluessel for p in self._lade_stack):
             kette = ' -> '.join(os.path.basename(p) for p in self._lade_stack + [pfad])
             raise ImportError(f"Zyklischer 'lade'-Import erkannt: {kette}")
-        self._lade_stack.append(pfad)
-        try:
-            with open(pfad, 'r', encoding='utf-8') as f:
-                quelltext = f.read()
-            tokens = Lexer(quelltext).tokenisieren()
-            baum = Parser(tokens).parse()
+        quelltext = self._lade_quelltext(pfad)
+        vorherige_datei = self._aktuelle_datei
+        lade_tiefe = len(self._lade_stack)
+        try:  # Zustand erst im 'try' ändern (Strg+C dazwischen lässt nichts zurück)
+            self._lade_stack.append(pfad)
+            self._aktuelle_datei = pfad  # Fehler der Datei nennen ab hier ihren Namen, 'lade' darin gilt ab ihrem Ordner
+            try:
+                tokens = Lexer(quelltext).tokenisieren()
+                baum = Parser(tokens).parse()
+            except SyntaxError as e:
+                raise self._syntax_fehler_in_datei(e, pfad) from None
             if k.als_name is not None:
                 # Isolierter Scope: Top-Level-Bindungen landen im Namensraum, nicht im globalen Scope
                 namensraum_u = Umgebung(self.global_umgebung)
@@ -1341,20 +2832,52 @@ class Interpreter:
             # Ohne 'als': im globalen Scope ausführen, damit geladene Definitionen sichtbar sind
             return self.ausfuehren(baum, self.global_umgebung)
         finally:
-            self._lade_stack.pop()
+            self._aktuelle_datei = vorherige_datei
+            del self._lade_stack[lade_tiefe:]
 
     # Funktionen
+    def _dekorieren(self, fn, dekoratoren, u):
+        """Wie Python: Dekoratoren von oben nach unten auswerten, von unten nach oben anwenden."""
+        for d in reversed([self._besuche(d, u) for d in dekoratoren]):
+            fn = self._aufrufen(d, [fn])
+        return fn
+
     def _besuche_FunktionDefinition(self, k, u):
-        fn = DeutschFunktion(k, u)
+        fn = DeutschFunktion(k, u, self._aktuelle_datei)
+        if k.dekoratoren:
+            fn = self._dekorieren(fn, k.dekoratoren, u)
         if k.name is not None:
             u.setze(k.name, fn)
         return fn
 
     def _besuche_FunktionAufruf(self, k, u):
         fn = self._besuche(k.funktion, u)
-        args = [self._besuche(a, u) for a in k.argumente]
-        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        args, kwargs = self._argumente_auswerten(k, u)
         return self._aufrufen(fn, args, kwargs)
+
+    def _argumente_auswerten(self, k, u):
+        """Wertet die Argumente eines Aufrufs (FunktionAufruf, NeuInstanz) aus: (args, kwargs).
+        Mit Entpacken: '*x' fügt die Elemente an der Stelle ein, '**x' die Einträge (Schlüssel = Namen)."""
+        if not k.mit_entpacken:
+            return ([self._besuche(a, u) for a in k.argumente],
+                    {name: self._besuche(w, u) for name, w in k.keyword_argumente})
+        args = self._elemente_mit_entpacken(k.argumente, u)
+        kwargs = {}
+        for name, w in k.keyword_argumente:
+            if name is None:
+                for schluessel, wert in self._entpacktes_woerterbuch(w, u).items():
+                    if not isinstance(schluessel, str):
+                        raise TypeError("Entpacken mit '**' in einem Aufruf braucht Zeichenketten als "
+                                        f"Schlüssel, bekam {self._typname(schluessel)}")
+                    if schluessel in kwargs:
+                        raise TypeError(f"Keyword-Argument '{schluessel}' mehrfach angegeben")
+                    kwargs[schluessel] = wert
+            else:
+                wert = self._besuche(w, u)
+                if name in kwargs:
+                    raise TypeError(f"Keyword-Argument '{name}' mehrfach angegeben")
+                kwargs[name] = wert
+        return args, kwargs
 
     def _aufrufen(self, fn, args, kwargs=None):
         kwargs = kwargs or {}
@@ -1364,12 +2887,133 @@ class Interpreter:
             return self._funktion_aufrufen(fn.funktion, [fn.instanz] + args, kwargs)
         if callable(fn):
             if kwargs:
-                raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
+                ziel = fn.func if isinstance(fn, functools.partial) else fn
+                if not getattr(ziel, '_akzeptiert_keywords', False):
+                    raise TypeError("Eingebaute Funktionen unterstützen keine Keyword-Argumente")
+                return fn(*args, **kwargs)
             return fn(*args)
+        if isinstance(fn, DeutschInstanz):
+            m = fn.klasse.suche_methode('__aufruf__')
+            if m is not None:
+                return self._funktion_aufrufen(m, [fn] + args, kwargs)
+        if isinstance(fn, DeutschKlasse):
+            if fn.python_fehlerklasse() is None:
+                raise TypeError(f"'{fn.name}' ist eine Klasse und nicht aufrufbar – nutze 'neu {fn.name}(...)'")
+            return self._instanziieren(fn, args, kwargs)  # Fehlerklassen: 'werfe WertFehler("Text")' ohne 'neu'
         raise TypeError(f"'{self._zu_text(fn)}' ist nicht aufrufbar")
+
+    # ------------------------------------------------------------ Generatoren
+    # Rumpf einer Funktion mit 'ergib': Python-Generatoren statt Thread. Sie bilden den Kontrollfluss von
+    # Block, Wenn, Solange, Für, Passe und Versuche nach (nur dort kann 'ergib' stehen); jede andere Anweisung
+    # läuft unverändert über _besuche_anweisung. Verhalten und _besuche_* müssen übereinstimmen – tests/test_generatoren.py
+    # deckt deshalb jeden Anweisungstyp mit 'ergib' ab.
+
+    def _gen_anweisung(self, anw, u):
+        """Wie _besuche_anweisung (Zeile, Fehler mit Ort), aber Anweisungen mit 'ergib' dürfen liefern."""
+        besucher = self._gen_dispatch.get(type(anw))
+        if besucher is None:
+            return self._besuche_anweisung(anw, u)
+        zeile = getattr(anw, 'zeile', None)
+        if zeile is not None:
+            self._aktuelle_zeile = zeile
+        try:
+            return (yield from besucher(anw, u))
+        except _KONTROLLSIGNALE:
+            raise
+        except Exception as e:
+            neu = self._fehler_mit_ort(e, zeile)
+            if neu is None:
+                raise
+            raise neu from e
+
+    def _gen_Block(self, k, u):
+        block_u = Umgebung(u)
+        ergebnis = None
+        for anw in k.anweisungen:
+            ergebnis = yield from self._gen_anweisung(anw, block_u)
+        return ergebnis
+
+    def _gen_Ergib(self, k, u):
+        wert = self._besuche(k.wert, u)
+        yield wert
+        zeile = getattr(k, 'zeile', None)
+        if zeile is not None:
+            self._aktuelle_zeile = zeile  # beim Fortsetzen steht hier noch die Zeile des Abrufers
+        return None
+
+    def _besuche_ErgibAnweisung(self, k, u):
+        return None  # nur erreichbar, wenn 'endlich' beim vorzeitigen Beenden (close) läuft: nichts mehr zu liefern
+
+    def _gen_Wenn(self, k, u):
+        if self._ist_wahr(self._besuche(k.bedingung, u)):
+            return (yield from self._gen_Block(k.dann, u))
+        for bed, block in k.sonst_wenn:
+            if self._ist_wahr(self._besuche(bed, u)):
+                return (yield from self._gen_Block(block, u))
+        if k.sonst:
+            return (yield from self._gen_Block(k.sonst, u))
+        return None
+
+    def _gen_Solange(self, k, u):
+        while self._ist_wahr(self._besuche(k.bedingung, u)):
+            try:
+                yield from self._gen_Block(k.koerper, u)
+            except _AbbrechenSignal: break
+            except _WeiterSignal:    continue
+        return None
+
+    def _gen_Fuer(self, k, u):
+        iterable = self._iterable_auswerten(k.iterable, u)
+        schleifen_u = Umgebung(u)
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                self._schleifenvariable_binden(k.variable, elem, schleifen_u)
+                try:
+                    yield from self._gen_Block(k.koerper, schleifen_u)
+                except _AbbrechenSignal: break
+                except _WeiterSignal:    continue
+        except _KONTROLLSIGNALE:
+            self._iterator_schliessen(iterator, False)
+            raise
+        except BaseException:
+            self._iterator_schliessen(iterator, True)
+            raise
+        self._iterator_schliessen(iterator, False)
+        return None
+
+    def _gen_Passe(self, k, u):
+        block, arm_u = self._passe_arm(k, u)
+        if block is None:
+            return None
+        return (yield from self._gen_Block(block, arm_u))
+
+    def _gen_Versuche(self, k, u):
+        schliesst = False  # close() läuft: 'endlich' kann nichts mehr liefern
+        try:
+            try:
+                yield from self._gen_Block(k.koerper, u)
+            except _KONTROLLSIGNALE:
+                raise  # Kontrollfluss-Signale niemals abfangen
+            except Exception as e:
+                fange_u = self._fange_umgebung(k, e, u)
+                if fange_u is None:
+                    raise
+                yield from self._gen_Block(k.fange_koerper, fange_u)
+        except GeneratorExit:
+            schliesst = True
+            raise
+        finally:
+            if k.endlich_koerper is not None:
+                if schliesst:
+                    self._besuche(k.endlich_koerper, u)
+                else:
+                    yield from self._gen_Block(k.endlich_koerper, u)
+        return None
 
     def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
         kwargs = kwargs or {}
+        fname = fn.definition.name or '<anonym>'
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
 
         # Parameterstruktur analysieren
@@ -1377,29 +3021,41 @@ class Interpreter:
         param_namen = [p[0] for p in params]
         n_gesamt = len(params) - (1 if variadic_idx is not None else 0)  # ohne variadic
 
-        unbekannt = set(kwargs) - set(param_namen)
-        if unbekannt:
-            raise TypeError(f"'{fn.definition.name}' hat kein Parameter '{next(iter(unbekannt))}'")
-        if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
-            raise TypeError(
-                f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
-            )
+        kwargs_parameter = fn.definition.kwargs_parameter  # (name, typhinweis|None) | None
+        ueberzaehlige = None
+        if kwargs_parameter is None:
+            unbekannt = [n for n in kwargs if n not in param_namen]
+            if unbekannt:
+                raise TypeError(f"'{fname}' hat kein Parameter '{unbekannt[0]}'")
+            if variadic_idx is not None and param_namen[variadic_idx] in kwargs:
+                raise TypeError(
+                    f"Variadischer Parameter '{param_namen[variadic_idx]}' kann nicht per Keyword gesetzt werden"
+                )
+        else:
+            # Mit '**name': jedes Keyword, das kein benannter Parameter ist, landet im Wörterbuch
+            # (der '*'-Parameter ist per Keyword nicht ansprechbar, auch das geht ins Wörterbuch)
+            benannte = {n for i, n in enumerate(param_namen) if i != variadic_idx}
+            ueberzaehlige = {n: w for n, w in kwargs.items() if n not in benannte}
+            kwargs = {n: w for n, w in kwargs.items() if n in benannte}
         if variadic_idx is None and len(args) > n_gesamt:
             raise TypeError(
-                f"'{fn.definition.name}' erwartet höchstens {n_gesamt} Argument(e), "
+                f"'{fname}' erwartet höchstens {n_gesamt} Argument(e), "
                 f"bekam {len(args)}"
             )
 
         fn_u = Umgebung(fn.umgebung)
+        fn_u.typ_kontext = fn.umgebung  # Parameter-Hinweise gelten für Namen der Definitionsumgebung
         fehlende = []
         for i, (p_name, p_default, p_variadic, p_typ) in enumerate(params):
             if p_variadic:
+                for e in args[i:]:
+                    self._pruefe_typ(e, p_typ, f"Parameter '{p_name}'", fn.umgebung)
                 fn_u.setze(p_name, list(args[i:]))
                 break
             if i < len(args):
                 if p_name in kwargs:
                     raise TypeError(
-                        f"'{fn.definition.name}' erhielt mehrere Werte für Parameter '{p_name}'"
+                        f"'{fname}' erhielt mehrere Werte für Parameter '{p_name}'"
                     )
                 wert = args[i]
             elif p_name in kwargs:
@@ -1410,34 +3066,57 @@ class Interpreter:
                 fehlende.append(p_name)
                 continue
             self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
-            fn_u.setze(p_name, wert)
+            fn_u.setze(p_name, wert, p_typ)  # der Hinweis gilt auch für spätere Zuweisungen im Körper
+
+        if kwargs_parameter is not None:
+            for e in ueberzaehlige.values():
+                self._pruefe_typ(e, kwargs_parameter[1], f"Parameter '{kwargs_parameter[0]}'", fn.umgebung)
+            fn_u.setze(kwargs_parameter[0], ueberzaehlige)  # Hinweis gilt je Element, nicht für das Wörterbuch
 
         if fehlende:
-            raise TypeError(f"'{fn.definition.name}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+            raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
 
-        self._aufruf_stack.append((fn.definition.name or '<anonym>', self._aktuelle_zeile))
+        if fn.definition.ist_generator:  # der Rumpf läuft erst beim Abrufen (Rückgabetyp-Hinweis entfällt)
+            return DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
+
+        # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
+        # Zustand vor dem 'try' nur sichern, darin ändern: eine Ausnahme von außen (Strg+C) lässt nichts zurück
+        aufruf_zeile = self._aktuelle_zeile
+        vorherige_datei = self._aktuelle_datei
+        stapel_tiefe = len(self._aufruf_stack)
         try:
-            kontext = f"Rückgabewert von '{fn.definition.name or '<anonym>'}'"
+            self._aufruf_stack.append(AufrufEintrag(fname, aufruf_zeile, vorherige_datei))
+            self._aktuelle_datei = fn.datei  # Fehler und 'lade' im Körper gehören zur Datei der Definition
+            kontext = f"Rückgabewert von '{fname}'"
             try:
                 self._besuche(fn.definition.koerper, fn_u)
             except _ZurueckSignal as r:
                 self._pruefe_typ(r.wert, fn.definition.typhinweis, kontext, fn.umgebung)
                 return r.wert
+            except (_AbbrechenSignal, _WeiterSignal) as signal:
+                # Schleifen-Signale enden an der Funktionsgrenze und erreichen nie die Schleife des Aufrufers
+                self._letzter_aufruf_stack = list(self._aufruf_stack)
+                raise self._signal_fehler_hier(signal) from None
             self._pruefe_typ(None, fn.definition.typhinweis, kontext, fn.umgebung)
             return None
         finally:
-            self._aufruf_stack.pop()
+            self._aktuelle_datei = vorherige_datei
+            self._aktuelle_zeile = aufruf_zeile  # weitere Aufrufe derselben Anweisung: wieder die Zeile des Aufrufers
+            del self._aufruf_stack[stapel_tiefe:]
 
     # Klassen
     def _besuche_KlassenDefinition(self, k, u):
         eltern = []
-        for eltern_name in k.eltern:
-            eltern_klasse = u.hole(eltern_name)
+        for eltern_name in k.eltern:  # Name oder Punktpfad ('modul.Basis')
+            eltern_klasse = self._punktpfad_holen(eltern_name, u)
             if not isinstance(eltern_klasse, DeutschKlasse):
                 raise TypeError(f"'{eltern_name}' ist keine Klasse")
             eltern.append(eltern_klasse)
-        methoden = {m.name: DeutschFunktion(m, u) for m in k.methoden}
-        statische_methoden = {m.name: DeutschFunktion(m, u) for m in k.statische_methoden}
+        datei = self._aktuelle_datei
+        def fn(m):
+            return self._dekorieren(DeutschFunktion(m, u, datei), m.dekoratoren, u)
+        methoden = {m.name: fn(m) for m in k.methoden}
+        statische_methoden = {m.name: fn(m) for m in k.statische_methoden}
         klasse = DeutschKlasse(k.name, eltern, methoden, statische_methoden)
         u.setze(k.name, klasse)
         # Klassenattribute (sei/konstante im Klassenkörper) in einem eigenen Scope auswerten,
@@ -1449,13 +3128,25 @@ class Interpreter:
         klasse.konstante_attribute = set(klassen_u.konstanten)
         return klasse
 
+    def _besuche_AufzaehlungsDefinition(self, k, u):
+        auf = DeutschAufzaehlung(k.name, {})
+        for position, (name, ausdruck) in enumerate(k.mitglieder):
+            wert = position if ausdruck is None else self._besuche(ausdruck, u)
+            auf.mitglieder[name] = AufzaehlungsWert(auf, name, wert)
+        u.setze(k.name, auf)
+        return auf
+
     def _besuche_NeuInstanz(self, k, u):
-        klasse = u.hole(k.name)
+        klasse = self._besuche(k.klasse, u)  # Bezeichner oder Punktpfad (modul.Klasse)
         if not isinstance(klasse, DeutschKlasse):
             raise TypeError(f"'{k.name}' ist keine Klasse")
+        args, kwargs = self._argumente_auswerten(k, u)
+        return self._instanziieren(klasse, args, kwargs)
+
+    def _instanziieren(self, klasse, args, kwargs):
         instanz = DeutschInstanz(klasse)
-        args = [self._besuche(a, u) for a in k.argumente]
-        kwargs = {name: self._besuche(w, u) for name, w in k.keyword_argumente}
+        if klasse.python_fehlerklasse() is not None:  # Fehlerklassen: 'nachricht' schon vor __init__ gesetzt
+            instanz.attribute['nachricht'] = self._zu_text(args[0]) if args else ''
         init = klasse.suche_methode('__init__')
         if init:
             self._funktion_aufrufen(init, [instanz] + args, kwargs)
@@ -1463,53 +3154,97 @@ class Interpreter:
 
     # Attribut- und Index-Zugriff
     def _besuche_AttributZugriff(self, k, u):
-        obj = self._besuche(k.objekt, u)
+        return self._hole_attribut(self._besuche(k.objekt, u), k.attribut)
 
+    def _besuche_OptionalZugriff(self, k, u):
+        obj = self._besuche(k.objekt, u)
+        if obj is None:
+            raise _OptionalKurzschluss()
+        return self._hole_attribut(obj, k.attribut)
+
+    def _besuche_OptionalKette(self, k, u):
+        try:
+            return self._besuche(k.ausdruck, u)
+        except _OptionalKurzschluss:
+            return None
+
+    def _hole_attribut(self, obj, attribut):
+        """Wert von 'obj.attribut' (Instanz, Namensraum, Klasse oder eingebaute Sammlung)."""
         if isinstance(obj, DeutschInstanz):
-            return obj.hole_attribut(k.attribut)
+            return obj.hole_attribut(attribut)
+
+        if isinstance(obj, Teilbereich) and attribut in ('anfang', 'ende', 'schritt'):
+            return getattr(obj, attribut)
+
+        if isinstance(obj, DeutschFehler) and attribut in ('nachricht', 'art', 'zeile', 'datei'):
+            return getattr(obj, attribut)
+
+        if isinstance(obj, DeutschAufzaehlung):
+            if attribut in obj.mitglieder:
+                return obj.mitglieder[attribut]
+            raise AttributeError(f"Aufzählung '{obj.name}' hat kein Mitglied '{attribut}'")
+
+        if isinstance(obj, AufzaehlungsWert):
+            if attribut in ('name', 'wert'):
+                return getattr(obj, attribut)
+            raise AttributeError(f"Mitglied '{obj}' hat kein Attribut '{attribut}'")
 
         if isinstance(obj, DeutschNamensraum):
-            if k.attribut in obj.bindungen:
-                return obj.bindungen[k.attribut]
-            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{k.attribut}'")
+            if attribut in obj.bindungen:
+                return obj.bindungen[attribut]
+            raise AttributeError(f"Namensraum '{obj.name}' hat kein Attribut '{attribut}'")
 
         if isinstance(obj, DeutschKlasse):
-            m = obj.suche_methode(k.attribut)
+            m = obj.suche_methode(attribut)
             if m: return m
-            sm = obj.suche_statische_methode(k.attribut)
+            sm = obj.suche_statische_methode(attribut)
             if sm: return sm
-            wert = obj.suche_klassenattribut(k.attribut)
+            wert = obj.suche_klassenattribut(attribut)
             if wert is not _NICHT_GEFUNDEN:
                 return wert
-            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{k.attribut}'")
+            raise AttributeError(f"Klasse '{obj.name}' hat kein Attribut '{attribut}'")
 
         # Eingebaute Methoden für Liste/Zeichenkette/Wörterbuch/Menge – Dicts werden
         # einmalig in __init__ aufgebaut, hier nur Lookup + partial-Bindung von obj.
         if isinstance(obj, list):
-            fn = self._listen_methoden.get(k.attribut)
+            fn = self._listen_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Liste hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Liste hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, str):
-            fn = self._string_methoden.get(k.attribut)
+            fn = self._string_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Zeichenkette hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Zeichenkette hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, dict):
-            fn = self._woerterbuch_methoden.get(k.attribut)
+            fn = self._woerterbuch_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Wörterbuch hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Wörterbuch hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
         if isinstance(obj, set):
-            fn = self._menge_methoden.get(k.attribut)
+            fn = self._menge_methoden.get(attribut)
             if fn is None:
-                raise AttributeError(f"Menge hat kein Attribut '{k.attribut}'")
+                raise AttributeError(f"Menge hat kein Attribut '{attribut}'")
             return functools.partial(fn, obj)
 
-        raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{k.attribut}'")
+        raise AttributeError(f"Typ '{self._typname(obj)}' hat kein Attribut '{attribut}'")
+
+    def _eb_zusammenfuehren(self, *args):
+        if not args:
+            raise TypeError("'zusammenführen' erwartet mindestens 1 Argument")
+        return self._woerterbuecher_zusammenfuehren('zusammenführen', args)
+
+    def _woerterbuecher_zusammenfuehren(self, name, woerterbuecher):
+        """Neues Wörterbuch aus allen Eingaben; bei gleichen Schlüsseln gewinnt der spätere Wert."""
+        ergebnis = {}
+        for wb in woerterbuecher:
+            if not isinstance(wb, dict):
+                raise TypeError(f"'{name}' erwartet Wörterbücher, bekam {self._typname(wb)}")
+            ergebnis.update(wb)
+        return ergebnis
 
     @staticmethod
     def _woerterbuch_entferne(obj, schluessel):
@@ -1524,9 +3259,19 @@ class Interpreter:
         step = self._besuche(slice_knoten.step, u) if slice_knoten.step is not None else None
         return slice(start, stop, step)
 
+    def _teilbereich_bauen(self, slice_knoten, u):
+        t = self._slice_bauen(slice_knoten, u)
+        return Teilbereich(t.start, t.stop, t.step)
+
     def _besuche_IndexZugriff(self, k, u):
         obj = self._besuche(k.objekt, u)
         ist_slice = isinstance(k.index, ast.SliceAusdruck)
+        if isinstance(obj, DeutschInstanz):
+            m = obj.klasse.suche_methode('__hole__')
+            if m is None:
+                raise TypeError(f"'{obj.klasse.name}' unterstützt keinen Index-Zugriff (Methode '__hole__' fehlt)")
+            return self._funktion_aufrufen(m, [obj, self._teilbereich_bauen(k.index, u) if ist_slice
+                                               else self._besuche(k.index, u)])
         if ist_slice:
             if isinstance(obj, dict):
                 raise TypeError('Wörterbücher unterstützen kein Slicing')

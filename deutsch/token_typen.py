@@ -26,6 +26,7 @@ class TokenTyp(Enum):
     ODER = auto()
     NICHT = auto()
     KLASSE = auto()
+    AUFZAEHLUNG = auto()
     NEU = auto()
     ABBRECHEN = auto()
     WEITER = auto()
@@ -37,6 +38,7 @@ class TokenTyp(Enum):
     FALL = auto()         # case
     WERFE = auto()        # throw
     PRUEFE = auto()       # assert
+    ERGIB = auto()        # yield
     KONSTANTE = auto()    # const
     STATISCH = auto()     # static
     ALS = auto()          # as (lade ... als)
@@ -58,6 +60,18 @@ class TokenTyp(Enum):
     STERN_STERN = auto()               # **
     SCHRAEGSTRICH_SCHRAEGSTRICH = auto()  # //
 
+    # Bit-Operatoren
+    KAUFMANNSUND = auto()         # &
+    SENKRECHT = auto()            # |
+    HUT = auto()                  # ^
+    TILDE = auto()                # ~
+    KLEINER_KLEINER = auto()      # <<
+    GROESSER_GROESSER = auto()    # >>
+
+    FRAGE_FRAGE = auto()          # ?? (Null-Koaleszenz)
+    FRAGE_PUNKT = auto()          # ?. (Optional-Chaining)
+    AT = auto()                   # @ (Dekorator)
+
     # Verbund-Zuweisungen
     PLUS_GLEICH = auto()          # +=
     MINUS_GLEICH = auto()         # -=
@@ -66,6 +80,12 @@ class TokenTyp(Enum):
     PROZENT_GLEICH = auto()       # %=
     STERN_STERN_GLEICH = auto()             # **=
     SCHRAEGSTRICH_SCHRAEGSTRICH_GLEICH = auto()  # //=
+    KAUFMANNSUND_GLEICH = auto()  # &=
+    SENKRECHT_GLEICH = auto()     # |=
+    HUT_GLEICH = auto()           # ^=
+    KLEINER_KLEINER_GLEICH = auto()    # <<=
+    GROESSER_GROESSER_GLEICH = auto()  # >>=
+    FRAGE_FRAGE_GLEICH = auto()   # ??=
 
     # Trennzeichen
     LPAREN = auto()
