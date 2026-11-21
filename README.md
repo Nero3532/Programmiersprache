@@ -25,6 +25,7 @@ python main.py datei.deu    # Datei ausführen
 python main.py datei.deu a b        # Argumente: kommandozeilen_argumente() → ["a", "b"]
 python main.py -c "drucke(1 + 2)"   # Code direkt ausführen
 python main.py --pruefen datei.deu  # auf Syntaxfehler und Hinweise prüfen, nichts ausführen
+python main.py --formatieren datei.deu  # Datei einheitlich einrücken (Kommentare bleiben)
 python main.py --version            # Version (auch -V)
 python main.py --hilfe              # alle Optionen (auch -h, --help)
 ```
@@ -74,6 +75,12 @@ funktion f() {
     drucke(3)
 }
 ```
+
+### `--formatieren`: einheitliche Einrückung
+
+`python main.py --formatieren datei.deu` rückt die Datei an Ort und Stelle ein: 4 Leerzeichen je Klammertiefe, Leerzeilen auf höchstens zwei am Stück. Kommentare bleiben an ihrer Stelle, Inhalte von `"""`-Texten bleiben unverändert. Zeilenenden (LF oder CRLF) bleiben erhalten.
+
+Schutz: Die Datei wird nur geschrieben, wenn der Programmbaum und die Kommentare gleich bleiben. Ist die Datei fehlerhaft oder würde sich die Bedeutung ändern, bleibt sie unverändert und der Exitcode ist `1`. Nicht-UTF-8-Dateien werden nicht angefasst.
 
 ## Sprachüberblick
 
@@ -550,7 +557,28 @@ eingeschlossen), `mische(liste)` (mischt in-place)
 `datei_loeschen`/`datei_löschen`, `umbenennen`
 
 **JSON:** `json_lesen`, `json_schreiben` (Mengen werden beim Schreiben automatisch zu sortierten
-Listen konvertiert)
+Listen konvertiert), `json_parsen(text)` (Zeichenkette → Wert), `json_text(wert)` (Wert → eingerückter JSON-Text, Umlaute bleiben)
+
+**CSV:** `csv_lesen(pfad, trennzeichen=",", kopfzeile=wahr, kodierung="utf-8")` liefert bei Kopfzeile eine Liste von
+Wörterbüchern, sonst eine Liste von Listen. `csv_schreiben(pfad, zeilen, trennzeichen=",", kodierung="utf-8")` nimmt
+ebenfalls Wörterbücher oder Listen. Bei einem Fehler wird keine halbe Datei geschrieben.
+
+```
+csv_schreiben("kunden.csv", [["name", "alter"], ["Ann", 3]], trennzeichen=";")
+sei zeilen = csv_lesen("kunden.csv", trennzeichen=";")   # [{name: Ann, alter: 3}]
+```
+
+**HTTP:** `http_holen(url, zeitlimit=10)` liefert den Antworttext als Zeichenkette. Nur `http://` und `https://`,
+Weiterleitungen werden mitgeführt, Zeichensatz kommt aus dem Header, Antwort ist auf 50 MB begrenzt.
+Zeitlimit in Sekunden (Standard 10). Beispiel (nicht ausgeführt):
+
+```
+sei antwort = http_holen("https://example.org/daten.json", zeitlimit=5)
+sei daten = json_parsen(antwort)
+```
+
+**Kodierung:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen` und `zeilen_lesen` nehmen `kodierung="..."` an
+(Standard UTF-8); unbekannte Kodierungen werden gemeldet.
 
 **Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
 (erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax

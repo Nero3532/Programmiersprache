@@ -4,6 +4,14 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- `--formatieren datei.deu`: rückt eine Datei einheitlich ein (4 Leerzeichen je Klammertiefe, höchstens zwei Leerzeilen).
+  Kommentare und `"""`-Inhalte bleiben, LF/CRLF bleibt. Schreibt nur, wenn Programmbaum und Kommentare gleich bleiben.
+- CSV: `csv_lesen` (mit Kopfzeile als Wörterbücher, sonst Listen) und `csv_schreiben`, mit `trennzeichen=` und `kodierung=`.
+- `http_holen(url, zeitlimit=10)`: lädt den Antworttext; nur http/https, folgt Weiterleitungen, Antwort bis 50 MB.
+- `json_parsen(text)` (Zeichenkette zu Wert) und `json_text(wert)` (Wert zu eingerücktem JSON-Text).
+- `kodierung=` für `datei_lesen`, `datei_schreiben`, `datei_anhängen` und `zeilen_lesen` (Standard UTF-8).
+
 ## [2.10.0]
 
 ### Hinzugefügt
