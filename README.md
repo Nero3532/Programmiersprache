@@ -534,6 +534,18 @@ Zyklische Importe (A lädt B, B lädt A) werden erkannt und werfen einen klaren 
 statt in eine Endlosschleife zu laufen. Mehrfaches (nicht-zyklisches) Laden derselben Datei ist
 erlaubt und führt sie erneut aus.
 
+### Turtle-Grafik
+
+```
+schildkroete.farbe("rot")               # deutsche Namen: rot, grün, blau, gelb, schwarz, weiß, orange, lila, grau, braun
+für i in [1, 2, 3, 4] { schildkroete.vorwaerts(100)
+    schildkroete.drehen(90) }           # positiv = links
+schildkröte.kreis(50)                   # Umlaut-Schreibweise geht auch
+schildkroete.warte_auf_schliessen()     # Fenster offen lassen, bis es geschlossen wird
+```
+Funktionen: `vorwaerts(n)` (auch `vorwärts`), `drehen(winkel)`, `stift_hoch()`, `stift_runter()`, `farbe(name)`, `kreis(radius)`, `warte_auf_schliessen()`.
+Braucht `tkinter` und ein Anzeigefenster; ohne beides wirft der Aufruf einen `RuntimeError` mit „Turtle-Grafik nicht verfügbar“.
+
 ## Eingebaute Funktionen
 
 **Allgemein:** `drucke`, `eingabe`, `laenge`/`länge`, `typ`, `ganzzahl`, `kommazahl`, `zeichenkette`,

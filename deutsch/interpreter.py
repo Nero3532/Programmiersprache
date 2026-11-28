@@ -847,12 +847,75 @@ class Interpreter:
         g.setze('warte',             self._eb_warte)
         g.setze('datum_lesen',       self._eb_datum_lesen)
         g.setze('ist_instanz',       self._eb_ist_instanz)
+        sk = DeutschNamensraum('schildkroete', {
+            'vorwaerts': self._sk_vorwaerts, 'vorwärts': self._sk_vorwaerts,
+            'drehen': self._sk_drehen,
+            'stift_hoch': self._sk_stift_hoch, 'stift_runter': self._sk_stift_runter,
+            'farbe': self._sk_farbe, 'kreis': self._sk_kreis,
+            'warte_auf_schliessen': self._sk_warte, 'warte_auf_schließen': self._sk_warte,
+        })
+        g.setze('schildkroete', sk)
+        g.setze('schildkröte', sk)
         # Fehlerarten als Klassen: Oberklasse 'Fehler', alle anderen erben von ihr
         fehler = DeutschKlasse('Fehler', [], {})
         for name, py in FEHLERARTEN.items():
             klasse = fehler if name == 'Fehler' else DeutschKlasse(name, [fehler], {})
             klasse.python_fehler = py
             g.setze(name, klasse)
+
+    # ---- Turtle-Grafik (Namensraum 'schildkroete'); 'turtle' erst beim ersten Aufruf laden
+    _SK_FARBEN = {'rot': 'red', 'grün': 'green', 'gruen': 'green', 'blau': 'blue', 'gelb': 'yellow',
+                  'schwarz': 'black', 'weiß': 'white', 'weiss': 'white', 'orange': 'orange',
+                  'lila': 'purple', 'grau': 'gray', 'braun': 'brown'}
+    _turtle_modul = None  # Tests setzen hier eine Attrappe
+
+    def _sk(self):
+        if self._turtle_modul is None:
+            try:
+                import turtle
+            except ImportError as e:
+                raise RuntimeError(f'Turtle-Grafik nicht verfügbar: {e}') from None
+            self._turtle_modul = turtle
+        return self._turtle_modul
+
+    def _sk_aufruf(self, name, args, anzahl, zahl, aktion):
+        self._pruefe_args(name, args, anzahl)
+        if zahl and (isinstance(args[0], bool) or not isinstance(args[0], (int, float))):
+            raise TypeError(f"'{name}' erwartet eine Zahl, bekam {self._typname(args[0])}")
+        t = self._sk()
+        try:
+            return aktion(t, *args)
+        except Exception as e:  # tkinter.TclError (kein Display) u. ä.; Fehler des Moduls nicht roh durchreichen
+            if type(e).__name__ == 'TclError' or isinstance(e, (OSError, ImportError)):
+                raise RuntimeError(f'Turtle-Grafik nicht verfügbar: {e}') from None
+            if type(e).__name__ == 'TurtleGraphicsError':  # z. B. unbekannte Farbe
+                raise ValueError(f'Turtle-Grafik: {e}') from None
+            raise
+
+    def _sk_vorwaerts(self, *args):
+        self._sk_aufruf('vorwaerts', args, 1, True, lambda t, n: t.forward(n))
+
+    def _sk_drehen(self, *args):
+        self._sk_aufruf('drehen', args, 1, True, lambda t, n: t.left(n))
+
+    def _sk_stift_hoch(self, *args):
+        self._sk_aufruf('stift_hoch', args, 0, False, lambda t: t.penup())
+
+    def _sk_stift_runter(self, *args):
+        self._sk_aufruf('stift_runter', args, 0, False, lambda t: t.pendown())
+
+    def _sk_kreis(self, *args):
+        self._sk_aufruf('kreis', args, 1, True, lambda t, n: t.circle(n))
+
+    def _sk_warte(self, *args):
+        self._sk_aufruf('warte_auf_schliessen', args, 0, False, lambda t: t.done())
+
+    def _sk_farbe(self, *args):
+        self._pruefe_args('farbe', args, 1)
+        if not isinstance(args[0], str):
+            raise TypeError(f"'farbe' erwartet einen Text, bekam {self._typname(args[0])}")
+        name = self._SK_FARBEN.get(args[0].lower(), args[0])
+        self._sk_aufruf('farbe', (name,), 1, False, lambda t, f: t.color(f))
 
     def _eb_ist_instanz(self, *args):
         self._pruefe_args('ist_instanz', args, 2)

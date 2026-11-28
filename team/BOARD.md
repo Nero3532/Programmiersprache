@@ -3,6 +3,7 @@
 ## In Arbeit
 
 ## Erledigt
+- [x] 2026-11-28 auto: Turtle-Grafik `schildkroete` (entwickler sonnet/medium), 1519 Tests grün (py + 3.12)
 - [x] 2026-10-19 Bestandsaufnahme „Was fehlt?" — Sprachkern (sonnet), Stdlib (haiku), Werkzeuge (haiku) → ROADMAP.md (10× P1, 12× P2, 17× P3)
 - [x] 2026-10-19 P1-Fehler → 2.7.1, 331 Tests grün (3.14 + 3.12), alle Beispiele grün
   - Runde 1a main.py (sonnet): Ausführung in Thread mit großem Stack, Strg+C sauber, REPL-Klammerzählung; Nacharbeit (haiku): Fehleranzeige für `lade`-Dateien, Stack 128 MB, BANNER-Breite
