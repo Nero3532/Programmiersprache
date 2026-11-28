@@ -8,8 +8,12 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 ### P1 — Fehler (zuerst)
 - (keine offen — alle in 2.7.1 behoben)
 
-### P2 — großer Nutzen, wenig Aufwand
-- (keine offen)
+### P2 — großer Nutzen, wenig Aufwand (Reihenfolge = Reihenfolge der Automatik)
+- Turtle-Grafik `schildkroete` (vorwärts, drehen, stift_hoch/runter, farbe, kreis, warte_auf_schliessen) über Pythons `turtle`, ohne neue Abhängigkeit; Tests ohne Fenster (Attrappe) — Einstiegshilfe für Schulen — M — entwickler/sonnet
+- Comprehensions für Mengen und Wörterbücher `{x für x in …}`, `{k: v für k, v in …}` — S/M — entwickler/sonnet
+- Lernpfad `docs/lernpfad/` (10 kurze Lektionen mit Übungen und Lösungen, Gegenüberstellung Python ↔ Deutsch), jede Lektion als Test ausführbar — Einstieg für Lernende/Lehrkräfte — M — release/haiku + qa/haiku
+- Teilbereichs-Zuweisung für eingebaute Listen `l[1:3] = …` — S — entwickler/sonnet
+- Mehrfachvererbung nach C3 (wie Python) statt Tiefensuche — S/M — entwickler/sonnet
 
 ### P3 — größere Vorhaben
 - Eigenschaften (Getter/Setter) und abstrakte Methoden/Schnittstellen — M — entwickler/sonnet
