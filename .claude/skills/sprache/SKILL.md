@@ -4,7 +4,7 @@ description: Auftrag an das Team der Programmiersprache „Deutsch" (Projektchef
 argument-hint: "[Auftrag]"
 ---
 Übergib den Auftrag mit einem einzigen Agent-Aufruf im Vordergrund an `sprache-chef`:
-- Auftrag: $ARGUMENTS · Projektordner `<Repo>` · Fakten `team/PROJEKT.md`
+- Auftrag: $ARGUMENTS · Projektordner = Repo-Wurzel · Fakten `team/PROJEKT.md`
 - Dazu: relevante Entscheidungen aus diesem Gespräch, ≤ 5 Zeilen. Einfacher Auftrag: `effort: medium`, sonst Standard.
 - Berichtslänge ≤ 6 Stichpunkte.
 

@@ -3,7 +3,7 @@
 Einzige Quelle für die Agenten `sprache-*` und firmenweite Rollen (`dev-audit`, `dev-qa`, `markt-*`, `vertrieb-*`, `marketing-*`). Lesen statt herleiten. Unbekanntes als `OFFEN:` markieren.
 
 ## Gemeinsam (alle Rollen)
-- Projekt: Deutsch (`<Repo>`, Branch master) — Programmiersprache mit deutschen Schlüsselwörtern.
+- Projekt: Deutsch (Repo-Wurzel, Branch master) — Programmiersprache mit deutschen Schlüsselwörtern.
 - Art: Baum-Interpreter in Python ≥ 3.10, nur Standardbibliothek; Version in `deutsch/__init__.py`.
 - Ordner: `deutsch/lexer.py` (SCHLUESSELWOERTER) → `parser.py` → `ast_knoten.py` → `interpreter.py` (Auswertung + Stdlib); `umgebung.py` (Geltungsbereiche), `token_typen.py`, `main.py` (CLI/REPL), `deutsch/__main__.py`, `tests/test_*.py` (mehrere Dateien), `beispiele/*.deu`, `ROADMAP.md`, `CHANGELOG.md`, `README.md`.
 - Prüfen: `py -m unittest discover -s tests` (~1510 Tests, ~80 s wegen Unterprozess-Tests; einzelne Datei: `py -m unittest tests.test_builtins`).
