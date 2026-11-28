@@ -78,7 +78,7 @@ funktion f() {
 
 ### `--formatieren`: einheitliche Einrückung
 
-`python main.py --formatieren datei.deu` rückt die Datei an Ort und Stelle ein: 4 Leerzeichen je Klammertiefe, Leerzeilen auf höchstens zwei am Stück. Kommentare bleiben an ihrer Stelle, Inhalte von `"""`-Texten bleiben unverändert. Zeilenenden (LF oder CRLF) bleiben erhalten.
+`python main.py --formatieren datei.deu` rückt die Datei an Ort und Stelle ein: 4 Leerzeichen je Klammertiefe, Leerzeilen auf höchstens zwei am Stück. Kommentare bleiben an ihrer Stelle, Inhalte von `"""`-Texten bleiben unverändert. Zeilenenden (LF oder CRLF) bleiben erhalten, ein UTF-8-BOM bleibt ebenfalls erhalten.
 
 Schutz: Die Datei wird nur geschrieben, wenn der Programmbaum und die Kommentare gleich bleiben. Ist die Datei fehlerhaft oder würde sich die Bedeutung ändern, bleibt sie unverändert und der Exitcode ist `1`. Nicht-UTF-8-Dateien werden nicht angefasst.
 
@@ -377,7 +377,7 @@ drucke(liste(zwei()))                      # [1]
 - Nutzung: `für`, `liste`, `summe`, `abbilden` & Co., Comprehensions, Entpacken (`sei [a, b] = f()`), `naechstes(g)`.
 - Typname: `typ(g)` ergibt `Generator`.
 - Grenzen: `ergib` nur im Rumpf einer Funktion, nicht außerhalb und nicht in einem `passe`-Ausdruck.
-- Vorzeitiges Ende: `für` schließt einen Generator bei `abbrechen`, `zurück` oder Fehler sofort, sein `endlich` läuft dann. Ein bei Programmende noch angehaltener Generator oder einer, der nur in einer Listen-Comprehension abbricht, führt sein `endlich` nicht verlässlich aus.
+- Vorzeitiges Ende: `für` und Listen-Comprehensions schließen einen Generator bei Abbruch oder Fehler sofort, sein `endlich` läuft dann. Bei Programmende werden noch angehaltene Generatoren in umgekehrter Reihenfolge geschlossen; ein Fehler aus ihrem `endlich` endet mit Exitcode `1`.
 
 ### Aufzählungstypen
 
@@ -578,7 +578,7 @@ sei daten = json_parsen(antwort)
 ```
 
 **Kodierung:** `datei_lesen`, `datei_schreiben`, `datei_anhaengen` und `zeilen_lesen` nehmen `kodierung="..."` an
-(Standard UTF-8); unbekannte Kodierungen werden gemeldet.
+(Standard UTF-8); unbekannte Kodierungen werden gemeldet. Ein UTF-8-BOM am Dateianfang wird mitgelesen, Schreiben erzeugt keins.
 
 **Regex:** `passt_zu(muster, text)`, `regex_ersetze(muster, ersatz, text)`, `regex_finde(muster, text)`
 (erster Treffer oder `nichts`), `regex_finde_alle(muster, text)` — nutzt Pythons `re`-Syntax

@@ -4,6 +4,8 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+## [2.11.0]
+
 ### Hinzugefügt
 - `--formatieren datei.deu`: rückt eine Datei einheitlich ein (4 Leerzeichen je Klammertiefe, höchstens zwei Leerzeilen).
   Kommentare und `"""`-Inhalte bleiben, LF/CRLF bleibt. Schreibt nur, wenn Programmbaum und Kommentare gleich bleiben.
@@ -11,6 +13,21 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 - `http_holen(url, zeitlimit=10)`: lädt den Antworttext; nur http/https, folgt Weiterleitungen, Antwort bis 50 MB.
 - `json_parsen(text)` (Zeichenkette zu Wert) und `json_text(wert)` (Wert zu eingerücktem JSON-Text).
 - `kodierung=` für `datei_lesen`, `datei_schreiben`, `datei_anhängen` und `zeilen_lesen` (Standard UTF-8).
+
+### Geändert
+- Tempo: Zahlen-Schnellpfad für binäre Operatoren und Parameterplan je Funktion. Messung (CPU, Minimum aus 7):
+  fib −27 %, Schleifen −24 %, Methoden −25 %, Text unverändert.
+- Generatoren: Bei Programmende werden noch angehaltene Generatoren in umgekehrter Reihenfolge geschlossen (REPL beim Beenden).
+  Ein Fehler aus ihrem `endlich` führt zu Exitcode `1`.
+
+### Behoben
+- Abbruch in einer Listen-Comprehension schließt den Generator sofort, sein `endlich` läuft.
+- UTF-8-BOM am Dateianfang wird in Quelltexten und Lesefunktionen akzeptiert; `--formatieren` erhält ein BOM.
+- `csv_lesen`: doppelte Spaltennamen und offenes Anführungszeichen werden gemeldet.
+- `http_holen`: abgeschnittene Antwort wird erkannt; Weiterleitung auf `file://` wird klar gemeldet.
+- `0 ** -1` meldet die Fehlermeldung auf Deutsch.
+
+76 neue Regressionstests (1508 gesamt).
 
 ## [2.10.0]
 

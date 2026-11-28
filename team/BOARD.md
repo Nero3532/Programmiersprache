@@ -35,6 +35,7 @@
 - [x] 2026-11-14 Ausbau-Runde (Scout haiku, dev-produkt sonnet) → Anbindung an die Firma (firma-personal), P2-Rest + VS-Code-Syntax + REPL-Interpolation + Hook-Projektname + Doku-Standardauftrag umgesetzt (08bfee5, 1194 Tests); später: eigene Fehlerklassen, Linter, Aufzählungstypen; keine neue Rolle (kein Beleg)
 - [x] 2026-11-20 P3-Runde → 2.9.0: Entwürfe (opus/high) → Linter (sonnet/medium), Aufzählungen (sonnet/medium), Fehlerklassen (sonnet/high), Doku je Commit parallel (haiku/low), QA (haiku/medium) bestanden: 1270 Tests auf 3.12/3.13/3.14
 - [x] 2026-11-20 Runde 2.10.0: Entwürfe (opus/high) → Dunder-Hooks, Dekoratoren+?., Iteratoren (sonnet/medium), Mustervergleich, Generatoren (sonnet/high), Doku je Commit (haiku/low); QA mit Review (sonnet/medium): Generator-Kopien ohne Befund, 2 Funde behoben (endlich beim Schließen, max/min); 1428 Tests auf 3.12/3.13/3.14
+- [x] 2026-11-21 Runde 2.11.0: Formatierer, CSV/HTTP (sonnet/medium), Tempo-Messung (sonnet/low) → 2 Hebel umgesetzt und gemessen (sonnet/high), Generator-endlich; QA-Differenztest alt/neu mit 108 Programmen (sonnet/medium) ohne ungewollte Abweichung; 6 Randfunde behoben (sonnet/low); 1508 Tests auf 3.12/3.13/3.14
 
 ## Entscheidungen
 - 2026-10-19 Team als Projekt-Agenten in `.claude/agents/sprache-*.md`, Einstieg über `/sprache`.
