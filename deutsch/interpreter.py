@@ -2216,10 +2216,16 @@ class Interpreter:
     # ------------------------------------------------------------ Ausführen
 
     def ausfuehren(self, knoten, umgebung=None):
-        if umgebung is None:
-            umgebung = self.global_umgebung
-            self._letzter_aufruf_stack = []
-        return self._besuche(knoten, umgebung)
+        if umgebung is not None:
+            return self._besuche(knoten, umgebung)
+        self._letzter_aufruf_stack = []
+        tiefe, datei = len(self._aufruf_stack), self._aktuelle_datei
+        try:
+            return self._besuche(knoten, self.global_umgebung)
+        finally:
+            # Strg+C kann ein inneres 'finally' (z. B. im Generator) mittendrin abbrechen; hier verlässlich aufräumen.
+            del self._aufruf_stack[tiefe:]
+            self._aktuelle_datei = datei
 
     def generatoren_schliessen(self):
         """Schließt noch angehaltene Generatoren (umgekehrte Erzeugungsreihenfolge): ihr 'endlich' läuft jetzt.

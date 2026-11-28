@@ -604,6 +604,24 @@ class TestUnterbrechungInDerLuecke(unittest.TestCase):
             ip.ausfuehren(parse('lade "m.deu" als m'))  # kein 'zyklischer Import' durch einen Rest in der Ladekette
             self._sauber(ip)
 
+    def test_unterbrechung_im_finally_von_next(self):
+        # Strg+C mitten im 'finally' von __next__ (vor dem Aufräumen): die äußere Ebene räumt trotzdem auf
+        from deutsch.interpreter import DeutschGenerator
+        ip = Interpreter()
+        echt = DeutschGenerator._verlassen
+        zaehler = [0]
+
+        def verlassen(gen, sicherung):
+            zaehler[0] += 1
+            if zaehler[0] == 3:
+                raise KeyboardInterrupt
+            echt(gen, sicherung)
+
+        with mock.patch.object(DeutschGenerator, '_verlassen', verlassen):
+            with self.assertRaises(KeyboardInterrupt):
+                ip.ausfuehren(parse('funktion g() { solange wahr { ergib 1 } }\nfür x in g() { }'))
+        self._sauber(ip)
+
 
 if __name__ == '__main__':
     unittest.main()
