@@ -358,8 +358,17 @@ class TestJsonText(unittest.TestCase):
             auswerten('json_text(f)', f=object())
         with self.assertRaisesRegex(TypeError, 'erwartet 1 Argument'):
             auswerten('json_text()')
-        with self.assertRaises(RecursionError):
-            auswerten('json_parsen(t)', t='[' * 100000 + ']' * 100000)
+        # Ob 100 000 Ebenen passen, hängt vom C-Stack der Plattform ab (Linux + 3.14: ja);
+        # beides ist korrekt, solange es eine deutsche Meldung oder die richtige Schachtelung ist.
+        try:
+            wert = auswerten('json_parsen(t)', t='[' * 100000 + ']' * 100000)
+        except RecursionError as e:
+            self.assertIn('zu tief verschachtelt', str(e))
+        else:
+            tiefe = 0
+            while isinstance(wert, list) and wert:
+                wert, tiefe = wert[0], tiefe + 1
+            self.assertEqual((wert, tiefe), ([], 99999))
 
 
 class TestKodierung(DateiBasis):
