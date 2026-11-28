@@ -76,6 +76,7 @@ Verwendung:
   python main.py datei.deu [args...]   Datei ausführen; args stehen in kommandozeilen_argumente()
   python main.py -c "code" [args...]   Code direkt ausführen
   python main.py --pruefen datei.deu   auf Syntaxfehler und Hinweise prüfen, nichts ausführen
+  python main.py --formatieren datei.deu   Datei einheitlich einrücken (Kommentare bleiben)
   python main.py -V, --version         Version anzeigen
   python main.py -h, --hilfe, --help   diese Hilfe anzeigen
 
@@ -442,13 +443,26 @@ def _fehler_anzeigen(fehler: Exception, quelltext: str = '', dateiname: str = '<
     return '\n'.join(ausgabe)
 
 
-def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<repl>'):
-    """Führt Quelltext aus. Gibt (ergebnis, fehler_text) zurück."""
+def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<repl>', schliessen: bool = False):
+    """Führt Quelltext aus. Gibt (ergebnis, fehler_text) zurück.
+    schliessen: danach noch angehaltene Generatoren schließen (Programmende; nicht in der REPL pro Zeile)."""
     ladepfad = getattr(interpreter, '_ladepfad', None)
     try:
         tokens = Lexer(quelltext).tokenisieren()
         baum = Parser(tokens).parse()
-        ergebnis = interpreter.ausfuehren(baum)
+        try:
+            ergebnis = interpreter.ausfuehren(baum)
+        except Exception:
+            if schliessen:
+                stapel = interpreter._letzter_aufruf_stack
+                try:
+                    interpreter.generatoren_schliessen()
+                except Exception:
+                    pass  # der ursprüngliche Fehler bleibt der gemeldete (samt Aufrufkette)
+                interpreter._letzter_aufruf_stack = stapel
+            raise
+        if schliessen:
+            interpreter.generatoren_schliessen()
         return ergebnis, None
     except Exception as e:
         # echter Überlauf: feste Meldung; ein per 'werfe RekursionsFehler(...)' geworfener behält seine
@@ -456,6 +470,15 @@ def _ausfuehren(quelltext: str, interpreter: Interpreter, dateiname: str = '<rep
             return None, '[RekursionsFehler] Maximale Rekursionstiefe überschritten'
         return None, _fehler_anzeigen(e, quelltext, dateiname,
                                       getattr(interpreter, '_letzter_aufruf_stack', None), ladepfad)
+
+
+def _repl_beenden(interpreter: Interpreter):
+    """Schließt beim Beenden der REPL noch angehaltene Generatoren; gibt einen Fehler aus 'endlich' als Text zurück."""
+    try:
+        interpreter.generatoren_schliessen()
+    except Exception as e:
+        return _fehler_anzeigen(e, '', '<repl>', getattr(interpreter, '_letzter_aufruf_stack', None))
+    return None
 
 
 def _datei_lesen(pfad: str) -> str:
@@ -474,7 +497,7 @@ def datei_starten(pfad: str, argumente: list = None):
     ladepfad = os.path.dirname(os.path.abspath(pfad))
     interpreter = Interpreter(ladepfad=ladepfad, argumente=argumente or [])
 
-    _, fehler = im_grossen_stack(_ausfuehren, quelltext, interpreter, pfad)
+    _, fehler = im_grossen_stack(_ausfuehren, quelltext, interpreter, pfad, True)
     if fehler:
         print(fehler, file=sys.stderr)
         sys.exit(1)
@@ -484,7 +507,7 @@ def code_starten(quelltext: str, argumente: list = None):
     """Führt Quelltext aus der Kommandozeile (-c) aus, Ladepfad ist der aktuelle Ordner."""
     interpreter = Interpreter(argumente=argumente or [])
 
-    _, fehler = im_grossen_stack(_ausfuehren, quelltext, interpreter, '<kommandozeile>')
+    _, fehler = im_grossen_stack(_ausfuehren, quelltext, interpreter, '<kommandozeile>', True)
     if fehler:
         print(fehler, file=sys.stderr)
         sys.exit(1)
@@ -565,6 +588,10 @@ def repl():
         elif ergebnis is not None:
             print(interpreter._zu_text(ergebnis))
 
+    fehler = im_grossen_stack(_repl_beenden, interpreter)
+    if fehler:
+        print(fehler)
+
 
 def main():
     _konsole_auf_utf8()
@@ -588,6 +615,12 @@ def main():
             print('Fehler: --pruefen braucht eine Datei, z. B. --pruefen programm.deu', file=sys.stderr)
             sys.exit(2)
         datei_pruefen(argv[1])
+    elif erste == '--formatieren':
+        if len(argv) < 2:
+            print('Fehler: --formatieren braucht eine Datei, z. B. --formatieren programm.deu', file=sys.stderr)
+            sys.exit(2)
+        from deutsch import formatierer
+        sys.exit(formatierer.datei_formatieren(argv[1]))
     elif erste.startswith('-'):
         print(f'Fehler: unbekannte Option {erste!r}', file=sys.stderr)
         print("Hinweis: 'python main.py --hilfe' zeigt alle Optionen.", file=sys.stderr)

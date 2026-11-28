@@ -472,6 +472,66 @@ class TestVorzeitigesSchliessen(unittest.TestCase):
         self.assertIn('aus endlich', ergebnis.stderr)
         self.assertNotIn('Exception ignored', ergebnis.stderr)
 
+    def test_comprehension_fehler_schliesst_generator_sofort(self):
+        code = self.G + ('versuche { sei l = [1 / (x - 1) für x in g()] } fange e { drucke("gefangen", e.art) }\n'
+                         'drucke("danach")')
+        self.assertEqual(ausgabe(code), ['endlich', 'gefangen DivisionDurchNullFehler', 'danach'])
+
+    def test_comprehension_laufender_fehler_bleibt_der_gemeldete(self):
+        code = self.G + 'versuche { sei l = [1 / 0 für x in k()] } fange e { drucke(e.art) }'
+        self.assertEqual(ausgabe(code), ['DivisionDurchNullFehler'])
+
+    def test_comprehension_voll_durchlaufen_endlich_einmal(self):
+        self.assertEqual(ausgabe(self.G + 'drucke([x für x in g()])'), ['endlich', '[1, 2]'])
+
+
+def _cli(code, eingabe=None, argumente=()):
+    import subprocess
+    wurzel = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    args = list(argumente) if eingabe is not None else ['-c', code]
+    return subprocess.run([sys.executable, '-m', 'deutsch', *args], cwd=wurzel, input=eingabe,
+                          capture_output=True, text=True, encoding='utf-8', timeout=60)
+
+
+class TestProgrammendeSchliesst(unittest.TestCase):
+    """Bei Programmende noch angehaltene Generatoren: 'endlich' läuft deterministisch, umgekehrte Erzeugungsreihenfolge."""
+    @staticmethod
+    def G(n):
+        return f'funktion g{n}() {{ versuche {{ ergib 1\n ergib 2 }} endlich {{ drucke("endlich {n}") }} }}\n'
+
+    def test_angehaltene_generatoren_in_umgekehrter_reihenfolge(self):
+        r = _cli(self.G(1) + self.G(2) + 'sei a = g1()\nsei b = g2()\nnaechstes(a)\nnaechstes(b)\ndrucke("ende")')
+        self.assertEqual(r.returncode, 0)
+        self.assertEqual(r.stdout.splitlines(), ['ende', 'endlich 2', 'endlich 1'])
+        self.assertEqual(r.stderr, '')
+
+    def test_fehler_aus_endlich_ist_normale_meldung_mit_exitcode_1(self):
+        r = _cli('funktion k() { versuche { ergib 1\n ergib 2 } endlich { werfe WertFehler("aus endlich") } }\n'
+                 'sei q = k()\nnaechstes(q)')
+        self.assertEqual(r.returncode, 1)
+        self.assertIn('[WertFehler]', r.stderr)
+        self.assertIn('aus endlich', r.stderr)
+        self.assertNotIn('Traceback', r.stderr)
+        self.assertNotIn('Exception ignored', r.stderr)
+
+    def test_programmfehler_bleibt_der_gemeldete_endlich_laeuft_trotzdem(self):
+        r = _cli('funktion k() { versuche { ergib 1\n ergib 2 } endlich { drucke("aufgeräumt")\n werfe WertFehler("aus endlich") } }\n'
+                 'sei q = k()\nnaechstes(q)\nwerfe TypFehler("original")')
+        self.assertEqual(r.returncode, 1)
+        self.assertEqual(r.stdout.splitlines(), ['aufgeräumt'])
+        self.assertIn('[TypFehler]', r.stderr)
+        self.assertNotIn('aus endlich', r.stderr)
+
+    def test_beendeter_generator_wird_nicht_nochmal_geschlossen(self):
+        r = _cli(self.G(1) + 'für x in g1() { drucke(x) }')
+        self.assertEqual(r.stdout.splitlines(), ['1', '2', 'endlich 1'])
+
+    def test_repl_schliesst_erst_beim_beenden(self):
+        r = _cli('', eingabe=self.G(1) + 'sei q = g1()\nnaechstes(q)\ndrucke("noch da")\nbeenden\n')
+        zeilen = [z.replace('>>> ', '').strip() for z in r.stdout.splitlines()]
+        self.assertLess(zeilen.index('noch da'), zeilen.index('endlich 1'))
+        self.assertEqual(zeilen.count('endlich 1'), 1)
+
 
 class _UnterbrechenderStapel(list):
     """Wirft ein Strg+C genau nach dem nächsten append: simuliert eine Ausnahme von außen in der Lücke
@@ -543,6 +603,24 @@ class TestUnterbrechungInDerLuecke(unittest.TestCase):
             self._sauber(ip)
             ip.ausfuehren(parse('lade "m.deu" als m'))  # kein 'zyklischer Import' durch einen Rest in der Ladekette
             self._sauber(ip)
+
+    def test_unterbrechung_im_finally_von_next(self):
+        # Strg+C mitten im 'finally' von __next__ (vor dem Aufräumen): die äußere Ebene räumt trotzdem auf
+        from deutsch.interpreter import DeutschGenerator
+        ip = Interpreter()
+        echt = DeutschGenerator._verlassen
+        zaehler = [0]
+
+        def verlassen(gen, sicherung):
+            zaehler[0] += 1
+            if zaehler[0] == 3:
+                raise KeyboardInterrupt
+            echt(gen, sicherung)
+
+        with mock.patch.object(DeutschGenerator, '_verlassen', verlassen):
+            with self.assertRaises(KeyboardInterrupt):
+                ip.ausfuehren(parse('funktion g() { solange wahr { ergib 1 } }\nfür x in g() { }'))
+        self._sauber(ip)
 
 
 if __name__ == '__main__':

@@ -2,9 +2,20 @@
 import os
 import math
 import functools
+import itertools
+import operator
+import weakref
 import inspect
 import random
 import json
+import csv
+import io
+import codecs
+import socket
+import http.client
+import urllib.error
+import urllib.parse
+import urllib.request
 import re
 import time
 import statistics
@@ -94,6 +105,25 @@ class Teilbereich:
 # als Teilbereich-Objekt (.anfang/.ende/.schritt, nicht angegebene Teile = nichts).
 
 # Bit-Operatoren (nur Ganzzahlen bzw. Mengen, keine Überladung durch Klassen)
+def _zahl_geteilt(l, r):
+    if r == 0: raise ZeroDivisionError('Division durch Null')
+    return l / r
+
+def _zahl_ganz_geteilt(l, r):
+    if r == 0: raise ZeroDivisionError('Ganzzahldivision durch Null')
+    return l // r
+
+def _zahl_modulo(l, r):
+    if r == 0: raise ZeroDivisionError('Division durch Null')
+    return l % r
+
+# Schneller Pfad: beide Operanden genau int/float (kein bool, keine Instanz, keine Zeichenkette)
+_ZAHL_OPERATOREN = {
+    '+': operator.add, '-': operator.sub, '*': operator.mul, '/': _zahl_geteilt, '//': _zahl_ganz_geteilt,
+    '%': _zahl_modulo, '**': operator.pow, '==': operator.eq, '!=': operator.ne, '<': operator.lt,
+    '>': operator.gt, '<=': operator.le, '>=': operator.ge,
+}
+_KURZSCHLUSS_OPERATOREN = frozenset(('und', 'oder', '??'))
 _BIT_OPERATOREN = ('&', '|', '^', '<<', '>>')
 
 
@@ -237,7 +267,7 @@ _MELDUNGS_REGELN = tuple(
          r'(?:integer |float )?(?:division|modulo|floor division|divmod\(\))(?: or modulo)? by zero'
          r'|float modulo|float divmod\(\)',
          'Division durch Null'),
-        (ZeroDivisionError, r'.*cannot be raised to a negative power',
+        (ZeroDivisionError, r'.*cannot be raised to a negative power|zero to a negative power',
          'Null kann nicht mit negativem Exponenten potenziert werden'),
         (RecursionError, r'maximum recursion depth exceeded.*', 'Maximale Rekursionstiefe überschritten'),
         (ValueError, r'Exceeds the limit \((\d+) digits\) for integer string conversion.*',
@@ -435,6 +465,26 @@ class DeutschNamensraum:
 _NICHT_GEFUNDEN = object()
 
 
+class _WeiterleitungSchema(ValueError):
+    """Intern: Weiterleitung auf ein anderes Schema als http/https."""
+
+
+class _NurHttpWeiterleitung(urllib.request.HTTPRedirectHandler):
+    def http_error_302(self, req, fp, code, msg, headers):
+        # urllib prüft file:/ftp:/… selbst und wirft HTTPError; vorher abfangen für die eigene Meldung
+        ziel = headers.get('location') or headers.get('uri')
+        if ziel:
+            schema = urllib.parse.urlsplit(urllib.parse.urljoin(req.full_url, ziel)).scheme.lower()
+            if schema not in ('http', 'https'):
+                raise _WeiterleitungSchema(f"Weiterleitung auf nicht erlaubtes Schema '{schema}'")
+        return super().http_error_302(req, fp, code, msg, headers)
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_308 = http_error_302
+
+
+_HTTP_OPENER = urllib.request.build_opener(_NurHttpWeiterleitung)
+
+
 class _OptionalKurzschluss(Exception):
     """Intern: 'a?.b' mit a = nichts; wird von OptionalKette gefangen."""
 
@@ -562,6 +612,10 @@ class Interpreter:
         # Datei, deren Code gerade läuft (absoluter Pfad); None = Hauptskript bzw. REPL.
         # Wechselt bei 'lade' und beim Aufruf einer Funktion aus einer geladenen Datei.
         self._aktuelle_datei: str | None = None
+        # Lebende Generatoren (Erzeugungsnummer -> Generator), schwach: bei Programmende noch angehaltene werden geschlossen
+        self._aufruf_plaene = {}  # FunktionDefinition -> Parameterplan (siehe _funktion_aufrufen)
+        self._generatoren = weakref.WeakValueDictionary()
+        self._generator_nummer = itertools.count()
         self._dispatch = self._dispatch_aufbauen()
         self._gen_dispatch = {  # Anweisungen, die 'ergib' enthalten können (siehe 'Generatoren')
             ast.WennAnweisung: self._gen_Wenn, ast.SolangeAnweisung: self._gen_Solange,
@@ -749,6 +803,11 @@ class Interpreter:
         g.setze('zippe',            self._eb_zippe)
         g.setze('json_lesen',       self._eb_json_lesen)
         g.setze('json_schreiben',   self._eb_json_schreiben)
+        g.setze('json_parsen',      self._eb_json_parsen)
+        g.setze('json_text',        self._eb_json_text)
+        g.setze('csv_lesen',        self._eb_csv_lesen)
+        g.setze('csv_schreiben',    self._eb_csv_schreiben)
+        g.setze('http_holen',       self._eb_http_holen)
         g.setze('kommandozeilen_argumente', self._eb_kommandozeilen_argumente)
         g.setze('passt_zu',         self._eb_passt_zu)
         g.setze('regex_ersetze',    self._eb_regex_ersetze)
@@ -1470,16 +1529,20 @@ class Interpreter:
             falsch = next((a for a in args if not isinstance(a, (int, float))), args[0])
             raise TypeError(f"'logarithmus' erwartet eine Zahl, bekam {self._typname(falsch)}")
 
-    def _eb_datei_lesen(self, *args):
+    @_mit_keywords
+    def _eb_datei_lesen(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_lesen', kwargs)
         self._pruefe_args('datei_lesen', args, 1)
-        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read())
+        return self._lese_datei(self._zu_text(args[0]), lambda f: f.read(), kodierung)
 
-    def _lese_datei(self, pfad: str, lese):
-        """Gemeinsame Fehlerübersetzung für datei_lesen und zeilen_lesen.
+    def _lese_datei(self, pfad: str, lese, kodierung: str = 'utf-8', newline=None):
+        """Gemeinsame Fehlerübersetzung für datei_lesen, zeilen_lesen und csv_lesen.
         lese(f) liest aus der bereits geöffneten Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, 'r', encoding='utf-8') as f:
+            # utf-8 liest ein BOM (Excel, Windows-Editoren) mit; Schreiben bleibt ohne BOM
+            lese_kodierung = 'utf-8-sig' if kodierung.lower().replace('_', '-') in ('utf-8', 'utf8') else kodierung
+            with open(voller_pfad, 'r', encoding=lese_kodierung, newline=newline) as f:
                 return lese(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -1488,16 +1551,16 @@ class Interpreter:
         except PermissionError:
             raise PermissionError(f"Keine Berechtigung zum Lesen von '{pfad}'")
         except UnicodeDecodeError:
-            raise ValueError(f"'{pfad}' ist keine gültige UTF-8-Textdatei")
+            raise ValueError(f"'{pfad}' ist keine gültige {kodierung.upper()}-Textdatei")
         except OSError:
             raise OSError(f"'{pfad}' konnte nicht gelesen werden")
 
-    def _schreibe_datei(self, pfad: str, modus: str, schreibe):
-        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen und json_schreiben.
+    def _schreibe_datei(self, pfad: str, modus: str, schreibe, kodierung: str = 'utf-8', newline=None):
+        """Gemeinsame Fehlerübersetzung für datei_schreiben, datei_anhängen, json_schreiben und csv_schreiben.
         schreibe(f) schreibt in die bereits geöffnete Datei."""
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, modus, encoding='utf-8') as f:
+            with open(voller_pfad, modus, encoding=kodierung, newline=newline) as f:
                 schreibe(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Verzeichnis für '{pfad}' existiert nicht")
@@ -1508,23 +1571,29 @@ class Interpreter:
         except OSError:
             raise OSError(f"'{pfad}' konnte nicht geschrieben werden")
         except UnicodeEncodeError:
-            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als UTF-8 speichern lassen")
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als {kodierung.upper()} speichern lassen")
 
-    def _eb_datei_schreiben(self, *args):
+    @_mit_keywords
+    def _eb_datei_schreiben(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_schreiben', kwargs)
         self._pruefe_args('datei_schreiben', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt))
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(inhalt), kodierung)
         return None
 
-    def _eb_datei_anhaengen(self, *args):
+    @_mit_keywords
+    def _eb_datei_anhaengen(self, *args, **kwargs):
+        kodierung = self._kodierung('datei_anhängen', kwargs)
         self._pruefe_args('datei_anhängen', args, 2)
         pfad, inhalt = self._zu_text(args[0]), self._zu_text(args[1])
-        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt))
+        self._schreibe_datei(pfad, 'a', lambda f: f.write(inhalt), kodierung)
         return None
 
-    def _eb_zeilen_lesen(self, *args):
+    @_mit_keywords
+    def _eb_zeilen_lesen(self, *args, **kwargs):
+        kodierung = self._kodierung('zeilen_lesen', kwargs)
         self._pruefe_args('zeilen_lesen', args, 1)
-        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f])
+        return self._lese_datei(self._zu_text(args[0]), lambda f: [zeile.rstrip('\n') for zeile in f], kodierung)
 
     def _eb_datei_loeschen(self, *args):
         self._pruefe_args('datei_loeschen', args, 1)
@@ -1667,7 +1736,7 @@ class Interpreter:
         pfad = self._zu_text(args[0])
         voller_pfad = self._pfad_vorpruefen(pfad)
         try:
-            with open(voller_pfad, 'r', encoding='utf-8') as f:
+            with open(voller_pfad, 'r', encoding='utf-8-sig') as f:
                 return json.load(f)
         except FileNotFoundError:
             raise FileNotFoundError(f"Datei nicht gefunden: '{pfad}'")
@@ -1694,6 +1763,183 @@ class Interpreter:
             raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden')
         self._schreibe_datei(pfad, 'w', lambda f: json.dump(bereit, f, ensure_ascii=False, indent=2))
         return None
+
+    def _kodierung(self, name, kwargs):
+        """Liest das einzige erlaubte Keyword 'kodierung=' und prüft, dass es eine Text-Kodierung ist."""
+        for k in kwargs:
+            if k != 'kodierung':
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+        return self._kodierung_pruefen(kwargs.get('kodierung', 'utf-8'))
+
+    def _kodierung_pruefen(self, kodierung):
+        if not isinstance(kodierung, str):
+            raise TypeError(f"'kodierung' erwartet eine Zeichenkette, bekam {self._typname(kodierung)}")
+        try:
+            info = codecs.lookup(kodierung)
+        except LookupError:
+            raise ValueError(f"Unbekannte Kodierung '{kodierung}'") from None
+        if not getattr(info, '_is_text_encoding', True):  # z. B. 'hex', 'rot13'
+            raise ValueError(f"'{kodierung}' ist keine Text-Kodierung")
+        return kodierung
+
+    def _binde(self, name, args, kwargs, pflicht, optional):
+        """Bindet Positions- und Keyword-Argumente wie Python: pflicht = Namen, optional = {Name: Standard}."""
+        namen = list(pflicht) + list(optional)
+        if len(args) > len(namen):
+            raise TypeError(f"'{name}' erwartet höchstens {len(namen)} Argument(e), bekam {len(args)}")
+        werte = dict(zip(namen, args))
+        for k, v in kwargs.items():
+            if k not in namen:
+                raise TypeError(f"'{name}' hat kein Parameter '{k}'")
+            if k in werte:
+                raise TypeError(f"'{name}': '{k}' ist doppelt angegeben")
+            werte[k] = v
+        fehlend = [n for n in pflicht if n not in werte]
+        if fehlend:
+            raise TypeError(f"'{name}' erwartet mindestens {len(pflicht)} Argument(e), es fehlt '{fehlend[0]}'")
+        return [werte.get(n, optional.get(n)) for n in namen]
+
+    def _csv_trenner(self, name, trenner):
+        if not isinstance(trenner, str):
+            raise TypeError(f"'{name}': 'trennzeichen' erwartet eine Zeichenkette, bekam {self._typname(trenner)}")
+        if len(trenner) != 1 or trenner in '"\r\n':
+            raise ValueError(f"'{name}': 'trennzeichen' muss genau ein Zeichen sein (kein Anführungszeichen, kein Zeilenumbruch)")
+        return trenner
+
+    @_mit_keywords
+    def _eb_csv_lesen(self, *args, **kwargs):
+        pfad, trenner, kopfzeile, kodierung = self._binde(
+            'csv_lesen', args, kwargs, ('pfad',), {'trennzeichen': ',', 'kopfzeile': True, 'kodierung': 'utf-8'})
+        pfad, trenner = self._zu_text(pfad), self._csv_trenner('csv_lesen', trenner)
+        kopfzeile, kodierung = self._ist_wahr(kopfzeile), self._kodierung_pruefen(kodierung)
+
+        def lese(f):
+            try:
+                leser = csv.reader(f, delimiter=trenner, strict=True)
+                zeilen = [z for z in leser if z]  # leere Zeilen überspringen
+            except csv.Error as e:
+                raise ValueError(f"Ungültiges CSV in '{pfad}': nicht geschlossenes Anführungszeichen oder ungültiges Format (Zeile {leser.line_num})") from None
+            if not kopfzeile or not zeilen:
+                return zeilen
+            kopf = zeilen[0]
+            if len(set(kopf)) < len(kopf):
+                doppelt = next(k for k in kopf if kopf.count(k) > 1)
+                raise ValueError(f"Ungültiges CSV in '{pfad}': Spaltenname '{doppelt}' kommt mehrfach in der Kopfzeile vor")
+            ergebnis = []
+            for nr, z in enumerate(zeilen[1:], 2):
+                if len(z) > len(kopf):
+                    raise ValueError(f"Ungültiges CSV in '{pfad}': Zeile {nr} hat mehr Felder als die Kopfzeile")
+                ergebnis.append(dict(zip(kopf, z + [''] * (len(kopf) - len(z)))))
+            return ergebnis
+        return self._lese_datei(pfad, lese, kodierung, newline='')
+
+    @_mit_keywords
+    def _eb_csv_schreiben(self, *args, **kwargs):
+        pfad, zeilen, trenner, kodierung = self._binde(
+            'csv_schreiben', args, kwargs, ('pfad', 'zeilen'), {'trennzeichen': ',', 'kodierung': 'utf-8'})
+        pfad, trenner = self._zu_text(pfad), self._csv_trenner('csv_schreiben', trenner)
+        kodierung = self._kodierung_pruefen(kodierung)
+        if not isinstance(zeilen, list):
+            raise TypeError(f"'csv_schreiben' erwartet eine Liste von Zeilen, bekam {self._typname(zeilen)}")
+
+        def zelle(w):
+            if w is None:
+                return ''
+            if isinstance(w, (list, dict, set)):
+                raise TypeError(f"'csv_schreiben' kann '{self._typname(w)}' nicht als Feld speichern")
+            return self._zu_text(w)
+
+        # Alles vorab prüfen, umwandeln und kodieren: ein Fehler ließe sonst eine halbe Datei zurück
+        if zeilen and all(isinstance(z, dict) for z in zeilen):
+            kopf = list(zeilen[0])
+            for z in zeilen:
+                fremd = [k for k in z if k not in kopf]
+                if fremd:
+                    raise ValueError(f"'csv_schreiben': Schlüssel '{self._zu_text(fremd[0])}' fehlt in der Kopfzeile (erste Zeile)")
+            tabelle = [[self._zu_text(k) for k in kopf]] + [[zelle(z.get(k)) for k in kopf] for z in zeilen]
+        elif all(isinstance(z, list) for z in zeilen):
+            tabelle = [[zelle(w) for w in z] for z in zeilen]
+        else:
+            raise TypeError("'csv_schreiben' erwartet eine Liste von Wörterbüchern oder eine Liste von Listen")
+        puffer = io.StringIO(newline='')
+        csv.writer(puffer, delimiter=trenner, lineterminator='\n').writerows(tabelle)
+        text = puffer.getvalue()
+        try:
+            text.encode(kodierung)
+        except UnicodeEncodeError:
+            raise ValueError(f"Inhalt für '{pfad}' enthält Zeichen, die sich nicht als {kodierung.upper()} speichern lassen") from None
+        self._schreibe_datei(pfad, 'w', lambda f: f.write(text), kodierung, newline='')
+        return None
+
+    HTTP_MAX_BYTES = 50 * 1024 * 1024  # Schutz vor endlos großen Antworten
+
+    @_mit_keywords
+    def _eb_http_holen(self, *args, **kwargs):
+        url, zeitlimit = self._binde('http_holen', args, kwargs, ('url',), {'zeitlimit': 10})
+        url = self._zu_text(url)
+        if isinstance(zeitlimit, bool) or not isinstance(zeitlimit, (int, float)):
+            raise TypeError(f"'http_holen': 'zeitlimit' erwartet eine Zahl, bekam {self._typname(zeitlimit)}")
+        if not zeitlimit > 0:
+            raise ValueError("'http_holen': 'zeitlimit' muss größer als 0 sein")
+        try:
+            schema = urllib.parse.urlsplit(url).scheme.lower()
+        except ValueError:
+            raise ValueError(f"Ungültige URL: '{url}'") from None
+        if schema not in ('http', 'https'):
+            raise ValueError(f"'http_holen' erlaubt nur http:// und https://, nicht '{url}'")
+        zeit_meldung = f"Zeitüberschreitung beim Abruf von '{url}' (nach {zeitlimit} Sekunden)"
+        try:
+            with _HTTP_OPENER.open(url, timeout=zeitlimit) as antwort:
+                daten = antwort.read(self.HTTP_MAX_BYTES + 1)
+                zeichensatz = antwort.headers.get_content_charset() or 'utf-8'
+                laenge = antwort.headers.get('Content-Length', '')
+                unvollstaendig = laenge.strip().isdigit() and len(daten) < min(int(laenge), self.HTTP_MAX_BYTES + 1)
+        except urllib.error.HTTPError as e:
+            e.close()
+            if 300 <= e.code < 400:  # urllib meldet Schleifen und zu viele Weiterleitungen als HTTPError
+                raise OSError(f"Zu viele oder zyklische Weiterleitungen beim Abruf von '{url}'") from None
+            raise OSError(f"HTTP-Fehler {e.code} beim Abruf von '{url}'") from None
+        except urllib.error.URLError as e:
+            if isinstance(e.reason, (TimeoutError, socket.timeout)):
+                raise TimeoutError(zeit_meldung) from None
+            raise OSError(f"Netzwerkfehler beim Abruf von '{url}'") from None
+        except TimeoutError:
+            raise TimeoutError(zeit_meldung) from None
+        except _WeiterleitungSchema as e:
+            raise ValueError(str(e)) from None
+        except ValueError:  # http.client.InvalidURL und Zeichen, die sich nicht senden lassen
+            raise ValueError(f"Ungültige URL: '{url}'") from None
+        except (OSError, http.client.HTTPException):
+            raise OSError(f"Netzwerkfehler beim Abruf von '{url}'") from None
+        if unvollstaendig:
+            raise OSError(f"Unvollständige Antwort beim Abruf von '{url}'")
+        if len(daten) > self.HTTP_MAX_BYTES:
+            raise ValueError(f"Antwort von '{url}' ist zu groß (über {self.HTTP_MAX_BYTES // (1024 * 1024)} MB)")
+        try:
+            return daten.decode(zeichensatz)
+        except LookupError:
+            raise ValueError(f"Antwort von '{url}' nennt die unbekannte Kodierung '{zeichensatz}'") from None
+        except UnicodeDecodeError:
+            raise ValueError(f"Antwort von '{url}' ist kein gültiger {zeichensatz.upper()}-Text") from None
+
+    def _eb_json_parsen(self, *args):
+        self._pruefe_args('json_parsen', args, 1)
+        if not isinstance(args[0], str):
+            raise TypeError(f"'json_parsen' erwartet eine Zeichenkette, bekam {self._typname(args[0])}")
+        try:
+            return json.loads(args[0])
+        except json.JSONDecodeError as e:
+            raise ValueError(f"Ungültiges JSON (Zeichen {e.pos})") from None
+        except RecursionError:
+            raise RecursionError("JSON ist zu tief verschachtelt") from None
+
+    def _eb_json_text(self, *args):
+        self._pruefe_args('json_text', args, 1)
+        try:
+            bereit = self._json_bereit(args[0])
+        except RecursionError:
+            raise RecursionError('Wert ist zu tief verschachtelt, um als JSON gespeichert zu werden') from None
+        return json.dumps(bereit, ensure_ascii=False, indent=2)
 
     def _eb_kommandozeilen_argumente(self, *args):
         self._pruefe_args('kommandozeilen_argumente', args, 0)
@@ -1970,10 +2216,28 @@ class Interpreter:
     # ------------------------------------------------------------ Ausführen
 
     def ausfuehren(self, knoten, umgebung=None):
-        if umgebung is None:
-            umgebung = self.global_umgebung
-            self._letzter_aufruf_stack = []
-        return self._besuche(knoten, umgebung)
+        if umgebung is not None:
+            return self._besuche(knoten, umgebung)
+        self._letzter_aufruf_stack = []
+        tiefe, datei = len(self._aufruf_stack), self._aktuelle_datei
+        try:
+            return self._besuche(knoten, self.global_umgebung)
+        finally:
+            # Strg+C kann ein inneres 'finally' (z. B. im Generator) mittendrin abbrechen; hier verlässlich aufräumen.
+            del self._aufruf_stack[tiefe:]
+            self._aktuelle_datei = datei
+
+    def generatoren_schliessen(self):
+        """Schließt noch angehaltene Generatoren (umgekehrte Erzeugungsreihenfolge): ihr 'endlich' läuft jetzt.
+        Alle werden geschlossen; der erste Fehler aus einem 'endlich' geht danach weiter."""
+        erster = None
+        for _, gen in sorted(self._generatoren.items(), key=lambda p: p[0], reverse=True):
+            try:
+                gen.close()
+            except Exception as e:
+                erster = erster or e
+        if erster is not None:
+            raise erster
 
     def _besuche(self, knoten, umgebung):
         methode = self._dispatch.get(type(knoten))
@@ -2167,11 +2431,16 @@ class Interpreter:
     def _besuche_ListenAusdruck(self, k, u):
         iterable = self._iterable_auswerten(k.iterable, u)
         ergebnis = []
-        for elem in self._iteriere(iterable):
-            iter_u = Umgebung(u)
-            self._schleifenvariable_binden(k.variable, elem, iter_u)
-            if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
-                ergebnis.append(self._besuche(k.ausdruck, iter_u))
+        iterator = self._iteriere(iterable)
+        try:
+            for elem in iterator:
+                iter_u = Umgebung(u)
+                self._schleifenvariable_binden(k.variable, elem, iter_u)
+                if k.bedingung is None or self._ist_wahr(self._besuche(k.bedingung, iter_u)):
+                    ergebnis.append(self._besuche(k.ausdruck, iter_u))
+        except BaseException:
+            self._iterator_schliessen(iterator, True)  # Abbruch durch Fehler: Generator sofort schließen
+            raise
         return ergebnis
 
     def _schleifenvariable_binden(self, variable, elem, u):
@@ -2382,21 +2651,26 @@ class Interpreter:
 
     # Operationen
     def _besuche_BinaereOperation(self, k, u):
-        # Kurzschluss
-        if k.operator == 'und':
+        op = k.operator
+        if op in _KURZSCHLUSS_OPERATOREN:
             l = self._besuche(k.links, u)
-            return l if not self._ist_wahr(l) else self._besuche(k.rechts, u)
-        if k.operator == 'oder':
-            l = self._besuche(k.links, u)
-            return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
-        if k.operator == '??':
-            # Null-Koaleszenz: rechts wird nur ausgewertet, wenn links 'nichts' ist
-            l = self._besuche(k.links, u)
+            if op == 'und':
+                return l if not self._ist_wahr(l) else self._besuche(k.rechts, u)
+            if op == 'oder':
+                return l if self._ist_wahr(l) else self._besuche(k.rechts, u)
+            # '??': rechts wird nur ausgewertet, wenn links 'nichts' ist
             return l if l is not None else self._besuche(k.rechts, u)
 
-        l = self._besuche(k.links, u)
-        r = self._besuche(k.rechts, u)
-        return self._binaerer_operator(k.operator, l, r)
+        besuche = self._dispatch  # direkt statt über _besuche: ein Aufruf weniger je Operand
+        a, b = k.links, k.rechts
+        l = besuche[type(a)](a, u)
+        r = besuche[type(b)](b, u)
+        tl, tr = type(l), type(r)
+        if (tl is int or tl is float) and (tr is int or tr is float):
+            f = _ZAHL_OPERATOREN.get(op)
+            if f is not None:
+                return f(l, r)
+        return self._binaerer_operator(op, l, r)
 
     def _binaerer_operator(self, op, l, r):
         if isinstance(l, DeutschInstanz):
@@ -3011,7 +3285,8 @@ class Interpreter:
                     yield from self._gen_Block(k.endlich_koerper, u)
         return None
 
-    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+    def _parameter_binden(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+        """Allgemeiner Pfad: Keywords, Variadisch, '**name', Defaults, Fehlermeldungen. Gibt (Name, Aufrufumgebung)."""
         kwargs = kwargs or {}
         fname = fn.definition.name or '<anonym>'
         params = fn.definition.parameter  # [(name, default, variadic, typhinweis), ...]
@@ -3075,9 +3350,36 @@ class Interpreter:
 
         if fehlende:
             raise TypeError(f"'{fname}': Pflichtargument(e) fehlen: {', '.join(fehlende)}")
+        return fname, fn_u
+
+    def _funktion_aufrufen(self, fn: DeutschFunktion, args: list, kwargs: dict = None):
+        definition = fn.definition
+        plan = self._aufruf_plaene.get(definition)
+        if plan is None:
+            # je Definition einmal: ((name, typhinweis), ...) für den schnellen Pfad; False = nicht einfach
+            # (variadisch oder '**name'); Defaults brauchen den allgemeinen Pfad nur bei fehlenden Argumenten
+            plan = self._aufruf_plaene[definition] = (
+                False if definition.kwargs_parameter is not None or any(p[2] for p in definition.parameter)
+                else tuple((p[0], p[3]) for p in definition.parameter))
+        if plan is not False and not kwargs and len(args) == len(plan):
+            # genau passende Argumentzahl, keine Keywords: nur Typprüfung der Parameter mit Hinweis
+            fn_u = Umgebung(fn.umgebung)
+            fn_u.typ_kontext = fn.umgebung  # Parameter-Hinweise gelten für Namen der Definitionsumgebung
+            variablen = fn_u.variablen
+            for (p_name, p_typ), wert in zip(plan, args):
+                if p_typ is None:
+                    variablen[p_name] = wert
+                else:
+                    self._pruefe_typ(wert, p_typ, f"Parameter '{p_name}'", fn.umgebung)
+                    fn_u.setze(p_name, wert, p_typ)  # der Hinweis gilt auch für spätere Zuweisungen im Körper
+            fname = definition.name or '<anonym>'
+        else:
+            fname, fn_u = self._parameter_binden(fn, args, kwargs)
 
         if fn.definition.ist_generator:  # der Rumpf läuft erst beim Abrufen (Rückgabetyp-Hinweis entfällt)
-            return DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
+            gen = DeutschGenerator(self, self._gen_Block(fn.definition.koerper, fn_u), fname, fn.datei)
+            self._generatoren[next(self._generator_nummer)] = gen
+            return gen
 
         # Aufrufstelle: Zeile und Datei des Aufrufers (noch vor dem Wechsel in die Datei der Funktion)
         # Zustand vor dem 'try' nur sichern, darin ändern: eine Ausnahme von außen (Strg+C) lässt nichts zurück

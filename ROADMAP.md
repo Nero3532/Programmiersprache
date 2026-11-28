@@ -8,17 +8,19 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 ### P1 — Fehler (zuerst)
 - (keine offen — alle in 2.7.1 behoben)
 
-### P2 — großer Nutzen, wenig Aufwand
-- (keine offen)
+### P2 — großer Nutzen, wenig Aufwand (Reihenfolge = Reihenfolge der Automatik)
+- Turtle-Grafik `schildkroete` (vorwärts, drehen, stift_hoch/runter, farbe, kreis, warte_auf_schliessen) über Pythons `turtle`, ohne neue Abhängigkeit; Tests ohne Fenster (Attrappe) — Einstiegshilfe für Schulen — M — entwickler/sonnet
+- Comprehensions für Mengen und Wörterbücher `{x für x in …}`, `{k: v für k, v in …}` — S/M — entwickler/sonnet
+- Lernpfad `docs/lernpfad/` (10 kurze Lektionen mit Übungen und Lösungen, Gegenüberstellung Python ↔ Deutsch), jede Lektion als Test ausführbar — Einstieg für Lernende/Lehrkräfte — M — release/haiku + qa/haiku
+- Teilbereichs-Zuweisung für eingebaute Listen `l[1:3] = …` — S — entwickler/sonnet
+- Mehrfachvererbung nach C3 (wie Python) statt Tiefensuche — S/M — entwickler/sonnet
 
 ### P3 — größere Vorhaben
-- Generator: `endlich` verlässlich bei Programmende und bei Abbruch in Comprehensions (heute nur per GC) — S — entwickler/sonnet
 - Eigenschaften (Getter/Setter) und abstrakte Methoden/Schnittstellen — M — entwickler/sonnet
 - Schleifen-`sonst`, Label-`abbrechen`, `?[` (Optional-Index), passe-Kurzform-Arme `fall m: ausdruck` — S/M — entwickler/sonnet ❓ (Syntax)
-- Stdlib CSV und HTTP-Abruf (urllib), wählbare Zeichenkodierung — M — entwickler/sonnet
-- Formatierer; Linter ausbauen (scope-genaue Namensprüfung, Regel b auf oberster Ebene, `konstante`/Destrukturierung) — M/L — entwickler/sonnet
+- Linter ausbauen (scope-genaue Namensprüfung, Regel b auf oberster Ebene, `konstante`/Destrukturierung); Formatierer v2 (Leerzeichen um Operatoren, tokenbasiert mit Kommentaren) — M — entwickler/sonnet
 - Debugger/Schrittmodus — L — architekt/opus
-- Performance: Namensauflösung zur Parse-Zeit oder Bytecode-VM — L — architekt/opus
+- Performance weiter: Block-Scopes nur bei `sei` im Block, lazy Umgebungs-Container (gemessen ~10–15 %); später Namensauflösung zur Parse-Zeit/Bytecode — M/L — architekt/opus (Entwurf)
 - REPL-Verlauf unter Windows — S — junior/haiku ❓ (braucht `pyreadline3` = neue Abhängigkeit)
 - Einheitliche Stdlib-Namen (`Woerterbuch`/`Wörterbuch`, Umlaut-Paare, Verb vs. Substantiv) — S — junior/haiku ❓ (Benennungsregel festlegen)
 - Veröffentlichung auf PyPI, Git-Tags, Release-Workflow — S — release/haiku ❓ (PyPI-Konto)
@@ -67,3 +69,7 @@ Gepflegt vom `sprache-chef`. Je Zeile: Thema — Nutzen — Aufwand S/M/L — Ag
 - [2.10.0] Dunder-Hooks __laenge__, __hole__/__setze__, __enthaelt__, __aufruf__
 - [2.10.0] Dekoratoren @name
 - [2.10.0] Optional-Chaining ?.
+- [2.11.0] Generator-endlich verlässlich (Comprehension, Programmende)
+- [2.11.0] csv_lesen/csv_schreiben, http_holen, json_parsen/json_text, kodierung=
+- [2.11.0] Formatierer v1 (--formatieren: Einrückung, Leerzeilen)
+- [2.11.0] Tempo: Zahlen-Schnellpfad, Aufrufpläne (−24 bis −27 %)
