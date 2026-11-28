@@ -4,6 +4,9 @@ Format angelehnt an [Keep a Changelog](https://keepachangelog.com/de/1.1.0/).
 
 ## [Unreleased]
 
+### Hinzugefügt
+- Turtle-Grafik über den eingebauten Namensraum `schildkroete` (Alias `schildkröte`): `vorwaerts`, `drehen`, `stift_hoch`, `stift_runter`, `farbe` (deutsche Farbnamen), `kreis`, `warte_auf_schliessen`. Braucht `tkinter` und ein Fenster.
+
 ## [2.11.0]
 
 ### Hinzugefügt
